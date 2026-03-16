@@ -369,33 +369,27 @@
 
     - name: "Phase 5 | Summary"
       debug:
-        msg: |
-          ╔══════════════════════════════════════════════════════════╗
-          ║          ZTA Lab Integration Complete                   ║
-          ╠══════════════════════════════════════════════════════════╣
-          ║                                                        ║
-          ║  IdM (Identity Provider)                               ║
-          ║    Domain:   {{ idm_domain | ljust(39) }}║
-          ║    Realm:    {{ idm_realm | ljust(39) }}║
-          ║    Test user: ztauser (group: zta-admins)              ║
-          ║                                                        ║
-          ║  OPA (Policy Decision Point)                           ║
-          ║    Endpoint:  http://localhost:{{ opa_http_port | string | ljust(24) }}║
-          ║    Policies:  zta_authz, patching, network, db_access  ║
-          ║    Health:    {{ 'OK' | ljust(39) if opa_final_health.status == 200 else 'FAILED' | ljust(39) }}║
-          ║                                                        ║
-          ║  IdM-Signed Certificates                               ║
-          {% for svc in idm_service_certs %}
-          ║    {{ (svc.hostname + ': ' + svc.cert_dir + '/') | ljust(52) }}║
-          {% endfor %}
-          ║                                                        ║
-          ║  Test User                                             ║
-          ║    Username: ztauser                                   ║
-          ║    Password: {{ idm_admin_password | ljust(39) }}║
-          ║    Groups:   zta-admins                                ║
-          ║                                                        ║
-          ║  Keycloak: not configured by this playbook             ║
-          ║    Run integrate-keycloak.yml when ready                ║
-          ║                                                        ║
-          ╚══════════════════════════════════════════════════════════╝
+        msg:
+          - "=========================================================="
+          - "         ZTA Lab Integration Complete"
+          - "=========================================================="
+          - ""
+          - "  IdM (Identity Provider)"
+          - "    Domain:    {{ idm_domain }}"
+          - "    Realm:     {{ idm_realm }}"
+          - "    Test user: ztauser (group: zta-admins)"
+          - ""
+          - "  OPA (Policy Decision Point)"
+          - "    Endpoint:  http://localhost:{{ opa_http_port }}"
+          - "    Policies:  zta_authz, patching, network, db_access"
+          - "    Health:    {{ 'OK' if opa_final_health.status == 200 else 'FAILED' }}"
+          - ""
+          - "  Test User"
+          - "    Username:  ztauser"
+          - "    Password:  {{ idm_admin_password }}"
+          - "    Groups:    zta-admins"
+          - ""
+          - "  Keycloak: not configured by this playbook"
+          - "    Run integrate-keycloak.yml when ready"
+          - "=========================================================="
       tags: [phase5, validation]

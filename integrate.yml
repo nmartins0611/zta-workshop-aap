@@ -229,6 +229,35 @@
         - "'already exists' not in svc_add.stderr"
       tags: [phase4, certificates]
 
+    - name: "Phase 4 | Grant central host permission to manage service certs"
+      command: "ipa service-add-host HTTP/{{ item.hostname }}@{{ idm_realm }} --hosts={{ ansible_fqdn }}"
+      loop: "{{ idm_service_certs }}"
+      register: svc_host
+      changed_when: svc_host.rc == 0
+      failed_when:
+        - svc_host.rc != 0
+        - "'already a member' not in svc_host.stdout"
+      tags: [phase4, certificates]
+
+    - name: "Phase 4 | Clean up any stuck/rejected certificate requests"
+      shell: |
+        if ipa-getcert list -f {{ item.cert_dir }}/server.crt 2>/dev/null | grep -q 'status:'; then
+          status=$(ipa-getcert list -f {{ item.cert_dir }}/server.crt | grep 'status:' | head -1)
+          if echo "$status" | grep -qE 'CA_REJECTED|CA_UNREACHABLE|NEED_GUIDANCE'; then
+            ipa-getcert stop-tracking -f {{ item.cert_dir }}/server.crt 2>/dev/null || true
+            rm -f {{ item.cert_dir }}/server.crt {{ item.cert_dir }}/server.key
+            echo "CLEANED"
+          else
+            echo "OK"
+          fi
+        else
+          echo "NONE"
+        fi
+      loop: "{{ idm_service_certs }}"
+      register: cert_cleanup
+      changed_when: "'CLEANED' in cert_cleanup.stdout"
+      tags: [phase4, certificates]
+
     - name: "Phase 4 | Request certificates from IdM CA"
       command: >
         ipa-getcert request
@@ -243,22 +272,6 @@
       failed_when: false
       tags: [phase4, certificates]
 
-    - name: "Phase 4 | Check certificate request status"
-      command: "ipa-getcert list -f {{ item.cert_dir }}/server.crt"
-      loop: "{{ idm_service_certs }}"
-      register: cert_debug
-      changed_when: false
-      failed_when: false
-      tags: [phase4, certificates]
-
-    - name: "Phase 4 | Display certificate request details"
-      debug:
-        msg: "{{ item.stdout_lines | default(['no output']) }}"
-      loop: "{{ cert_debug.results }}"
-      loop_control:
-        label: "{{ item.item.hostname }}"
-      tags: [phase4, certificates]
-
     - name: "Phase 4 | Wait for certificate issuance"
       shell: |
         for i in $(seq 1 30); do
@@ -267,6 +280,11 @@
             echo "ISSUED"
             exit 0
           fi
+          if echo "$status" | grep -qE 'CA_REJECTED|NEED_GUIDANCE'; then
+            ipa-getcert list -f {{ item.cert_dir }}/server.crt 2>&1
+            echo "REJECTED"
+            exit 1
+          fi
           sleep 2
         done
         ipa-getcert list -f {{ item.cert_dir }}/server.crt 2>&1
@@ -274,7 +292,7 @@
       loop: "{{ idm_service_certs }}"
       register: cert_wait
       changed_when: false
-      failed_when: "'TIMEOUT' in cert_wait.stdout"
+      failed_when: "'TIMEOUT' in cert_wait.stdout or 'REJECTED' in cert_wait.stdout"
       tags: [phase4, certificates]
 
     - name: "Phase 4 | Set certificate permissions"

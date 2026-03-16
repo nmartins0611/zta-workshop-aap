@@ -209,6 +209,16 @@
       failed_when: false
       tags: [phase4, certificates]
 
+    - name: "Phase 4 | Create Kerberos service principals"
+      command: "ipa service-add HTTP/{{ item.hostname }}@{{ idm_realm }}"
+      loop: "{{ idm_service_certs }}"
+      register: svc_add
+      changed_when: svc_add.rc == 0
+      failed_when:
+        - svc_add.rc != 0
+        - "'already exists' not in svc_add.stderr"
+      tags: [phase4, certificates]
+
     - name: "Phase 4 | Request certificates from IdM CA"
       command: >
         ipa-getcert request
@@ -223,6 +233,22 @@
       failed_when: false
       tags: [phase4, certificates]
 
+    - name: "Phase 4 | Check certificate request status"
+      command: "ipa-getcert list -f {{ item.cert_dir }}/server.crt"
+      loop: "{{ idm_service_certs }}"
+      register: cert_debug
+      changed_when: false
+      failed_when: false
+      tags: [phase4, certificates]
+
+    - name: "Phase 4 | Display certificate request details"
+      debug:
+        msg: "{{ item.stdout_lines | default(['no output']) }}"
+      loop: "{{ cert_debug.results }}"
+      loop_control:
+        label: "{{ item.item.hostname }}"
+      tags: [phase4, certificates]
+
     - name: "Phase 4 | Wait for certificate issuance"
       shell: |
         for i in $(seq 1 30); do
@@ -233,6 +259,7 @@
           fi
           sleep 2
         done
+        ipa-getcert list -f {{ item.cert_dir }}/server.crt 2>&1
         echo "TIMEOUT"
       loop: "{{ idm_service_certs }}"
       register: cert_wait

@@ -1,18 +1,4 @@
 ---
-# integrate-keycloak.yml — Wire up Keycloak ↔ IdM ↔ OPA and issue
-# IdM-signed certificates.
-#
-# Run AFTER site.yml has deployed IdM, Keycloak, and OPA on
-# central.zta.lab.  If you only need IdM + OPA (no Keycloak), use
-# integrate.yml instead.
-#
-# Usage:
-#   ansible-playbook integrate-keycloak.yml
-#
-# Run individual phases:
-#   ansible-playbook integrate-keycloak.yml --tags phase1
-#   ansible-playbook integrate-keycloak.yml --tags phase3,phase4
-
 - name: Integrate ZTA Lab Services (with Keycloak)
   hosts: zta_services
   become: true

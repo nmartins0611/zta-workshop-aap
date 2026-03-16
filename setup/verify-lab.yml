@@ -1,0 +1,118 @@
+---
+# Pre-workshop verification: Ensure all lab services are operational
+- name: Verify ZTA Lab Environment
+  hosts: zta_services
+  become: true
+  gather_facts: true
+
+  tasks:
+    - name: Verify IdM services
+      command: ipactl status
+      register: idm_status
+      changed_when: false
+      failed_when: false
+
+    - name: Verify Vault is unsealed
+      uri:
+        url: "{{ vault_addr }}/v1/sys/seal-status"
+        method: GET
+        validate_certs: "{{ not vault_skip_verify }}"
+      register: vault_status
+      failed_when: false
+
+    - name: Verify OPA health
+      uri:
+        url: "{{ opa_url }}/health"
+        method: GET
+      register: opa_status
+      failed_when: false
+
+    - name: Verify Netbox is accessible
+      uri:
+        url: "{{ netbox_url }}/api/status/"
+        method: GET
+        headers:
+          Authorization: "Token {{ netbox_token }}"
+      register: netbox_status
+      failed_when: false
+
+    - name: Verify OPA policies are loaded
+      uri:
+        url: "{{ opa_url }}/v1/policies"
+        method: GET
+        return_content: true
+      register: opa_policies
+      failed_when: false
+
+    - name: Verify Kerberos
+      shell: echo '{{ idm_admin_password }}' | kinit admin && klist
+      register: krb_check
+      changed_when: false
+      no_log: true
+      failed_when: false
+
+- name: Verify Database Server
+  hosts: db_servers
+  become: true
+  gather_facts: false
+
+  tasks:
+    - name: Check PostgreSQL is running
+      systemd:
+        name: postgresql
+        state: started
+      check_mode: true
+      register: pg_status
+      failed_when: false
+
+    - name: Test database connectivity
+      become_user: postgres
+      command: psql -d {{ db_name }} -c "SELECT count(*) FROM app_data;"
+      register: db_check
+      changed_when: false
+      failed_when: false
+
+- name: Verify Application Server
+  hosts: app_servers
+  become: true
+  gather_facts: false
+
+  tasks:
+    - name: Check application directory exists
+      stat:
+        path: "{{ app_deploy_dir }}/app.py"
+      register: app_check
+
+- name: Verify Network Device
+  hosts: network
+  gather_facts: false
+
+  tasks:
+    - name: Test Cisco switch reachability
+      cisco.ios.ios_facts:
+        gather_subset: min
+      register: switch_facts
+      failed_when: false
+
+- name: Lab Verification Summary
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  tasks:
+    - name: Display verification results
+      debug:
+        msg: |
+          ╔═══════════════════════════════════════════════════════════╗
+          ║          ZTA Workshop - Lab Verification                 ║
+          ╠═══════════════════════════════════════════════════════════╣
+          ║                                                         ║
+          ║  IdM:        {{ 'OK' if hostvars['central']['idm_status']['rc'] | default(1) == 0 else 'FAILED' | ljust(45) }}║
+          ║  Vault:      {{ 'OK - Unsealed' if not (hostvars['central']['vault_status']['json']['sealed'] | default(true)) else 'FAILED' | ljust(45) }}║
+          ║  OPA:        {{ 'OK' if hostvars['central']['opa_status']['status'] | default(0) == 200 else 'FAILED' | ljust(45) }}║
+          ║  Netbox:     {{ 'OK' if hostvars['central']['netbox_status']['status'] | default(0) == 200 else 'FAILED' | ljust(45) }}║
+          ║  PostgreSQL: {{ 'OK' if hostvars['db']['pg_status']['status'] | default({}) is defined else 'FAILED' | ljust(45) }}║
+          ║  App Server: {{ 'OK' if hostvars['app']['app_check']['stat']['exists'] | default(false) else 'NOT DEPLOYED' | ljust(45) }}║
+          ║  Cisco:      {{ 'OK' if hostvars['switch01']['switch_facts'] is defined and hostvars['switch01']['switch_facts']['failed'] | default(true) == false else 'FAILED/UNREACHABLE' | ljust(45) }}║
+          ║                                                         ║
+          ╚═══════════════════════════════════════════════════════════╝

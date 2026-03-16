@@ -1,0 +1,67 @@
+---
+# Pre-workshop setup: Register all workshop VMs in IdM DNS
+# Run AFTER site.yml and integrate.yml from zta-lab-idm-keycloak
+- name: Register Workshop VMs in IdM DNS
+  hosts: zta_services
+  become: true
+  gather_facts: false
+
+  vars:
+    dns_records:
+      - hostname: vault
+        ip: "{{ hostvars['vault']['ansible_host'] | default('vault.zta.lab') }}"
+      - hostname: netbox
+        ip: "{{ hostvars['netbox']['ansible_host'] | default('netbox.zta.lab') }}"
+      - hostname: gitea
+        ip: "{{ hostvars['gitea']['ansible_host'] | default('gitea.zta.lab') }}"
+      - hostname: wazuh
+        ip: "{{ hostvars['wazuh']['ansible_host'] | default('wazuh.zta.lab') }}"
+      - hostname: aap
+        ip: "{{ hostvars['aap']['ansible_host'] | default('aap.zta.lab') }}"
+      - hostname: app
+        ip: "{{ hostvars['app']['ansible_host'] | default('app.zta.lab') }}"
+      - hostname: db
+        ip: "{{ hostvars['db']['ansible_host'] | default('db.zta.lab') }}"
+      - hostname: switch01
+        ip: "{{ hostvars['switch01']['ansible_host'] | default('switch01.zta.lab') }}"
+
+  tasks:
+    - name: Obtain Kerberos TGT
+      shell: echo '{{ idm_admin_password }}' | kinit admin
+      changed_when: false
+      no_log: true
+
+    - name: Add DNS A records for workshop VMs
+      command: >
+        ipa dnsrecord-add {{ idm_domain }} {{ item.hostname }}
+        --a-rec={{ item.ip }}
+      loop: "{{ dns_records }}"
+      loop_control:
+        label: "{{ item.hostname }}.{{ idm_domain }} → {{ item.ip }}"
+      register: dns_result
+      changed_when: dns_result.rc == 0
+      failed_when: dns_result.rc != 0 and 'already exists' not in dns_result.stderr
+
+    - name: Verify DNS resolution
+      command: "dig +short {{ item.hostname }}.{{ idm_domain }} @127.0.0.1"
+      loop: "{{ dns_records }}"
+      loop_control:
+        label: "{{ item.hostname }}.{{ idm_domain }}"
+      register: dns_verify
+      changed_when: false
+      failed_when: dns_verify.stdout | length == 0
+
+    - name: Display DNS configuration
+      debug:
+        msg: |
+          ═══════════════════════════════════════════
+            IdM DNS Records Configured
+          ═══════════════════════════════════════════
+          {% for item in dns_records %}
+            {{ item.hostname }}.{{ idm_domain }} → {{ item.ip }}
+          {% endfor %}
+
+          All workshop VMs should point their
+          /etc/resolv.conf to {{ idm_hostname }}
+          to resolve *.{{ idm_domain }} names.
+          ═══════════════════════════════════════════

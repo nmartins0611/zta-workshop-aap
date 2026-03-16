@@ -1,0 +1,146 @@
+---
+# Pre-workshop setup: Configure Vault secrets engines, policies, and base secrets
+- name: Configure HashiCorp Vault for Workshop
+  hosts: vault_servers
+  become: true
+  gather_facts: false
+
+  vars:
+    vault_env:
+      VAULT_ADDR: "{{ vault_addr }}"
+      VAULT_SKIP_VERIFY: "{{ vault_skip_verify | string }}"
+      VAULT_TOKEN: "{{ lookup('env', 'VAULT_TOKEN') }}"
+
+  tasks:
+    # ── KV Secrets Engine ──
+    - name: Enable KV v2 secrets engine
+      command: vault secrets enable -path={{ vault_kv_secrets_path }} -version=2 kv
+      environment: "{{ vault_env }}"
+      register: kv_enable
+      changed_when: kv_enable.rc == 0
+      failed_when: kv_enable.rc != 0 and 'already in use' not in kv_enable.stderr
+
+    - name: Store network device credentials
+      command: >
+        vault kv put {{ vault_kv_secrets_path }}/network/switch01
+        username=admin
+        password=cisco123!
+        enable_secret=cisco123!
+      environment: "{{ vault_env }}"
+
+    - name: Store database admin credentials
+      command: >
+        vault kv put {{ vault_kv_secrets_path }}/db/admin
+        username={{ db_admin_user }}
+        password={{ db_admin_password }}
+        host={{ db_host }}
+        port={{ db_port }}
+      environment: "{{ vault_env }}"
+
+    - name: Store IdM service credentials
+      command: >
+        vault kv put {{ vault_kv_secrets_path }}/idm/admin
+        username=admin
+        password={{ idm_admin_password }}
+        realm={{ idm_realm }}
+      environment: "{{ vault_env }}"
+
+    # ── Database Secrets Engine ──
+    - name: Enable database secrets engine
+      command: vault secrets enable -path={{ vault_db_secrets_path }} database
+      environment: "{{ vault_env }}"
+      register: db_enable
+      changed_when: db_enable.rc == 0
+      failed_when: db_enable.rc != 0 and 'already in use' not in db_enable.stderr
+
+    - name: Configure PostgreSQL connection in Vault
+      command: >
+        vault write {{ vault_db_secrets_path }}/config/ztaapp-postgres
+        plugin_name=postgresql-database-plugin
+        allowed_roles="{{ vault_db_role_name }}"
+        connection_url="postgresql://{{ '{{username}}' }}:{{ '{{password}}' }}@{{ db_host }}:{{ db_port }}/{{ db_name }}?sslmode=disable"
+        username="{{ db_admin_user }}"
+        password="{{ db_admin_password }}"
+      environment: "{{ vault_env }}"
+
+    - name: Create short-lived database role
+      command: >
+        vault write {{ vault_db_secrets_path }}/roles/{{ vault_db_role_name }}
+        db_name=ztaapp-postgres
+        creation_statements="CREATE ROLE \"{{ '{{name}}' }}\" WITH LOGIN PASSWORD '{{ '{{password}}' }}' VALID UNTIL '{{ '{{expiration}}' }}'; GRANT SELECT, INSERT, UPDATE ON ALL TABLES IN SCHEMA public TO \"{{ '{{name}}' }}\";"
+        revocation_statements="DROP ROLE IF EXISTS \"{{ '{{name}}' }}\";"
+        default_ttl="{{ vault_db_default_ttl }}"
+        max_ttl="{{ vault_db_max_ttl }}"
+      environment: "{{ vault_env }}"
+
+    # ── Vault Policies ──
+    - name: Write app-deployer policy
+      copy:
+        dest: /tmp/vault-policy-app-deployer.hcl
+        content: |
+          path "{{ vault_db_secrets_path }}/creds/{{ vault_db_role_name }}" {
+            capabilities = ["read"]
+          }
+          path "{{ vault_kv_secrets_path }}/data/db/*" {
+            capabilities = ["read"]
+          }
+        mode: '0644'
+
+    - name: Write network-admin policy
+      copy:
+        dest: /tmp/vault-policy-network-admin.hcl
+        content: |
+          path "{{ vault_kv_secrets_path }}/data/network/*" {
+            capabilities = ["read"]
+          }
+        mode: '0644'
+
+    - name: Write patch-admin policy
+      copy:
+        dest: /tmp/vault-policy-patch-admin.hcl
+        content: |
+          path "{{ vault_kv_secrets_path }}/data/idm/*" {
+            capabilities = ["read"]
+          }
+        mode: '0644'
+
+    - name: Apply Vault policies
+      command: "vault policy write {{ item.name }} {{ item.file }}"
+      environment: "{{ vault_env }}"
+      loop:
+        - { name: app-deployer, file: /tmp/vault-policy-app-deployer.hcl }
+        - { name: network-admin, file: /tmp/vault-policy-network-admin.hcl }
+        - { name: patch-admin, file: /tmp/vault-policy-patch-admin.hcl }
+      loop_control:
+        label: "{{ item.name }}"
+
+    - name: Clean up temp policy files
+      file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - /tmp/vault-policy-app-deployer.hcl
+        - /tmp/vault-policy-network-admin.hcl
+        - /tmp/vault-policy-patch-admin.hcl
+
+    - name: Display Vault configuration summary
+      debug:
+        msg: |
+          ═══════════════════════════════════════════
+            Vault Configuration Complete
+          ═══════════════════════════════════════════
+          KV Secrets:
+            - {{ vault_kv_secrets_path }}/network/switch01
+            - {{ vault_kv_secrets_path }}/db/admin
+            - {{ vault_kv_secrets_path }}/idm/admin
+
+          Database Engine:
+            - Path: {{ vault_db_secrets_path }}
+            - Role: {{ vault_db_role_name }}
+            - TTL:  {{ vault_db_default_ttl }} (max {{ vault_db_max_ttl }})
+
+          Policies:
+            - app-deployer (DB creds read)
+            - network-admin (network creds read)
+            - patch-admin (IdM creds read)
+          ═══════════════════════════════════════════

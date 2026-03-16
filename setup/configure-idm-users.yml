@@ -1,0 +1,138 @@
+---
+# Pre-workshop setup: Create IdM organisational structure, users, and groups
+- name: Configure IdM Users and Groups for Workshop
+  hosts: zta_services
+  become: true
+  gather_facts: true
+
+  tasks:
+    - name: Obtain Kerberos TGT
+      shell: echo '{{ idm_admin_password }}' | kinit admin
+      changed_when: false
+      no_log: true
+
+    # ── Teams (organisational grouping) ──
+    - name: Create organisational teams
+      command: >
+        ipa group-add {{ item.name }}
+        --desc="{{ item.description }}"
+      loop: "{{ idm_teams }}"
+      register: team_result
+      changed_when: team_result.rc == 0
+      failed_when: team_result.rc != 0 and 'already exists' not in team_result.stderr
+
+    # ── Functional groups (used by OPA policies) ──
+    - name: Create functional groups
+      command: >
+        ipa group-add {{ item.name }}
+        --desc="{{ item.description }}"
+      loop: "{{ idm_groups }}"
+      register: group_result
+      changed_when: group_result.rc == 0
+      failed_when: group_result.rc != 0 and 'already exists' not in group_result.stderr
+
+    # ── Users ──
+    - name: Create users
+      command: >
+        ipa user-add {{ item.uid }}
+        --first={{ item.first }}
+        --last={{ item.last }}
+        --title="{{ item.title | default('') }}"
+        --password
+      args:
+        stdin: "{{ idm_admin_password }}\n{{ idm_admin_password }}"
+      loop: "{{ idm_workshop_users }}"
+      loop_control:
+        label: "{{ item.uid }} ({{ item.first }} {{ item.last }})"
+      register: user_result
+      changed_when: user_result.rc == 0
+      failed_when: user_result.rc != 0 and 'already exists' not in user_result.stderr
+
+    - name: Set user passwords (bypass first-login reset)
+      shell: |
+        echo -e '{{ idm_admin_password }}\n{{ idm_admin_password }}\n{{ idm_admin_password }}' | \
+        ipa passwd {{ item.uid }}
+      loop: "{{ idm_workshop_users }}"
+      loop_control:
+        label: "{{ item.uid }}"
+      no_log: true
+      changed_when: false
+      failed_when: false
+
+    # ── Group memberships ──
+    - name: Add users to their groups
+      command: >
+        ipa group-add-member {{ item.1 }} --users={{ item.0.uid }}
+      loop: "{{ idm_workshop_users | subelements('groups', skip_missing=True) }}"
+      loop_control:
+        label: "{{ item.0.uid }} → {{ item.1 }}"
+      register: membership
+      changed_when: membership.rc == 0
+      failed_when: membership.rc != 0 and 'already a member' not in membership.stderr
+
+    # ── Service accounts ──
+    - name: Create keycloak-svc bind user
+      command: >
+        ipa user-add keycloak-svc
+        --first=Keycloak --last=Service
+        --title="LDAP bind account for Keycloak"
+        --shell=/sbin/nologin
+        --password
+      args:
+        stdin: "{{ idm_admin_password }}\n{{ idm_admin_password }}"
+      register: kc_svc
+      changed_when: kc_svc.rc == 0
+      failed_when: kc_svc.rc != 0 and 'already exists' not in kc_svc.stderr
+
+    - name: Create vault-svc service account
+      command: >
+        ipa user-add vault-svc
+        --first=Vault --last=Service
+        --title="Service account for Vault LDAP auth"
+        --shell=/sbin/nologin
+        --password
+      args:
+        stdin: "{{ idm_admin_password }}\n{{ idm_admin_password }}"
+      register: vault_svc
+      changed_when: vault_svc.rc == 0
+      failed_when: vault_svc.rc != 0 and 'already exists' not in vault_svc.stderr
+
+    # ── Summary ──
+    - name: Gather group membership counts
+      shell: "ipa group-show {{ item.name }} --all | grep 'Member users:' | wc -w"
+      loop: "{{ idm_teams + idm_groups }}"
+      loop_control:
+        label: "{{ item.name }}"
+      register: group_counts
+      changed_when: false
+      failed_when: false
+
+    - name: Display IdM configuration summary
+      debug:
+        msg: |
+          ╔═══════════════════════════════════════════════════════════════╗
+          ║            IdM Directory — Configuration Complete            ║
+          ╠═══════════════════════════════════════════════════════════════╣
+          ║                                                             ║
+          ║  Teams (organisational):                                    ║
+          {% for t in idm_teams %}
+          ║    {{ ('● ' + t.name) | ljust(59) }}║
+          {% endfor %}
+          ║                                                             ║
+          ║  Functional Groups (OPA policy):                            ║
+          {% for g in idm_groups %}
+          ║    {{ ('● ' + g.name + ' — ' + g.description) | ljust(59) }}║
+          {% endfor %}
+          ║                                                             ║
+          ║  Users ({{ idm_workshop_users | length }} total):                                          ║
+          ║                                                             ║
+          {% for u in idm_workshop_users %}
+          ║    {{ ('● ' + u.uid) | ljust(16) }}{{ u.first | ljust(10) }}{{ u.last | ljust(12) }}{{ (u.groups | join(', '))[:21] | ljust(21) }}║
+          {% endfor %}
+          ║                                                             ║
+          ║  Service Accounts:                                          ║
+          ║    ● keycloak-svc (LDAP bind)                               ║
+          ║    ● vault-svc    (Vault LDAP auth)                         ║
+          ║                                                             ║
+          ║  All user passwords: {{ idm_admin_password | ljust(38) }}║
+          ╚═══════════════════════════════════════════════════════════════╝

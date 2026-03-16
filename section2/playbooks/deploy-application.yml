@@ -1,0 +1,78 @@
+---
+# Section 2, Step 4: Deploy application with dynamic database credentials
+- name: Deploy Application with Vault Credentials
+  hosts: app_servers
+  become: true
+  gather_facts: false
+
+  vars:
+    db_user: "{{ db_dynamic_user | default(lookup('env', 'DB_USER')) }}"
+    db_password: "{{ db_dynamic_password | default(lookup('env', 'DB_PASSWORD')) }}"
+
+  tasks:
+    - name: Write application environment file with dynamic credentials
+      copy:
+        dest: "{{ app_deploy_dir }}/env"
+        content: |
+          DB_HOST={{ db_host }}
+          DB_PORT={{ db_port }}
+          DB_NAME={{ db_name }}
+          DB_USER={{ db_user }}
+          DB_PASSWORD={{ db_password }}
+          APP_PORT={{ app_port }}
+        mode: '0600'
+        owner: root
+        group: root
+      no_log: true
+
+    - name: Update systemd service to use environment file
+      lineinfile:
+        path: /etc/systemd/system/ztaapp.service
+        regexp: "^EnvironmentFile="
+        line: "EnvironmentFile={{ app_deploy_dir }}/env"
+      notify: Restart application
+
+    - name: Remove hardcoded DB vars from systemd unit
+      lineinfile:
+        path: /etc/systemd/system/ztaapp.service
+        regexp: "^Environment=DB_(USER|PASSWORD)="
+        state: absent
+      notify: Restart application
+
+    - name: Reload systemd and start application
+      systemd:
+        name: ztaapp
+        state: started
+        enabled: true
+        daemon_reload: true
+
+    - name: Wait for application to be healthy
+      uri:
+        url: "http://{{ app_host }}:{{ app_port }}/health"
+        method: GET
+      register: app_health
+      until: app_health.status == 200
+      retries: 10
+      delay: 3
+
+    - name: Verify application can reach database
+      uri:
+        url: "http://{{ app_host }}:{{ app_port }}/data"
+        method: GET
+      register: app_data
+
+    - name: Display deployment result
+      debug:
+        msg: |
+          Application deployed successfully:
+            URL:     http://{{ app_host }}:{{ app_port }}
+            Health:  {{ app_health.json.status }}
+            DB User: {{ db_user }} (dynamic, short-lived)
+            Records: {{ app_data.json.data | length }} rows accessible
+
+  handlers:
+    - name: Restart application
+      systemd:
+        name: ztaapp
+        state: restarted
+        daemon_reload: true

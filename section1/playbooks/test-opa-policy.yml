@@ -1,0 +1,112 @@
+---
+# Section 1: Test OPA policy decisions — demonstrates deny-by-default
+- name: Test OPA Policy Decisions
+  hosts: zta_services
+  become: false
+  gather_facts: false
+
+  tasks:
+    - name: "Test 1 | Patching policy — authorised user, all conditions met"
+      uri:
+        url: "{{ opa_url }}/v1/data/zta/patching/decision"
+        method: POST
+        body_format: json
+        body:
+          input:
+            user: ztauser
+            user_groups: ["zta-admins", "patch-admins"]
+            target_server: app.zta.lab
+            target_server_status: "Active"
+            maintenance_approved: true
+      register: patch_allow
+
+    - name: "Test 1 result"
+      debug:
+        msg: "Patching (all conditions met): {{ 'ALLOWED' if patch_allow.json.result.allow else 'DENIED' }} — {{ patch_allow.json.result.reason }}"
+
+    - name: "Test 2 | Patching policy — user not in patch-admins"
+      uri:
+        url: "{{ opa_url }}/v1/data/zta/patching/decision"
+        method: POST
+        body_format: json
+        body:
+          input:
+            user: neteng
+            user_groups: []
+            target_server: app.zta.lab
+            target_server_status: "Active"
+            maintenance_approved: true
+      register: patch_deny
+
+    - name: "Test 2 result"
+      debug:
+        msg: "Patching (wrong group): {{ 'ALLOWED' if patch_deny.json.result.allow else 'DENIED' }} — {{ patch_deny.json.result.reason }}"
+
+    - name: "Test 3 | Network policy — network admin, valid VLAN"
+      uri:
+        url: "{{ opa_url }}/v1/data/zta/network/decision"
+        method: POST
+        body_format: json
+        body:
+          input:
+            user: netadmin
+            user_groups: ["zta-admins", "network-admins"]
+            action: create_vlan
+            vlan_id: 40
+            vlan_name: "DMZ"
+      register: vlan_allow
+
+    - name: "Test 3 result"
+      debug:
+        msg: "VLAN create (network-admin): {{ 'ALLOWED' if vlan_allow.json.result.allow else 'DENIED' }} — {{ vlan_allow.json.result.reason }}"
+
+    - name: "Test 4 | Network policy — engineer not in network-admins"
+      uri:
+        url: "{{ opa_url }}/v1/data/zta/network/decision"
+        method: POST
+        body_format: json
+        body:
+          input:
+            user: neteng
+            user_groups: []
+            action: create_vlan
+            vlan_id: 40
+            vlan_name: "DMZ"
+      register: vlan_deny
+
+    - name: "Test 4 result"
+      debug:
+        msg: "VLAN create (no group): {{ 'ALLOWED' if vlan_deny.json.result.allow else 'DENIED' }} — {{ vlan_deny.json.result.reason }}"
+
+    - name: "Test 5 | DB access policy — app deployer, valid request"
+      uri:
+        url: "{{ opa_url }}/v1/data/zta/db_access/decision"
+        method: POST
+        body_format: json
+        body:
+          input:
+            user: appdev
+            user_groups: ["app-deployers"]
+            target_database: "ztaapp"
+            requested_permissions: ["SELECT", "INSERT"]
+      register: db_allow
+
+    - name: "Test 5 result"
+      debug:
+        msg: "DB access (app-deployer): {{ 'ALLOWED' if db_allow.json.result.allow else 'DENIED' }} — {{ db_allow.json.result.reason }}"
+
+    - name: OPA policy test summary
+      debug:
+        msg: |
+          ╔════════════════════════════════════════════════════════════╗
+          ║       OPA Policy Test Results                            ║
+          ╠════════════════════════════════════════════════════════════╣
+          ║                                                          ║
+          ║  Test 1 — Patch (authorised):        {{ 'ALLOW ✓' if patch_allow.json.result.allow else 'DENY  ✗' | ljust(26) }}║
+          ║  Test 2 — Patch (wrong group):       {{ 'ALLOW ✗' if patch_deny.json.result.allow else 'DENY  ✓' | ljust(26) }}║
+          ║  Test 3 — VLAN  (network-admin):     {{ 'ALLOW ✓' if vlan_allow.json.result.allow else 'DENY  ✗' | ljust(26) }}║
+          ║  Test 4 — VLAN  (no group):          {{ 'ALLOW ✗' if vlan_deny.json.result.allow else 'DENY  ✓' | ljust(26) }}║
+          ║  Test 5 — DB    (app-deployer):      {{ 'ALLOW ✓' if db_allow.json.result.allow else 'DENY  ✗' | ljust(26) }}║
+          ║                                                          ║
+          ║  Zero Trust: deny-by-default, policy-driven access.      ║
+          ╚════════════════════════════════════════════════════════════╝

@@ -97,9 +97,9 @@
         mode: '0644'
       loop:
         - opa-policies/zta_base.rego
-        - opa-policies/patching.rego
-        - opa-policies/network.rego
-        - opa-policies/db_access.rego
+        # - opa-policies/patching.rego
+        # - opa-policies/network.rego
+        # - opa-policies/db_access.rego
       register: opa_workshop_policies
       tags: [phase3, opa-policies]
 

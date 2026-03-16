@@ -48,11 +48,11 @@
       failed_when: "'Up' not in opa_status.stdout"
       tags: [phase1, prerequisites]
 
-    # - name: "Phase 1 | Install python3-requests (needed for uri module)"
-    #   dnf:
-    #     name: python3-requests
-    #     state: present
-    #   tags: [phase1, prerequisites]
+    - name: "Phase 1 | Install python3-requests (needed for uri module)"
+      dnf:
+        name: python3-requests
+        state: present
+      tags: [phase1, prerequisites]
 
     # ═══════════════════════════════════════════════════════════════════
     # Phase 2 — Create IdM test users and groups
@@ -207,6 +207,16 @@
       register: dns_add
       changed_when: dns_add.rc == 0
       failed_when: false
+      tags: [phase4, certificates]
+
+    - name: "Phase 4 | Register hosts in IdM"
+      command: "ipa host-add {{ item.hostname }} --force"
+      loop: "{{ idm_service_certs }}"
+      register: host_add
+      changed_when: host_add.rc == 0
+      failed_when:
+        - host_add.rc != 0
+        - "'already exists' not in host_add.stderr"
       tags: [phase4, certificates]
 
     - name: "Phase 4 | Create Kerberos service principals"

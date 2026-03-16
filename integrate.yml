@@ -35,11 +35,11 @@
       failed_when: "'Up' not in opa_status.stdout"
       tags: [phase1, prerequisites]
 
-    - name: "Phase 1 | Install python3-requests (needed for uri module)"
-      dnf:
-        name: python3-requests
-        state: present
-      tags: [phase1, prerequisites]
+    # - name: "Phase 1 | Install python3-requests (needed for uri module)"
+    #   dnf:
+    #     name: python3-requests
+    #     state: present
+    #   tags: [phase1, prerequisites]
 
     # ═══════════════════════════════════════════════════════════════════
     # Phase 2 — Create IdM test users and groups

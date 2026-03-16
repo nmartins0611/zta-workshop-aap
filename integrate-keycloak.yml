@@ -648,6 +648,55 @@
       failed_when: false
       tags: [phase7, certificates]
 
+    - name: "Phase 7 | Register hosts in IdM"
+      command: "ipa host-add {{ item.hostname }} --force"
+      loop: "{{ idm_service_certs }}"
+      register: host_add
+      changed_when: host_add.rc == 0
+      failed_when:
+        - host_add.rc != 0
+        - "'already exists' not in host_add.stderr"
+      tags: [phase7, certificates]
+
+    - name: "Phase 7 | Create Kerberos service principals"
+      command: "ipa service-add HTTP/{{ item.hostname }}@{{ idm_realm }}"
+      loop: "{{ idm_service_certs }}"
+      register: svc_add
+      changed_when: svc_add.rc == 0
+      failed_when:
+        - svc_add.rc != 0
+        - "'already exists' not in svc_add.stderr"
+      tags: [phase7, certificates]
+
+    - name: "Phase 7 | Grant central host permission to manage service certs"
+      command: "ipa service-add-host HTTP/{{ item.hostname }}@{{ idm_realm }} --hosts={{ ansible_fqdn }}"
+      loop: "{{ idm_service_certs }}"
+      register: svc_host
+      changed_when: svc_host.rc == 0
+      failed_when:
+        - svc_host.rc != 0
+        - "'already a member' not in svc_host.stdout"
+      tags: [phase7, certificates]
+
+    - name: "Phase 7 | Clean up any stuck/rejected certificate requests"
+      shell: |
+        if ipa-getcert list -f {{ item.cert_dir }}/server.crt 2>/dev/null | grep -q 'status:'; then
+          status=$(ipa-getcert list -f {{ item.cert_dir }}/server.crt | grep 'status:' | head -1)
+          if echo "$status" | grep -qE 'CA_REJECTED|CA_UNREACHABLE|NEED_GUIDANCE'; then
+            ipa-getcert stop-tracking -f {{ item.cert_dir }}/server.crt 2>/dev/null || true
+            rm -f {{ item.cert_dir }}/server.crt {{ item.cert_dir }}/server.key
+            echo "CLEANED"
+          else
+            echo "OK"
+          fi
+        else
+          echo "NONE"
+        fi
+      loop: "{{ idm_service_certs }}"
+      register: cert_cleanup
+      changed_when: "'CLEANED' in cert_cleanup.stdout"
+      tags: [phase7, certificates]
+
     - name: "Phase 7 | Request certificates from IdM CA"
       command: >
         ipa-getcert request
@@ -670,13 +719,19 @@
             echo "ISSUED"
             exit 0
           fi
+          if echo "$status" | grep -qE 'CA_REJECTED|NEED_GUIDANCE'; then
+            ipa-getcert list -f {{ item.cert_dir }}/server.crt 2>&1
+            echo "REJECTED"
+            exit 1
+          fi
           sleep 2
         done
+        ipa-getcert list -f {{ item.cert_dir }}/server.crt 2>&1
         echo "TIMEOUT"
       loop: "{{ idm_service_certs }}"
       register: cert_wait
       changed_when: false
-      failed_when: "'TIMEOUT' in cert_wait.stdout"
+      failed_when: "'TIMEOUT' in cert_wait.stdout or 'REJECTED' in cert_wait.stdout"
       tags: [phase7, certificates]
 
     - name: "Phase 7 | Set certificate permissions"
@@ -758,33 +813,30 @@
 
     - name: "Phase 8 | Summary"
       debug:
-        msg: |
-          ╔══════════════════════════════════════════════════════════╗
-          ║          ZTA Lab Integration Complete                   ║
-          ╠══════════════════════════════════════════════════════════╣
-          ║                                                        ║
-          ║  Keycloak ↔ IdM LDAP Federation                        ║
-          ║    Realm:     {{ keycloak_realm | ljust(39) }}║
-          ║    Client:    {{ keycloak_client_id | ljust(39) }}║
-          ║    LDAP bind: keycloak-svc                             ║
-          ║    Groups synced to JWT tokens                         ║
-          ║                                                        ║
-          ║  OPA JWT Authorization                                 ║
-          ║    Policy:  zta.authz validates Keycloak tokens        ║
-          ║    Groups claim mapped for OPA decisions                ║
-          ║                                                        ║
-          ║  IdM-Signed Certificates                               ║
-          {% for svc in idm_service_certs %}
-          ║    {{ (svc.hostname + ': ' + svc.cert_dir + '/') | ljust(52) }}║
-          {% endfor %}
-          ║                                                        ║
-          ║  Test User                                             ║
-          ║    Username: ztauser                                   ║
-          ║    Password: {{ idm_admin_password | ljust(39) }}║
-          ║    Groups:   zta-admins                                ║
-          ║                                                        ║
-          ║  Token Flow:                                           ║
-          ║    User → Keycloak (OIDC) → JWT with groups → OPA      ║
-          ║                                                        ║
-          ╚══════════════════════════════════════════════════════════╝
+        msg:
+          - "=========================================================="
+          - "         ZTA Lab Integration Complete (with Keycloak)"
+          - "=========================================================="
+          - ""
+          - "  Keycloak <-> IdM LDAP Federation"
+          - "    Realm:     {{ keycloak_realm }}"
+          - "    Client:    {{ keycloak_client_id }}"
+          - "    LDAP bind: keycloak-svc"
+          - "    Groups synced to JWT tokens"
+          - ""
+          - "  OPA JWT Authorization"
+          - "    Policy:  zta.authz validates Keycloak tokens"
+          - "    Groups claim mapped for OPA decisions"
+          - ""
+          - "  IdM-Signed Certificates"
+          - "{% for svc in idm_service_certs %}    {{ svc.hostname }}: {{ svc.cert_dir }}/\n{% endfor %}"
+          - ""
+          - "  Test User"
+          - "    Username: ztauser"
+          - "    Password: {{ idm_admin_password }}"
+          - "    Groups:   zta-admins"
+          - ""
+          - "  Token Flow:"
+          - "    User -> Keycloak (OIDC) -> JWT with groups -> OPA"
+          - "=========================================================="
       tags: [phase8, validation]

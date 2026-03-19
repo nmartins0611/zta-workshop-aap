@@ -13,8 +13,8 @@
     idm_service_certs:
       - hostname: "wazuh.{{ idm_domain }}"
         cert_dir: /opt/certs/wazuh
-      - hostname: "aap.{{ idm_domain }}"
-        cert_dir: /opt/certs/aap
+      - hostname: "control.{{ idm_domain }}"
+        cert_dir: /opt/certs/control
 
   tasks:
     # ═══════════════════════════════════════════════════════════════════

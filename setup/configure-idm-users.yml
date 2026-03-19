@@ -18,8 +18,8 @@
         --desc="{{ item.description }}"
       loop: "{{ idm_teams }}"
       register: team_result
-      changed_when: team_result.rc == 0
-      failed_when: team_result.rc != 0 and 'already exists' not in team_result.stderr
+      changed_when: (team_result.rc | default(1)) == 0
+      failed_when: (team_result.rc | default(1)) != 0 and 'already exists' not in (team_result.stderr | default(''))
 
     # ── Functional groups (used by OPA policies) ──
     - name: Create functional groups
@@ -28,15 +28,15 @@
         --desc="{{ item.description }}"
       loop: "{{ idm_groups }}"
       register: group_result
-      changed_when: group_result.rc == 0
-      failed_when: group_result.rc != 0 and 'already exists' not in group_result.stderr
+      changed_when: (group_result.rc | default(1)) == 0
+      failed_when: (group_result.rc | default(1)) != 0 and 'already exists' not in (group_result.stderr | default(''))
 
     # ── Users ──
     - name: Create users
       command: >
         ipa user-add {{ item.uid }}
-        --first={{ item.first }}
-        --last={{ item.last }}
+        --first="{{ item.first }}"
+        --last="{{ item.last }}"
         --title="{{ item.title | default('') }}"
         --password
       args:
@@ -45,8 +45,8 @@
       loop_control:
         label: "{{ item.uid }} ({{ item.first }} {{ item.last }})"
       register: user_result
-      changed_when: user_result.rc == 0
-      failed_when: user_result.rc != 0 and 'already exists' not in user_result.stderr
+      changed_when: (user_result.rc | default(1)) == 0
+      failed_when: (user_result.rc | default(1)) != 0 and 'already exists' not in (user_result.stderr | default(''))
 
     - name: Set user passwords (bypass first-login reset)
       shell: |
@@ -67,8 +67,8 @@
       loop_control:
         label: "{{ item.0.uid }} → {{ item.1 }}"
       register: membership
-      changed_when: membership.rc == 0
-      failed_when: membership.rc != 0 and 'already a member' not in membership.stderr
+      changed_when: (membership.rc | default(1)) == 0
+      failed_when: (membership.rc | default(1)) != 0 and 'already a member' not in (membership.stderr | default(''))
 
     # ── Service accounts ──
     - name: Create keycloak-svc bind user
@@ -81,8 +81,8 @@
       args:
         stdin: "{{ idm_admin_password }}\n{{ idm_admin_password }}"
       register: kc_svc
-      changed_when: kc_svc.rc == 0
-      failed_when: kc_svc.rc != 0 and 'already exists' not in kc_svc.stderr
+      changed_when: (kc_svc.rc | default(1)) == 0
+      failed_when: (kc_svc.rc | default(1)) != 0 and 'already exists' not in (kc_svc.stderr | default(''))
 
     - name: Create vault-svc service account
       command: >
@@ -94,8 +94,8 @@
       args:
         stdin: "{{ idm_admin_password }}\n{{ idm_admin_password }}"
       register: vault_svc
-      changed_when: vault_svc.rc == 0
-      failed_when: vault_svc.rc != 0 and 'already exists' not in vault_svc.stderr
+      changed_when: (vault_svc.rc | default(1)) == 0
+      failed_when: (vault_svc.rc | default(1)) != 0 and 'already exists' not in (vault_svc.stderr | default(''))
 
     # ── Summary ──
     - name: Gather group membership counts

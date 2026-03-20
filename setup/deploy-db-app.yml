@@ -1,5 +1,5 @@
 ---
-# Pre-workshop setup: Deploy PostgreSQL database and sample application
+# Pre-workshop setup: Deploy PostgreSQL database and the Global Telemetry Platform app
 - name: Deploy PostgreSQL Database
   hosts: db_servers
   become: true
@@ -67,20 +67,33 @@
         password: "{{ db_admin_password }}"
         state: present
 
-    - name: Create application schema
+    - name: Copy application schema to db host
+      copy:
+        src: ../app/schema.sql
+        dest: /tmp/gtp-schema.sql
+        mode: '0644'
+
+    - name: Load application schema and seed data
       become_user: postgres
       community.postgresql.postgresql_query:
         db: "{{ db_name }}"
-        query: |
-          CREATE TABLE IF NOT EXISTS app_data (
-            id SERIAL PRIMARY KEY,
-            name VARCHAR(100) NOT NULL,
-            value TEXT,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-          );
-          INSERT INTO app_data (name, value)
-          SELECT 'workshop_init', 'ZTA Workshop database ready'
-          WHERE NOT EXISTS (SELECT 1 FROM app_data WHERE name = 'workshop_init');
+        path_to_script: /tmp/gtp-schema.sql
+
+    - name: Verify seed data loaded
+      become_user: postgres
+      community.postgresql.postgresql_query:
+        db: "{{ db_name }}"
+        query: SELECT count(*) AS metric_count FROM metrics
+      register: metric_check
+
+    - name: Display database status
+      debug:
+        msg: "Database ready — {{ metric_check.query_result[0].metric_count }} metrics loaded"
+
+    - name: Clean up temp file
+      file:
+        path: /tmp/gtp-schema.sql
+        state: absent
 
   handlers:
     - name: Restart PostgreSQL
@@ -88,7 +101,8 @@
         name: postgresql
         state: restarted
 
-- name: Deploy Sample Application
+
+- name: Deploy Global Telemetry Platform Application
   hosts: app_servers
   become: true
   gather_facts: true
@@ -99,88 +113,71 @@
         name:
           - python3
           - python3-pip
-          - python3-flask
           - python3-psycopg2
         state: present
 
     - name: Create application directory
       file:
-        path: "{{ app_deploy_dir }}"
+        path: "{{ item }}"
         state: directory
         mode: '0755'
+      loop:
+        - "{{ app_deploy_dir }}"
+        - "{{ app_deploy_dir }}/templates"
+        - "{{ app_deploy_dir }}/static"
 
-    - name: Deploy application code
+    - name: Deploy application source
       copy:
-        dest: "{{ app_deploy_dir }}/app.py"
-        content: |
-          #!/usr/bin/env python3
-          """ZTA Workshop - Sample Application
-          Connects to PostgreSQL using credentials provided via environment variables.
-          """
-          import os
-          import psycopg2
-          from flask import Flask, jsonify
+        src: "../app/{{ item }}"
+        dest: "{{ app_deploy_dir }}/{{ item }}"
+        mode: '0644'
+      loop:
+        - main.py
+        - config.py
+      notify: Restart GTP
 
-          app = Flask(__name__)
+    - name: Deploy dashboard template
+      copy:
+        src: ../app/templates/dashboard.html
+        dest: "{{ app_deploy_dir }}/templates/dashboard.html"
+        mode: '0644'
+      notify: Restart GTP
 
-          def get_db_connection():
-              return psycopg2.connect(
-                  host=os.environ.get('DB_HOST', '{{ db_host }}'),
-                  port=os.environ.get('DB_PORT', '{{ db_port }}'),
-                  dbname=os.environ.get('DB_NAME', '{{ db_name }}'),
-                  user=os.environ['DB_USER'],
-                  password=os.environ['DB_PASSWORD'],
-              )
+    - name: Install Python requirements
+      pip:
+        requirements: "{{ app_deploy_dir }}/requirements.txt"
+        state: present
+        extra_args: --break-system-packages
+      args:
+        chdir: "{{ app_deploy_dir }}"
+      when: false
 
-          @app.route('/')
-          def index():
-              return jsonify({
-                  'app': 'zta-workshop',
-                  'status': 'running',
-                  'db_user': os.environ.get('DB_USER', 'not configured'),
-              })
+    - name: Copy requirements file
+      copy:
+        src: ../app/requirements.txt
+        dest: "{{ app_deploy_dir }}/requirements.txt"
+        mode: '0644'
 
-          @app.route('/health')
-          def health():
-              try:
-                  conn = get_db_connection()
-                  cur = conn.cursor()
-                  cur.execute('SELECT 1')
-                  cur.close()
-                  conn.close()
-                  return jsonify({'status': 'healthy', 'database': 'connected'})
-              except Exception as e:
-                  return jsonify({'status': 'unhealthy', 'error': str(e)}), 503
+    - name: Install Python packages
+      pip:
+        name:
+          - flask
+          - psycopg2-binary
+          - gunicorn
+        state: present
 
-          @app.route('/data')
-          def data():
-              try:
-                  conn = get_db_connection()
-                  cur = conn.cursor()
-                  cur.execute('SELECT id, name, value, created_at::text FROM app_data ORDER BY id')
-                  rows = [{'id': r[0], 'name': r[1], 'value': r[2], 'created_at': r[3]} for r in cur.fetchall()]
-                  cur.close()
-                  conn.close()
-                  return jsonify({'data': rows})
-              except Exception as e:
-                  return jsonify({'error': str(e)}), 500
-
-          if __name__ == '__main__':
-              app.run(host='0.0.0.0', port=int(os.environ.get('APP_PORT', '{{ app_port }}')))
-        mode: '0755'
-
-    - name: Create systemd service for application
+    - name: Create systemd service
       copy:
         dest: /etc/systemd/system/ztaapp.service
         content: |
           [Unit]
-          Description=ZTA Workshop Application
+          Description=Global Telemetry Platform (ZTA Workshop)
           After=network.target
 
           [Service]
           Type=simple
           WorkingDirectory={{ app_deploy_dir }}
-          ExecStart=/usr/bin/python3 {{ app_deploy_dir }}/app.py
+          ExecStart=/usr/bin/python3 {{ app_deploy_dir }}/main.py
           Restart=always
           RestartSec=5
           EnvironmentFile=-{{ app_deploy_dir }}/env
@@ -189,11 +186,14 @@
           Environment=DB_NAME={{ db_name }}
           Environment=DB_USER=placeholder
           Environment=DB_PASSWORD=placeholder
+          Environment=APP_PORT={{ app_port }}
 
           [Install]
           WantedBy=multi-user.target
         mode: '0644'
-      notify: Reload systemd
+      notify:
+        - Reload systemd
+        - Restart GTP
 
     - name: Open firewall for application
       firewalld:
@@ -203,7 +203,30 @@
         state: enabled
       failed_when: false
 
+    - name: Display deployment summary
+      debug:
+        msg: |
+          ═══════════════════════════════════════════
+            Application Deployed
+          ═══════════════════════════════════════════
+          App:      Global Telemetry Platform
+          URL:      http://{{ app_host }}:{{ app_port }}
+          API:      http://{{ app_host }}:{{ app_port }}/api/metrics
+          Health:   http://{{ app_host }}:{{ app_port }}/api/health
+          Deploy:   {{ app_deploy_dir }}
+
+          NOTE: The service starts with placeholder DB credentials.
+          Section 2 of the workshop uses Vault dynamic credentials
+          to inject real short-lived database credentials at runtime.
+          ═══════════════════════════════════════════
+
   handlers:
     - name: Reload systemd
       systemd:
         daemon_reload: true
+
+    - name: Restart GTP
+      systemd:
+        name: ztaapp
+        state: restarted
+        enabled: true

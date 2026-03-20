@@ -1,5 +1,46 @@
 ---
-# Section 4: OPA-gated VLAN creation on Cisco Catalyst 8000v with Netbox CMDB update
+# Section 4: SPIFFE-verified, OPA-gated VLAN creation on Cisco Catalyst 8000v
+#
+# Flow:
+#   1. Fetch X.509 SVID from SPIRE Agent → proves automation workload identity
+#   2. Query OPA with user context + SPIFFE ID → policy decision
+#   3. Configure VLAN on Cisco switch
+#   4. Update Netbox CMDB
+
+
+- name: "Pre-check: Verify Automation Workload Identity (SPIFFE)"
+  hosts: automation
+  become: true
+  gather_facts: false
+
+  tasks:
+    - name: Fetch X.509 SVID from SPIRE Agent
+      command: >
+        {{ spire_install_dir }}/bin/spire-agent api fetch x509
+        -socketPath {{ spire_agent_socket }}
+      register: svid_result
+
+    - name: Parse SPIFFE ID from SVID
+      set_fact:
+        workload_spiffe_id: "{{ svid_result.stdout | regex_search('SPIFFE ID:\\s+(spiffe://\\S+)', '\\1') | first }}"
+
+    - name: Display workload identity verification
+      debug:
+        msg: |
+          ╔════════════════════════════════════════════════════════════╗
+          ║       SPIFFE Workload Identity Verification              ║
+          ╠════════════════════════════════════════════════════════════╣
+          ║                                                          ║
+          ║  SPIFFE ID: {{ workload_spiffe_id | ljust(42) }}║
+          ║  Host:      {{ inventory_hostname | ljust(42) }}║
+          ║  Status:    VERIFIED ✓                                   ║
+          ║                                                          ║
+          ║  The automation platform has proven its identity via      ║
+          ║  a cryptographic X.509 SVID issued by the SPIRE Server.  ║
+          ║  This SVID will be included in the OPA policy check.     ║
+          ╚════════════════════════════════════════════════════════════╝
+
+
 - name: "Pre-check: Validate Network Policy with OPA"
   hosts: zta_services
   become: false
@@ -10,6 +51,7 @@
     new_vlan_name: "{{ new_vlan_name | default('NEW-VLAN') }}"
     network_user: "{{ awx_user_name | default('neteng') }}"
     network_user_groups: "{{ awx_user_groups | default([]) }}"
+    workload_spiffe_id: "{{ hostvars[groups['automation'][0]]['workload_spiffe_id'] }}"
 
   tasks:
     - name: Query OPA network policy
@@ -24,6 +66,7 @@
             action: create_vlan
             vlan_id: "{{ new_vlan_id | int }}"
             vlan_name: "{{ new_vlan_name }}"
+            spiffe_id: "{{ workload_spiffe_id }}"
       register: opa_decision
 
     - name: Display OPA decision
@@ -33,13 +76,15 @@
           ║       OPA Network Policy Decision                       ║
           ╠════════════════════════════════════════════════════════════╣
           ║                                                          ║
-          ║  User:    {{ network_user | ljust(46) }}║
-          ║  Action:  create_vlan                                    ║
-          ║  VLAN ID: {{ (new_vlan_id | string) | ljust(46) }}║
-          ║  Name:    {{ new_vlan_name | ljust(46) }}║
-          ║  Result:  {{ ('ALLOWED' if opa_decision.json.result.allow else 'DENIED') | ljust(46) }}║
+          ║  User:      {{ network_user | ljust(44) }}║
+          ║  Action:    create_vlan                                  ║
+          ║  VLAN ID:   {{ (new_vlan_id | string) | ljust(44) }}║
+          ║  Name:      {{ new_vlan_name | ljust(44) }}║
+          ║  SPIFFE ID: {{ workload_spiffe_id | ljust(44) }}║
+          ║  Result:    {{ ('ALLOWED' if opa_decision.json.result.allow else 'DENIED') | ljust(44) }}║
           ║                                                          ║
           ║  Conditions:                                             ║
+          ║    Workload verified:   {{ ('PASS' if opa_decision.json.result.conditions.workload_verified else 'FAIL') | ljust(34) }}║
           ║    User in network-admins: {{ ('PASS' if opa_decision.json.result.conditions.user_authorized else 'FAIL') | ljust(30) }}║
           ║    Valid VLAN ID:          {{ ('PASS' if opa_decision.json.result.conditions.valid_vlan else 'FAIL') | ljust(30) }}║
           ║    Action permitted:       {{ ('PASS' if opa_decision.json.result.conditions.action_permitted else 'FAIL') | ljust(30) }}║
@@ -55,6 +100,10 @@
           VLAN CONFIGURATION DENIED by OPA policy.
           Reason: {{ opa_decision.json.result.reason }}
 
+          {% if not opa_decision.json.result.conditions.workload_verified %}
+          → Workload SPIFFE ID '{{ workload_spiffe_id }}' is not trusted.
+            Only the registered network-automation workload may make changes.
+          {% endif %}
           {% if not opa_decision.json.result.conditions.user_authorized %}
           → User '{{ network_user }}' must be added to the 'network-admins' group in IdM.
           {% endif %}
@@ -68,6 +117,7 @@
         opa_approved: true
       delegate_to: localhost
       delegate_facts: true
+
 
 - name: Configure VLAN on Cisco Catalyst 8000v
   hosts: network
@@ -101,6 +151,7 @@
           VLAN {{ new_vlan_id }} ({{ new_vlan_name }}) created on {{ inventory_hostname }}
           {{ vlan_verify.stdout[0] }}
 
+
 - name: Update Netbox CMDB with New VLAN
   hosts: zta_services
   become: false
@@ -110,6 +161,8 @@
   vars:
     new_vlan_id: "{{ new_vlan_id | int }}"
     new_vlan_name: "{{ new_vlan_name | default('NEW-VLAN') }}"
+    network_user: "{{ awx_user_name | default('unknown') }}"
+    workload_spiffe_id: "{{ hostvars[groups['automation'][0]]['workload_spiffe_id'] }}"
 
   tasks:
     - name: Check if VLAN already exists in Netbox
@@ -132,7 +185,7 @@
           vid: "{{ new_vlan_id | int }}"
           name: "{{ new_vlan_name }}"
           status: active
-          description: "Created via ZTA Workshop by {{ network_user | default('unknown') }}"
+          description: "Created via ZTA Workshop by {{ network_user }} (workload: {{ workload_spiffe_id }})"
         status_code: [201, 400]
       register: netbox_create
       when: netbox_vlan_check.json.count == 0
@@ -145,9 +198,12 @@
           ╠════════════════════════════════════════════════════════════╣
           ║                                                          ║
           ║  VLAN {{ (new_vlan_id | string + ' (' + new_vlan_name + ')') | ljust(50) }}║
-          ║  Switch:  {{ cisco_switch_host | ljust(46) }}║
-          ║  Netbox:  {{ ('Created' if netbox_vlan_check.json.count == 0 else 'Already exists') | ljust(46) }}║
-          ║  User:    {{ (network_user | default('unknown')) | ljust(46) }}║
+          ║  Switch:     {{ cisco_switch_host | ljust(43) }}║
+          ║  Netbox:     {{ ('Created' if netbox_vlan_check.json.count == 0 else 'Already exists') | ljust(43) }}║
+          ║  User:       {{ network_user | ljust(43) }}║
+          ║  Workload:   {{ workload_spiffe_id | ljust(43) }}║
           ║                                                          ║
+          ║  Both user identity (IdM) and workload identity          ║
+          ║  (SPIFFE) were verified before this change was allowed.   ║
           ║  CMDB is now the source of truth for this VLAN.          ║
           ╚════════════════════════════════════════════════════════════╝

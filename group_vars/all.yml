@@ -199,6 +199,33 @@ vault_db_role_name: ztaapp-short-lived
 vault_db_max_ttl: 1h
 vault_db_default_ttl: 5m
 
+# ── SPIFFE / SPIRE (Workload Identity) ─────────────────────────────
+spire_version: "1.12.0"
+spire_trust_domain: "{{ idm_domain }}"
+spire_server_host: central.zta.lab
+spire_server_bind_port: 8081
+spire_install_dir: /opt/spire
+spire_agent_socket: /run/spire/agent/api.sock
+spire_download_base: "https://github.com/spiffe/spire/releases/download"
+spire_arch: linux-amd64-glibc
+
+spire_workloads:
+  - spiffe_id: "spiffe://{{ spire_trust_domain }}/workload/network-automation"
+    parent_host: control
+    description: AAP network automation workload
+    selectors:
+      - "unix:uid:0"
+  - spiffe_id: "spiffe://{{ spire_trust_domain }}/workload/database"
+    parent_host: db
+    description: PostgreSQL database workload
+    selectors:
+      - "unix:uid:26"
+  - spiffe_id: "spiffe://{{ spire_trust_domain }}/workload/vault"
+    parent_host: vault
+    description: HashiCorp Vault workload
+    selectors:
+      - "unix:uid:0"
+
 # ── Network Segmentation ────────────────────────────────────────────
 vlans:
   app_tier:

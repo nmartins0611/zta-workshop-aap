@@ -35,46 +35,36 @@
       failed_when: "'Up' not in opa_status.stdout"
       tags: [phase1, prerequisites]
 
-    # - name: "Phase 1 | Install python3-requests (needed for uri module)"
-    #   dnf:
-    #     name: python3-requests
-    #     state: present
-    #   tags: [phase1, prerequisites]
-
     # ═══════════════════════════════════════════════════════════════════
     # Phase 2 — Create IdM test users and groups
     # ═══════════════════════════════════════════════════════════════════
 
-    - name: "Phase 2 | Obtain Kerberos TGT"
-      shell: echo '{{ idm_admin_password }}' | kinit admin
-      changed_when: false
-      no_log: true
-      tags: [phase2, idm-users]
-
     - name: "Phase 2 | Create test user (ztauser) in IdM"
-      command: >
-        ipa user-add ztauser
-        --first=ZTA --last=User
-        --password
-      args:
-        stdin: "{{ idm_admin_password }}\n{{ idm_admin_password }}"
-      register: test_user
-      changed_when: test_user.rc == 0
-      failed_when: false
+      redhat.rhel_idm.ipauser:
+        ipaadmin_password: "{{ idm_admin_password }}"
+        name: ztauser
+        first: ZTA
+        last: User
+        password: "{{ idm_admin_password }}"
+        update_password: on_create
+        state: present
       tags: [phase2, idm-users]
 
     - name: "Phase 2 | Create zta-admins group in IdM"
-      command: ipa group-add zta-admins --desc="ZTA Lab Administrators"
-      register: zta_group
-      changed_when: zta_group.rc == 0
-      failed_when: false
+      redhat.rhel_idm.ipagroup:
+        ipaadmin_password: "{{ idm_admin_password }}"
+        name: zta-admins
+        description: "ZTA Lab Administrators"
+        state: present
       tags: [phase2, idm-users]
 
     - name: "Phase 2 | Add ztauser to zta-admins group"
-      command: ipa group-add-member zta-admins --users=ztauser
-      register: group_member
-      changed_when: group_member.rc == 0
-      failed_when: false
+      redhat.rhel_idm.ipagroup:
+        ipaadmin_password: "{{ idm_admin_password }}"
+        name: zta-admins
+        user: ztauser
+        action: member
+        state: present
       tags: [phase2, idm-users]
 
     # ═══════════════════════════════════════════════════════════════════
@@ -97,9 +87,6 @@
         mode: '0644'
       loop:
         - opa-policies/zta_base.rego
-        # - opa-policies/patching.rego
-        # - opa-policies/network.rego
-        # - opa-policies/db_access.rego
       register: opa_workshop_policies
       tags: [phase3, opa-policies]
 
@@ -112,9 +99,6 @@
           import rego.v1
 
           default allow := false
-
-          # Identity-based authorization using IdM groups.
-          # Accepts input.user and input.groups (populated by AAP/caller).
 
           allow if {
             input.user != ""
@@ -187,43 +171,44 @@
       tags: [phase4, certificates]
 
     - name: "Phase 4 | Add DNS entries for external services"
-      command: >
-        ipa dnsrecord-add {{ idm_domain }} {{ item.hostname.split('.')[0] }}
-        --a-rec={{ idm_server_ip }}
+      redhat.rhel_idm.ipadnsrecord:
+        ipaadmin_password: "{{ idm_admin_password }}"
+        zone_name: "{{ idm_domain }}"
+        name: "{{ item.hostname.split('.')[0] }}"
+        record_type: A
+        record_value: "{{ idm_server_ip }}"
+        state: present
       loop: "{{ idm_service_certs }}"
-      register: dns_add
-      changed_when: dns_add.rc == 0
-      failed_when: false
       tags: [phase4, certificates]
 
     - name: "Phase 4 | Register hosts in IdM"
-      command: "ipa host-add {{ item.hostname }} --force"
+      redhat.rhel_idm.ipahost:
+        ipaadmin_password: "{{ idm_admin_password }}"
+        name: "{{ item.hostname }}"
+        force: true
+        state: present
       loop: "{{ idm_service_certs }}"
-      register: host_add
-      changed_when: host_add.rc == 0
-      failed_when:
-        - host_add.rc != 0
-        - "'already exists' not in host_add.stderr"
       tags: [phase4, certificates]
 
     - name: "Phase 4 | Create Kerberos service principals"
-      command: "ipa service-add HTTP/{{ item.hostname }}@{{ idm_realm }}"
+      redhat.rhel_idm.ipaservice:
+        ipaadmin_password: "{{ idm_admin_password }}"
+        name: "HTTP/{{ item.hostname }}@{{ idm_realm }}"
+        host: "{{ item.hostname }}"
+        state: present
       loop: "{{ idm_service_certs }}"
-      register: svc_add
-      changed_when: svc_add.rc == 0
-      failed_when:
-        - svc_add.rc != 0
-        - "'already exists' not in svc_add.stderr"
       tags: [phase4, certificates]
 
     - name: "Phase 4 | Grant central host permission to manage service certs"
-      command: "ipa service-add-host HTTP/{{ item.hostname }}@{{ idm_realm }} --hosts={{ ansible_fqdn }}"
+      redhat.rhel_idm.ipaservice:
+        ipaadmin_password: "{{ idm_admin_password }}"
+        name: "HTTP/{{ item.hostname }}@{{ idm_realm }}"
+        host:
+          - "{{ item.hostname }}"
+          - "{{ ansible_fqdn }}"
+        action: member
+        state: present
       loop: "{{ idm_service_certs }}"
-      register: svc_host
-      changed_when: svc_host.rc == 0
-      failed_when:
-        - svc_host.rc != 0
-        - "'already a member' not in svc_host.stdout"
       tags: [phase4, certificates]
 
     - name: "Phase 4 | Clean up any stuck/rejected certificate requests"

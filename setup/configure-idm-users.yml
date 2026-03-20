@@ -6,107 +6,81 @@
   gather_facts: true
 
   tasks:
-    - name: Obtain Kerberos TGT
-      shell: echo '{{ idm_admin_password }}' | kinit admin
-      changed_when: false
-      no_log: true
-
     # ── Teams (organisational grouping) ──
     - name: Create organisational teams
-      command: >
-        ipa group-add {{ item.name }}
-        --desc="{{ item.description }}"
+      redhat.rhel_idm.ipagroup:
+        ipaadmin_password: "{{ idm_admin_password }}"
+        name: "{{ item.name }}"
+        description: "{{ item.description }}"
+        state: present
       loop: "{{ idm_teams }}"
-      register: team_result
-      changed_when: (team_result.rc | default(1)) == 0
-      failed_when: (team_result.rc | default(1)) != 0 and 'already exists' not in (team_result.stderr | default(''))
+      loop_control:
+        label: "{{ item.name }}"
 
     # ── Functional groups (used by OPA policies) ──
     - name: Create functional groups
-      command: >
-        ipa group-add {{ item.name }}
-        --desc="{{ item.description }}"
+      redhat.rhel_idm.ipagroup:
+        ipaadmin_password: "{{ idm_admin_password }}"
+        name: "{{ item.name }}"
+        description: "{{ item.description }}"
+        state: present
       loop: "{{ idm_groups }}"
-      register: group_result
-      changed_when: (group_result.rc | default(1)) == 0
-      failed_when: (group_result.rc | default(1)) != 0 and 'already exists' not in (group_result.stderr | default(''))
+      loop_control:
+        label: "{{ item.name }}"
 
     # ── Users ──
-    - name: Create users
-      command: >
-        ipa user-add {{ item.uid }}
-        --first="{{ item.first }}"
-        --last="{{ item.last }}"
-        --title="{{ item.title | default('') }}"
-        --password
-      args:
-        stdin: "{{ idm_admin_password }}\n{{ idm_admin_password }}"
+    - name: Create workshop users
+      redhat.rhel_idm.ipauser:
+        ipaadmin_password: "{{ idm_admin_password }}"
+        name: "{{ item.uid }}"
+        first: "{{ item.first }}"
+        last: "{{ item.last }}"
+        title: "{{ item.title | default(omit) }}"
+        password: "{{ idm_admin_password }}"
+        update_password: on_create
+        state: present
       loop: "{{ idm_workshop_users }}"
       loop_control:
         label: "{{ item.uid }} ({{ item.first }} {{ item.last }})"
-      register: user_result
-      changed_when: (user_result.rc | default(1)) == 0
-      failed_when: (user_result.rc | default(1)) != 0 and 'already exists' not in (user_result.stderr | default(''))
-
-    - name: Set user passwords (bypass first-login reset)
-      shell: |
-        echo -e '{{ idm_admin_password }}\n{{ idm_admin_password }}\n{{ idm_admin_password }}' | \
-        ipa passwd {{ item.uid }}
-      loop: "{{ idm_workshop_users }}"
-      loop_control:
-        label: "{{ item.uid }}"
-      no_log: true
-      changed_when: false
-      failed_when: false
 
     # ── Group memberships ──
     - name: Add users to their groups
-      command: >
-        ipa group-add-member {{ item.1 }} --users={{ item.0.uid }}
+      redhat.rhel_idm.ipagroup:
+        ipaadmin_password: "{{ idm_admin_password }}"
+        name: "{{ item.1 }}"
+        user: "{{ item.0.uid }}"
+        action: member
+        state: present
       loop: "{{ idm_workshop_users | subelements('groups', skip_missing=True) }}"
       loop_control:
         label: "{{ item.0.uid }} → {{ item.1 }}"
-      register: membership
-      changed_when: (membership.rc | default(1)) == 0
-      failed_when: (membership.rc | default(1)) != 0 and 'already a member' not in (membership.stderr | default(''))
 
     # ── Service accounts ──
     - name: Create keycloak-svc bind user
-      command: >
-        ipa user-add keycloak-svc
-        --first=Keycloak --last=Service
-        --title="LDAP bind account for Keycloak"
-        --shell=/sbin/nologin
-        --password
-      args:
-        stdin: "{{ idm_admin_password }}\n{{ idm_admin_password }}"
-      register: kc_svc
-      changed_when: (kc_svc.rc | default(1)) == 0
-      failed_when: (kc_svc.rc | default(1)) != 0 and 'already exists' not in (kc_svc.stderr | default(''))
+      redhat.rhel_idm.ipauser:
+        ipaadmin_password: "{{ idm_admin_password }}"
+        name: keycloak-svc
+        first: Keycloak
+        last: Service
+        title: "LDAP bind account for Keycloak"
+        loginshell: /sbin/nologin
+        password: "{{ idm_admin_password }}"
+        update_password: on_create
+        state: present
 
     - name: Create vault-svc service account
-      command: >
-        ipa user-add vault-svc
-        --first=Vault --last=Service
-        --title="Service account for Vault LDAP auth"
-        --shell=/sbin/nologin
-        --password
-      args:
-        stdin: "{{ idm_admin_password }}\n{{ idm_admin_password }}"
-      register: vault_svc
-      changed_when: (vault_svc.rc | default(1)) == 0
-      failed_when: (vault_svc.rc | default(1)) != 0 and 'already exists' not in (vault_svc.stderr | default(''))
+      redhat.rhel_idm.ipauser:
+        ipaadmin_password: "{{ idm_admin_password }}"
+        name: vault-svc
+        first: Vault
+        last: Service
+        title: "Service account for Vault LDAP auth"
+        loginshell: /sbin/nologin
+        password: "{{ idm_admin_password }}"
+        update_password: on_create
+        state: present
 
     # ── Summary ──
-    - name: Gather group membership counts
-      shell: "ipa group-show {{ item.name }} --all | grep 'Member users:' | wc -w"
-      loop: "{{ idm_teams + idm_groups }}"
-      loop_control:
-        label: "{{ item.name }}"
-      register: group_counts
-      changed_when: false
-      failed_when: false
-
     - name: Display IdM configuration summary
       debug:
         msg: |

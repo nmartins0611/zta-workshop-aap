@@ -4,3 +4,4 @@ collections:
   - name: ansible.netcommon
   - name: community.postgresql
   - name: community.general
+  - name: redhat.rhel_idm

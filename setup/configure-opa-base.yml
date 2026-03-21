@@ -40,6 +40,13 @@
         mode: '0644'
       register: base_policy
 
+    - name: Deploy AAP gateway policy (Policy as Code)
+      copy:
+        src: ../opa-policies/aap_gateway.rego
+        dest: "{{ opa_policy_dir }}/aap_gateway.rego"
+        mode: '0644'
+      register: gateway_policy
+
     - name: Deploy health check policy
       copy:
         dest: "{{ opa_policy_dir }}/health.rego"
@@ -51,7 +58,7 @@
           main := {
             "status": "healthy",
             "version": "1.0",
-            "policies": ["zta_base", "patching", "network", "db_access"],
+            "policies": ["zta_base", "patching", "network", "db_access", "aap_gateway"],
           }
         mode: '0644'
       register: health_policy
@@ -60,7 +67,8 @@
       command: podman restart {{ opa_container_name }}
       when: >
         patching_policy.changed or network_policy.changed or
-        db_policy.changed or base_policy.changed or health_policy.changed
+        db_policy.changed or base_policy.changed or
+        gateway_policy.changed or health_policy.changed
 
     - name: Wait for OPA health
       uri:

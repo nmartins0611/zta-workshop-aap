@@ -11,13 +11,65 @@ touched and the CMDB updated.
 
 | Layer | Technology | What It Proves |
 |-------|------------|----------------|
+| **Platform gate** | AAP Policy as Code + OPA | The user is allowed to **launch** this job template at all (outer ring) |
 | **Workload identity** | SPIFFE / SPIRE | The automation platform itself is cryptographically attested — not a rogue script |
 | **User identity** | IdM (FreeIPA) | The human requesting the change is in the `network-admins` group |
-| **Policy decision** | OPA | Both identities plus VLAN/action constraints are evaluated in one decision |
-| **Enforcement** | AAP | The job template only proceeds if OPA returns `allow: true` |
+| **Runtime policy** | OPA (in-playbook) | SPIFFE ID + user + VLAN + action are validated with runtime context (inner ring) |
+| **Enforcement** | AAP | The job template only proceeds if both rings return `allow: true` |
 | **Audit trail** | Netbox CMDB | The VLAN record includes both the user and the workload SPIFFE ID |
 
-## OPA Policy
+## Defence in Depth — Two OPA Policy Rings
+
+This section demonstrates **two layers** of OPA policy enforcement:
+
+```
+  User clicks "Launch" in AAP
+       │
+       ▼
+  ┌─────────────────────────────────────────────────┐
+  │  OUTER RING — AAP Policy as Code (aap.gateway)  │
+  │                                                  │
+  │  AAP Controller asks OPA:                        │
+  │    "Can this user launch this template?"         │
+  │                                                  │
+  │  Checks: user groups vs template name            │
+  │  neteng → Configure VLAN = DENIED (never runs)   │
+  │  netadmin → Configure VLAN = ALLOWED             │
+  └──────────────────────┬──────────────────────────┘
+                         │ (only if outer ring allows)
+                         ▼
+  ┌─────────────────────────────────────────────────┐
+  │  INNER RING — In-playbook policy (zta.network)   │
+  │                                                  │
+  │  Playbook asks OPA with runtime context:         │
+  │    SPIFFE ID + user + VLAN ID + action           │
+  │                                                  │
+  │  Checks: workload identity, VLAN range,          │
+  │          action allowlist, user group             │
+  └──────────────────────┬──────────────────────────┘
+                         │ (only if inner ring allows)
+                         ▼
+                  Cisco + Netbox
+```
+
+The **outer ring** cannot be bypassed — AAP enforces it before the playbook
+even starts. The **inner ring** validates parameters that only exist at
+runtime (the specific VLAN ID, the SPIFFE workload identity).
+
+## OPA Policies
+
+### Outer Ring — `aap.gateway` (platform level)
+
+Matches job template names to required IdM groups:
+
+| Template pattern | Required group |
+|-----------------|----------------|
+| Contains "VLAN" or "Network" | `network-admins` |
+| Contains "Patch" | `patch-admins` |
+| Contains "Deploy", "Database", "Credential" | `app-deployers` |
+| Contains "Verify", "Test", "Check" | Any authenticated user |
+
+### Inner Ring — `zta.network` (runtime level)
 
 The `zta.network` policy checks **four conditions** — all must pass:
 

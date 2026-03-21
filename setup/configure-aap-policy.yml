@@ -1,0 +1,193 @@
+---
+# Configure AAP Controller to use OPA for Policy as Code.
+#
+# This enables the platform-level policy gate: AAP checks OPA BEFORE
+# allowing a job template to launch.  The gateway policy (aap.gateway)
+# enforces group-based access to job templates — e.g. only network-admins
+# can launch VLAN templates, only patch-admins can launch patching templates.
+#
+# Prerequisites:
+#   - AAP Controller is installed and reachable
+#   - OPA is running on central.zta.lab with aap_gateway.rego loaded
+#   - setup/configure-opa-base.yml has been run
+
+- name: Configure AAP Policy as Code (OPA Gateway)
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  vars:
+    aap_host: "{{ aap_controller_url | default('https://aap.zta.lab') }}"
+    aap_user: admin
+    aap_password: "{{ lookup('env', 'AAP_ADMIN_PASSWORD') | default('ansible123!', true) }}"
+    aap_verify_ssl: false
+
+  tasks:
+    # ── Verify OPA gateway policy is loaded ────────────────────────────
+
+    - name: Test OPA gateway policy is accessible
+      uri:
+        url: "{{ opa_url }}/v1/data/aap/gateway/allow"
+        method: POST
+        body_format: json
+        body:
+          input:
+            user:
+              username: test
+              groups: []
+              is_superuser: false
+            action: launch
+            resource:
+              name: "Test Template"
+              type: job_template
+            extra_vars: {}
+        status_code: 200
+      register: opa_gateway_test
+
+    - name: Verify OPA gateway responded
+      assert:
+        that: opa_gateway_test.json.result is defined
+        fail_msg: >
+          OPA gateway policy not loaded. Run setup/configure-opa-base.yml first
+          to deploy aap_gateway.rego.
+
+    # ── Configure AAP to use OPA ───────────────────────────────────────
+
+    - name: Verify AAP Controller is reachable
+      uri:
+        url: "{{ aap_host }}/api/v2/ping/"
+        method: GET
+        validate_certs: "{{ aap_verify_ssl }}"
+        status_code: 200
+      register: aap_ping
+
+    - name: Display AAP version
+      debug:
+        msg: "AAP Controller {{ aap_ping.json.version }} detected"
+
+    - name: Configure OPA as the Policy as Code provider
+      uri:
+        url: "{{ aap_host }}/api/v2/settings/opa/"
+        method: PATCH
+        user: "{{ aap_user }}"
+        password: "{{ aap_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ aap_verify_ssl }}"
+        body_format: json
+        body:
+          OPA_URL: "{{ opa_url }}"
+          OPA_POLICY_PATH: "v1/data/aap/gateway/decision"
+          OPA_ENABLED: true
+          OPA_PRE_ACTION_ENABLED: true
+          OPA_REQUEST_TIMEOUT: 5
+        status_code: [200, 201]
+      register: opa_config
+
+    # ── Validate the integration ───────────────────────────────────────
+
+    - name: Test gateway policy — superuser (should allow)
+      uri:
+        url: "{{ opa_url }}/v1/data/aap/gateway/decision"
+        method: POST
+        body_format: json
+        body:
+          input:
+            user:
+              username: admin
+              groups: [zta-admins]
+              is_superuser: true
+            action: launch
+            resource:
+              name: "Configure VLAN"
+              type: job_template
+            extra_vars:
+              new_vlan_id: 100
+      register: test_superuser
+
+    - name: Test gateway policy — netadmin launching VLAN (should allow)
+      uri:
+        url: "{{ opa_url }}/v1/data/aap/gateway/decision"
+        method: POST
+        body_format: json
+        body:
+          input:
+            user:
+              username: netadmin
+              groups: [zta-admins, network-admins]
+              is_superuser: false
+            action: launch
+            resource:
+              name: "Configure VLAN"
+              type: job_template
+            extra_vars:
+              new_vlan_id: 100
+      register: test_netadmin
+
+    - name: Test gateway policy — neteng launching VLAN (should deny)
+      uri:
+        url: "{{ opa_url }}/v1/data/aap/gateway/decision"
+        method: POST
+        body_format: json
+        body:
+          input:
+            user:
+              username: neteng
+              groups: []
+              is_superuser: false
+            action: launch
+            resource:
+              name: "Configure VLAN"
+              type: job_template
+            extra_vars:
+              new_vlan_id: 100
+      register: test_neteng
+
+    - name: Test gateway policy — appdev launching Deploy (should allow)
+      uri:
+        url: "{{ opa_url }}/v1/data/aap/gateway/decision"
+        method: POST
+        body_format: json
+        body:
+          input:
+            user:
+              username: appdev
+              groups: [app-deployers]
+              is_superuser: false
+            action: launch
+            resource:
+              name: "Deploy Application"
+              type: job_template
+            extra_vars: {}
+      register: test_appdev
+
+    - name: Display gateway policy test results
+      debug:
+        msg: |
+          ╔════════════════════════════════════════════════════════════╗
+          ║       AAP Policy as Code — Configuration Complete        ║
+          ╠════════════════════════════════════════════════════════════╣
+          ║                                                          ║
+          ║  OPA Endpoint:  {{ opa_url | ljust(40) }}║
+          ║  Policy Path:   v1/data/aap/gateway/decision             ║
+          ║  Status:        ENABLED                                  ║
+          ║                                                          ║
+          ║  Gateway Policy Tests:                                   ║
+          ║                                                          ║
+          ║  admin (superuser) → Configure VLAN                      ║
+          ║    {{ ('ALLOW' if test_superuser.json.result.allow else 'DENY') | ljust(54) }}║
+          ║                                                          ║
+          ║  netadmin (network-admins) → Configure VLAN              ║
+          ║    {{ ('ALLOW' if test_netadmin.json.result.allow else 'DENY') | ljust(54) }}║
+          ║                                                          ║
+          ║  neteng (no groups) → Configure VLAN                     ║
+          ║    {{ ('ALLOW' if test_neteng.json.result.allow else 'DENY') | ljust(54) }}║
+          ║    {{ test_neteng.json.result.reason | truncate(54) | ljust(54) }}║
+          ║                                                          ║
+          ║  appdev (app-deployers) → Deploy Application             ║
+          ║    {{ ('ALLOW' if test_appdev.json.result.allow else 'DENY') | ljust(54) }}║
+          ║                                                          ║
+          ║  Defence in Depth:                                       ║
+          ║    OUTER RING: AAP checks gateway policy before launch   ║
+          ║    INNER RING: Playbook checks runtime policy (VLAN ID,  ║
+          ║                SPIFFE ID, Netbox state, etc.)            ║
+          ╚════════════════════════════════════════════════════════════╝

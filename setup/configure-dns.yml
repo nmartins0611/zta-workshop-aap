@@ -8,22 +8,30 @@
 
   vars:
     dns_records:
+      - hostname: central
+        ip: "{{ hostvars['central']['ansible_host'] }}"
+      - hostname: control
+        ip: "{{ hostvars['control']['ansible_host'] }}"
       - hostname: vault
-        ip: "{{ hostvars['vault']['ansible_host'] | default('vault.zta.lab') }}"
+        ip: "{{ hostvars['vault']['ansible_host'] }}"
       - hostname: netbox
-        ip: "{{ hostvars['netbox']['ansible_host'] | default('netbox.zta.lab') }}"
+        ip: "{{ hostvars['netbox']['ansible_host'] }}"
       - hostname: gitea
-        ip: "{{ hostvars['gitea']['ansible_host'] | default('gitea.zta.lab') }}"
+        ip: "{{ hostvars['gitea']['ansible_host'] }}"
       - hostname: wazuh
-        ip: "{{ hostvars['wazuh']['ansible_host'] | default('wazuh.zta.lab') }}"
-      - hostname: aap
-        ip: "{{ hostvars['aap']['ansible_host'] | default('aap.zta.lab') }}"
+        ip: "{{ hostvars['wazuh']['ansible_host'] }}"
       - hostname: app
-        ip: "{{ hostvars['app']['ansible_host'] | default('app.zta.lab') }}"
+        ip: "{{ hostvars['app']['ansible_host'] }}"
       - hostname: db
-        ip: "{{ hostvars['db']['ansible_host'] | default('db.zta.lab') }}"
+        ip: "{{ hostvars['db']['ansible_host'] }}"
       - hostname: switch01
-        ip: "{{ hostvars['switch01']['ansible_host'] | default('switch01.zta.lab') }}"
+        ip: "{{ hostvars['switch01']['ansible_host'] }}"
+      - hostname: aap
+        ip: "{{ hostvars['control']['ansible_host'] }}"
+      - hostname: keycloak
+        ip: "{{ hostvars['central']['ansible_host'] }}"
+      - hostname: opa
+        ip: "{{ hostvars['central']['ansible_host'] }}"
 
   tasks:
     - name: Add DNS A records for workshop VMs

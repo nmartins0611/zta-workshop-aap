@@ -1,10 +1,9 @@
 ---
 # enroll-idm-clients.yml — Enroll RHEL servers and AAP as IdM clients
 #
-# Uses the redhat.rhel_idm.ipaclient role to install ipa-client on every
-# Linux host (except the IdM server itself and the Cisco switch), trust
-# the IdM CA, and enable SSSD so that IdM users can log in over SSH and
-# sudo rules from IdM are enforced.
+# Installs ipa-client on every Linux host (except the IdM server itself
+# and the Cisco switch), trusts the IdM CA, and enables SSSD so that IdM
+# users can log in over SSH and sudo rules from IdM are enforced.
 #
 # Usage:
 #   ansible-playbook setup/enroll-idm-clients.yml
@@ -20,19 +19,70 @@
   gather_facts: true
 
   vars:
-    ipaclient_domain: "{{ idm_domain }}"
-    ipaclient_realm: "{{ idm_realm }}"
-    ipaclient_servers: "{{ idm_hostname }}"
-    ipaadmin_principal: admin
-    ipaadmin_password: "{{ idm_admin_password }}"
-    ipaclient_mkhomedir: true
-    ipaclient_force_ntpd: true
-
-  roles:
-    - role: redhat.rhel_idm.ipaclient
-      state: present
+    idm_server: "{{ idm_hostname }}"
+    idm_enroll_domain: "{{ idm_domain }}"
+    idm_enroll_realm: "{{ idm_realm }}"
+    idm_enroll_password: "{{ idm_admin_password }}"
 
   tasks:
+
+    # ── Pre-flight checks ────────────────────────────────────────────
+
+    - name: Check if already enrolled as an IdM client
+      stat:
+        path: /etc/ipa/default.conf
+      register: ipa_client_conf
+
+    - name: Set enrollment fact
+      set_fact:
+        needs_enrollment: "{{ not ipa_client_conf.stat.exists }}"
+
+    - name: Display skip message for already-enrolled hosts
+      debug:
+        msg: "{{ inventory_hostname }} is already enrolled as an IdM client — skipping"
+      when: not needs_enrollment
+
+    # ── Install ipa-client packages ──────────────────────────────────
+
+    - name: Install ipa-client packages
+      dnf:
+        name:
+          - ipa-client
+          - sssd
+          - oddjob-mkhomedir
+        state: present
+      when: needs_enrollment
+
+    # ── Ensure IdM server is reachable ───────────────────────────────
+
+    - name: Verify IdM server is reachable
+      wait_for:
+        host: "{{ idm_server }}"
+        port: 443
+        timeout: 30
+      when: needs_enrollment
+
+    # ── Enroll the host ──────────────────────────────────────────────
+
+    - name: Enroll host as IdM client
+      command: >
+        ipa-client-install
+        --domain={{ idm_enroll_domain }}
+        --realm={{ idm_enroll_realm }}
+        --server={{ idm_server }}
+        --principal=admin
+        --password='{{ idm_enroll_password }}'
+        --mkhomedir
+        --force-ntpd
+        --unattended
+      when: needs_enrollment
+      register: ipa_install
+      failed_when:
+        - ipa_install.rc != 0
+        - "'already configured' not in ipa_install.stderr"
+
+    # ── Post-enrollment verification ─────────────────────────────────
+
     - name: Verify SSSD is running
       systemd:
         name: sssd
@@ -50,7 +100,7 @@
         fail_msg: "/etc/ipa/ca.crt missing — enrollment may have failed"
 
     - name: Test IdM user resolution via SSSD
-      command: "id admin@{{ idm_domain }}"
+      command: id admin@{{ idm_enroll_domain }}
       register: id_test
       changed_when: false
       failed_when: false
@@ -59,5 +109,6 @@
       debug:
         msg: >-
           {{ inventory_hostname }}:
-          enrolled={{ ca_cert.stat.exists }},
+          enrolled={{ ipa_client_conf.stat.exists or (ipa_install is defined and ipa_install.rc == 0) }},
+          sssd={{ 'running' if ansible_facts.services is defined else 'assumed ok' }},
           admin lookup={{ 'OK' if id_test.rc == 0 else 'FAILED (user may need time to propagate)' }}

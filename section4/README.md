@@ -2,10 +2,21 @@
 
 ## Objective
 
-Demonstrate **defense in depth** for network automation: a VLAN change must be
-authorized by **both** a verified workload identity (SPIFFE) and an authorized
-user identity (IdM). OPA evaluates both layers before the Cisco switch is
-touched and the CMDB updated.
+Demonstrate **defence in depth** for network automation: a VLAN change must be
+authorised by **both** a verified workload identity (SPIFFE) and an authorised
+user identity (IdM). Two OPA policy rings evaluate both layers before the
+Cisco switch is touched and the CMDB updated.
+
+## Zero Trust Principles
+
+| Principle | How This Section Demonstrates It |
+|-----------|----------------------------------|
+| **Defence in depth** | Two OPA policy rings — platform gate + runtime check |
+| **Workload identity** | SPIFFE/SPIRE cryptographically proves the automation platform is legitimate |
+| **User identity** | IdM group membership determines who can request network changes |
+| **Deny by default** | No VLAN change without explicit allow from both rings |
+| **Audit trail** | Netbox CMDB records both the user and the workload SPIFFE ID |
+| **Micro-segmentation** | VLAN isolation enforced on Cisco infrastructure |
 
 ## Zero Trust Layers
 
@@ -15,12 +26,10 @@ touched and the CMDB updated.
 | **Workload identity** | SPIFFE / SPIRE | The automation platform itself is cryptographically attested — not a rogue script |
 | **User identity** | IdM (FreeIPA) | The human requesting the change is in the `network-admins` group |
 | **Runtime policy** | OPA (in-playbook) | SPIFFE ID + user + VLAN + action are validated with runtime context (inner ring) |
-| **Enforcement** | AAP | The job template only proceeds if both rings return `allow: true` |
+| **Enforcement** | AAP + Cisco | The job only proceeds if both rings return `allow: true` |
 | **Audit trail** | Netbox CMDB | The VLAN record includes both the user and the workload SPIFFE ID |
 
 ## Defence in Depth — Two OPA Policy Rings
-
-This section demonstrates **two layers** of OPA policy enforcement:
 
 ```
   User clicks "Launch" in AAP
@@ -80,6 +89,128 @@ The `zta.network` policy checks **four conditions** — all must pass:
 | 3 | **Valid VLAN** | VLAN ID is in the permitted range (100–999) |
 | 4 | **Action permitted** | Action is one of: `create_vlan`, `modify_vlan`, `delete_vlan`, `assign_port` |
 
+---
+
+## Exercise 4.1 — Create the Job Template
+
+| Template Name | Playbook | Inventory | Credentials |
+|---------------|----------|-----------|-------------|
+| Configure VLAN | `section4/playbooks/configure-vlan.yml` | ZTA Lab Inventory | ZTA Machine Credential, ZTA Cisco Credential |
+
+### Survey Variables
+
+The template should prompt for:
+- `new_vlan_id`: VLAN ID to create (e.g. `200`)
+- `new_vlan_name`: VLAN name (e.g. `DMZ`)
+
+---
+
+## Exercise 4.2 — Denied (Network Engineer)
+
+1. Log into AAP as `neteng` (not a member of any group)
+2. Launch the **Configure VLAN** template
+3. Fill in: `new_vlan_id: 200`, `new_vlan_name: DMZ`
+4. Observe the output:
+
+```
+SPIFFE Workload Identity Verification
+
+  SPIFFE ID: spiffe://zta.lab/workload/network-automation
+  Host:      control
+  Status:    VERIFIED ✓
+
+OPA Network Policy Decision
+
+  User:      neteng
+  Action:    create_vlan
+  VLAN ID:   200
+  SPIFFE ID: spiffe://zta.lab/workload/network-automation
+  Result:    DENIED
+
+  Conditions:
+    Workload verified:      PASS
+    User in network-admins: FAIL
+    Valid VLAN ID:          PASS
+    Action permitted:       PASS
+
+  DENIED: user 'neteng' is not a member of network-admins group
+```
+
+The SPIFFE check passes (the platform is legitimate) but the **user** is not
+authorised. The Cisco switch is never touched.
+
+---
+
+## Exercise 4.3 — Allowed (Network Admin)
+
+1. Log into AAP as `netadmin` (member of `network-admins`)
+2. Launch the same **Configure VLAN** template
+3. Fill in: `new_vlan_id: 200`, `new_vlan_name: DMZ`
+4. Observe the success:
+
+```
+SPIFFE Workload Identity Verification
+
+  SPIFFE ID: spiffe://zta.lab/workload/network-automation
+  Status:    VERIFIED ✓
+
+OPA Network Policy Decision
+
+  Result:    ALLOWED
+  All conditions: PASS
+
+VLAN 200 (DMZ) created on switch01.zta.lab
+
+VLAN Configuration Complete
+
+  VLAN 200 (DMZ)
+  Switch:     switch01.zta.lab
+  Netbox:     Created
+  User:       netadmin
+  Workload:   spiffe://zta.lab/workload/network-automation
+```
+
+5. Verify on the Cisco switch: `show vlan brief` — VLAN 200 should appear
+6. Verify in Netbox: the VLAN record includes the SPIFFE workload ID in the description
+
+---
+
+## Exercise 4.4 — Test Additional Scenarios
+
+### Scenario A — Invalid VLAN range
+
+1. Log in as `netadmin`
+2. Launch with `new_vlan_id: 5000` (outside 100–999 range)
+3. Observe: OPA denies — "VLAN ID 5000 is outside the permitted range"
+
+### Scenario B — Missing SPIFFE identity
+
+1. Stop the SPIRE Agent on the `control` host:
+   ```bash
+   ssh rhel@control.zta.lab
+   sudo systemctl stop spire-agent
+   ```
+2. Launch **Configure VLAN** as `netadmin` with valid parameters
+3. Observe: the job fails at the SPIFFE verification step — cannot fetch SVID
+4. **Restart the agent** when done:
+   ```bash
+   sudo systemctl start spire-agent
+   ```
+
+### Scenario C — Fix access by adding group membership
+
+1. In IdM, add `neteng` to the `network-admins` group:
+   ```bash
+   ipa group-add-member network-admins --users=neteng
+   ```
+2. Launch **Configure VLAN** as `neteng` — it should now succeed
+3. Remove the membership when done:
+   ```bash
+   ipa group-remove-member network-admins --users=neteng
+   ```
+
+---
+
 ## Playbook Flow
 
 ```
@@ -124,109 +255,7 @@ The `zta.network` policy checks **four conditions** — all must pass:
        └─ Records VLAN with user + workload SPIFFE ID
 ```
 
-## Scenario Flow
-
-### Attempt 1 — Denied (Network Engineer)
-
-```
-  neteng logs in → launches "Configure VLAN" template
-       │
-       ▼
-  SPIFFE: workload identity verified ✓
-  (the platform is legitimate, but the USER is not authorized)
-       │
-       ▼
-  OPA checks:
-    ✓ Workload verified (spiffe://zta.lab/workload/network-automation)
-    ✗ neteng is NOT in network-admins    ← DENIED
-       │
-       ▼
-  Job fails: "user 'neteng' is not a member of network-admins group"
-```
-
-### Attempt 2 — Allowed (Network Admin)
-
-```
-  netadmin logs in → launches same template
-       │
-       ▼
-  SPIFFE: workload identity verified ✓
-       │
-       ▼
-  OPA checks:
-    ✓ Workload verified
-    ✓ netadmin IS in network-admins      ← ALLOWED
-       │
-       ▼
-  VLAN created on Cisco Catalyst 8000v
-  Netbox CMDB updated with VLAN + SPIFFE audit trail
-```
-
-## What You Will Configure in AAP
-
-### Job Templates
-
-| Template Name | Playbook | Purpose |
-|---------------|----------|---------|
-| Configure VLAN | `section4/playbooks/configure-vlan.yml` | SPIFFE verify + OPA check + Cisco VLAN + Netbox |
-
-### Extra Variables (Survey)
-
-The template should prompt for:
-- `new_vlan_id`: VLAN ID to create (e.g. `40`)
-- `new_vlan_name`: VLAN name (e.g. `DMZ`)
-
-## Steps
-
-### Attempt 1 — Denied (Network Engineer)
-
-1. Log into AAP as `neteng` (not a member of any group)
-2. Launch the **Configure VLAN** template
-3. Fill in: `new_vlan_id: 40`, `new_vlan_name: DMZ`
-4. Observe the output — the SPIFFE check passes but OPA denies:
-   ```
-   SPIFFE Workload Identity Verification
-   SPIFFE ID: spiffe://zta.lab/workload/network-automation
-   Status:    VERIFIED ✓
-
-   OPA Network Policy Decision
-   User:      neteng
-   SPIFFE ID: spiffe://zta.lab/workload/network-automation
-   Result:    DENIED
-   Workload verified:     PASS
-   User in network-admins: FAIL
-   Reason:  user 'neteng' is not a member of network-admins group
-   ```
-
-### Attempt 2 — Allowed (Network Admin)
-
-1. Log into AAP as `netadmin` (member of `network-admins`)
-2. Launch the same **Configure VLAN** template
-3. Fill in: `new_vlan_id: 40`, `new_vlan_name: DMZ`
-4. Observe the success:
-   ```
-   SPIFFE Workload Identity Verification
-   SPIFFE ID: spiffe://zta.lab/workload/network-automation
-   Status:    VERIFIED ✓
-
-   OPA Network Policy Decision
-   Result:    ALLOWED
-   All conditions: PASS
-
-   VLAN 40 (DMZ) created on switch01.zta.lab
-   Netbox CMDB updated — includes SPIFFE audit trail
-   ```
-5. Verify in Netbox that VLAN 40 now appears with the SPIFFE workload ID in the description
-
-## Discussion Points
-
-- **Why verify the workload, not just the user?** A compromised script running outside
-  AAP could impersonate a network admin. SPIFFE proves the *platform* is legitimate.
-- What if `neteng` is added to `network-admins` in IdM? Does the next attempt succeed?
-- What happens with a VLAN ID outside the permitted range (e.g. 5000)?
-- How would you add an approval workflow before the VLAN is created?
-- How does the Netbox CMDB record (with both user and SPIFFE ID) provide an audit trail?
-- What if the SPIRE Agent on the AAP node is stopped? Can VLANs still be created?
+---
 
 ## SPIFFE / SPIRE Background
 
@@ -245,6 +274,22 @@ network automation workload identity is:
 spiffe://zta.lab/workload/network-automation
 ```
 
+---
+
+## Discussion Points
+
+- **Why verify the workload, not just the user?** A compromised script running outside
+  AAP could impersonate a network admin. SPIFFE proves the *platform* is legitimate.
+- What if `neteng` is added to `network-admins` in IdM? Does the next attempt succeed?
+- What happens with a VLAN ID outside the permitted range (e.g. 5000)?
+- How would you add an approval workflow before the VLAN is created?
+- How does the Netbox CMDB record (with both user and SPIFFE ID) provide an audit trail?
+- What if the SPIRE Agent on the AAP node is stopped? Can VLANs still be created?
+- What is the difference between the outer ring (platform gate) and inner ring (runtime check)?
+- Could someone bypass the outer ring by using `ansible-playbook` directly instead of AAP?
+
+---
+
 ## Validation Checklist
 
 - [ ] SPIRE Agent on `control` can fetch an SVID with the correct SPIFFE ID
@@ -254,3 +299,4 @@ spiffe://zta.lab/workload/network-automation
 - [ ] VLAN IDs outside range 100–999 are rejected by OPA
 - [ ] The Cisco switch shows the new VLAN in `show vlan brief`
 - [ ] If SPIRE Agent is stopped, the job fails at the SPIFFE verification step
+- [ ] Adding `neteng` to `network-admins` in IdM allows the next attempt to succeed

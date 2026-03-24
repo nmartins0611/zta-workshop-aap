@@ -6,7 +6,7 @@ CREATE TABLE IF NOT EXISTS metric_categories (
     slug            VARCHAR(64) UNIQUE NOT NULL,
     name            VARCHAR(128) NOT NULL,
     description     TEXT,
-    icon            VARCHAR(8),
+    icon            VARCHAR(16),
     created_at      TIMESTAMPTZ DEFAULT now()
 );
 
@@ -36,8 +36,7 @@ CREATE INDEX IF NOT EXISTS idx_snapshots_metric_time
 -- Seed categories
 INSERT INTO metric_categories (slug, name, description, icon) VALUES
     ('consumption',  'Global Consumption',     'Worldwide resource consumption telemetry',  '&#x1F30D;'),
-    ('digital',      'Digital Infrastructure',  'Internet and digital service metrics',      '&#x1F4BB;'),
-    ('recreation',   'Recreation & Leisure',    'Global leisure activity indicators',        '&#x26F3;')
+    ('digital',      'Digital Infrastructure',  'Internet and digital service metrics',      '&#x1F4BB;')
 ON CONFLICT (slug) DO NOTHING;
 
 -- Seed metrics with authoritative-sounding rates
@@ -86,14 +85,5 @@ INSERT INTO metrics (category_id, name, unit, rate_per_second, baseline_total, c
         0,
         0.96,
         'Federated Identity Frustration Index (FIFI), Continuous Monitoring Feed'
-    ),
-    (
-        (SELECT id FROM metric_categories WHERE slug = 'recreation'),
-        'Golf Balls Lost to Water Hazards',
-        'balls/day',
-        0.0035,
-        0,
-        0.87,
-        'Royal & Ancient Golf Loss Registry, Aquatic Subsection'
     )
 ON CONFLICT DO NOTHING;

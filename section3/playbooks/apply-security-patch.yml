@@ -1,0 +1,142 @@
+---
+# Section 3: Apply a security hardening patch to a target server.
+#
+# This playbook is gated by AAP Policy as Code (aap.gateway OPA policy).
+# The template name contains "Patch", so only users in the 'patch-admins'
+# group can launch it. If a user outside that group tries, AAP blocks the
+# job BEFORE this playbook ever runs.
+#
+# The "patch" deploys:
+#   1. A security-compliant login banner (/etc/issue, /etc/motd)
+#   2. SSH hardening (disable root login, restrict auth methods)
+#   3. Password policy enforcement
+#   4. Audit logging configuration
+
+- name: Apply Security Hardening Patch
+  hosts: "{{ target_host | default('app') }}"
+  become: true
+  gather_facts: true
+
+  vars:
+    patch_version: "ZTA-SEC-2026-001"
+
+  tasks:
+    - name: "Pre-patch | Record system state"
+      command: rpm -qa --last
+      register: pre_patch_packages
+      changed_when: false
+
+    - name: "Patch 1/4 | Deploy security login banner"
+      copy:
+        dest: /etc/issue
+        content: |
+          ╔════════════════════════════════════════════════════════════════╗
+          ║                                                              ║
+          ║   AUTHORISED ACCESS ONLY                                     ║
+          ║                                                              ║
+          ║   This system is the property of ZTA Lab.                    ║
+          ║   Unauthorised access is prohibited and will be prosecuted.  ║
+          ║   All activity is monitored and logged by Wazuh SIEM.        ║
+          ║                                                              ║
+          ║   Security patch: {{ patch_version }}{{ ' ' * (38 - patch_version | length) }}║
+          ║                                                              ║
+          ╚════════════════════════════════════════════════════════════════╝
+        mode: '0644'
+
+    - name: "Patch 1/4 | Deploy MOTD"
+      copy:
+        dest: /etc/motd
+        content: |
+          ┌────────────────────────────────────────────────────┐
+          │  ZTA Lab — {{ inventory_hostname | ljust(39) }}│
+          │  Security patch {{ patch_version }} applied{{ ' ' * (24 - patch_version | length) }}│
+          │  Monitored by Wazuh SIEM                           │
+          └────────────────────────────────────────────────────┘
+        mode: '0644'
+
+    - name: "Patch 2/4 | Harden SSH — disable root login"
+      lineinfile:
+        path: /etc/ssh/sshd_config
+        regexp: "^#?PermitRootLogin"
+        line: "PermitRootLogin no"
+      notify: Restart sshd
+
+    - name: "Patch 2/4 | Harden SSH — disable empty passwords"
+      lineinfile:
+        path: /etc/ssh/sshd_config
+        regexp: "^#?PermitEmptyPasswords"
+        line: "PermitEmptyPasswords no"
+      notify: Restart sshd
+
+    - name: "Patch 2/4 | Harden SSH — set max auth tries"
+      lineinfile:
+        path: /etc/ssh/sshd_config
+        regexp: "^#?MaxAuthTries"
+        line: "MaxAuthTries 3"
+      notify: Restart sshd
+
+    - name: "Patch 3/4 | Configure password policy"
+      copy:
+        dest: /etc/security/pwquality.conf.d/zta-policy.conf
+        content: |
+          # ZTA Security Patch {{ patch_version }}
+          minlen = 12
+          dcredit = -1
+          ucredit = -1
+          lcredit = -1
+          ocredit = -1
+          maxrepeat = 3
+        mode: '0644'
+
+    - name: "Patch 4/4 | Enable audit logging for authentication"
+      copy:
+        dest: /etc/audit/rules.d/zta-auth-audit.rules
+        content: |
+          # ZTA Security Patch {{ patch_version }}
+          -w /var/log/secure -p wa -k auth_log
+          -w /etc/passwd -p wa -k identity
+          -w /etc/shadow -p wa -k identity
+          -w /etc/group -p wa -k identity
+          -w /etc/sudoers -p wa -k sudoers
+        mode: '0644'
+      notify: Restart auditd
+
+    - name: "Post-patch | Verify banner is deployed"
+      command: cat /etc/issue
+      register: banner_check
+      changed_when: false
+
+    - name: "Post-patch | Verify SSH config"
+      command: sshd -T
+      register: sshd_config
+      changed_when: false
+
+    - name: "Post-patch | Display patch summary"
+      debug:
+        msg: |
+          ╔════════════════════════════════════════════════════════════╗
+          ║       Security Patch Applied                             ║
+          ╠════════════════════════════════════════════════════════════╣
+          ║                                                          ║
+          ║  Host:      {{ ansible_fqdn | ljust(44) }}║
+          ║  Patch:     {{ patch_version | ljust(44) }}║
+          ║  OS:        {{ ansible_distribution }} {{ ansible_distribution_version | ljust(32) }}║
+          ║                                                          ║
+          ║  Applied:                                                ║
+          ║    ✓ Security login banner (/etc/issue + /etc/motd)      ║
+          ║    ✓ SSH hardening (no root, max 3 auth tries)           ║
+          ║    ✓ Password policy (12 char min, complexity)           ║
+          ║    ✓ Audit logging (auth, identity, sudoers)             ║
+          ║                                                          ║
+          ║  This patch was authorised by AAP Policy as Code.        ║
+          ║  Only users in 'patch-admins' can launch this template.  ║
+          ╚════════════════════════════════════════════════════════════╝
+
+  handlers:
+    - name: Restart sshd
+      systemd:
+        name: sshd
+        state: restarted
+
+    - name: Restart auditd
+      command: service auditd restart

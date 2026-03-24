@@ -1,139 +1,227 @@
-# Section 2 — GitOps Database Credential Management
+# Section 2 — Deploy Application with Short-Lived Database Credentials
 
 ## Objective
 
-Build an automated pipeline where a code commit triggers AAP to provision
-short-lived database credentials via Vault, optionally configure network access
-controls, deploy the application, and schedule credential rotation.
+Deploy the **Global Telemetry Platform** application using short-lived database
+credentials from Vault. First, attempt the deployment as the **wrong user** —
+OPA denies the request. Then examine the policy, use the correct user (or fix
+the group membership), and successfully deploy.
 
 ## Zero Trust Principles
 
-- **Least privilege**: Database user gets only SELECT/INSERT/UPDATE on required tables
-- **Short-lived credentials**: TTL of 5 minutes, automatically revoked by Vault
-- **Just-in-time access**: Credentials created only when the deployment runs
-- **Micro-segmentation**: ACL restricts database access to the app server only
-- **Policy verification**: OPA validates the credential request before Vault issues it
+| Principle | How This Section Demonstrates It |
+|-----------|----------------------------------|
+| **Deny by default** | OPA blocks the deployment until the user is explicitly authorised |
+| **Least privilege** | Vault DB credentials grant only SELECT/INSERT/UPDATE |
+| **Short-lived credentials** | Dynamic DB user expires after 5-minute TTL |
+| **Just-in-time access** | Credentials only created when the deployment runs |
+| **Micro-segmentation** | Cisco ACL restricts database access to the app server only |
 
 ## Architecture
 
 ```
-  Developer pushes code to Gitea (gitea.zta.lab:3000)
-       │
-       ▼
-  Gitea webhook → AAP Controller ──────────────────────────┐
-       │                                                    │
-       ▼                                                    │
-  ┌─ AAP Workflow ─────────────────────────────────────┐    │
-  │                                                    │    │
-  │  Step 1: Check OPA Policy                          │    │
-  │    └─ POST /v1/data/zta/db_access/decision         │    │
-  │                                                    │    │
-  │  Step 2: Get Dynamic DB Credential from Vault      │    │
-  │    └─ vault read database/creds/ztaapp-short-lived │    │
-  │                                                    │    │
-  │  Step 3: Configure ACL (app → db only)             │    │
-  │    └─ Cisco ACL permits app.zta.lab → db:5432      │    │
-  │                                                    │    │
-  │  Step 4: Deploy Application with Credentials       │    │
-  │    └─ Push creds to app, restart service           │    │
-  │                                                    │    │
-  └────────────────────────────────────────────────────┘    │
-                                                            │
-  ┌─ AAP Schedule ─────────────────────────────────────┐    │
-  │  Rotate credentials every 5 minutes                │    │
-  │    └─ Revoke old lease, create new, push to app    │    │
-  └────────────────────────────────────────────────────┘    │
+  ┌─ AAP Workflow ─────────────────────────────────────┐
+  │                                                    │
+  │  Step 1: Check OPA Policy                          │
+  │    └─ Is this user in 'app-deployers'?             │
+  │    └─ DENIED → job stops                           │
+  │    └─ ALLOWED → continue                           │
+  │                                                    │
+  │  Step 2: Get Dynamic DB Credential from Vault      │
+  │    └─ vault read database/creds/ztaapp-short-lived │
+  │    └─ TTL: 5 minutes, auto-revoked                 │
+  │                                                    │
+  │  Step 3: Configure ACL (app → db only)             │
+  │    └─ Cisco ACL: PERMIT app → db:5432              │
+  │    └─           DENY   * → db:5432                 │
+  │                                                    │
+  │  Step 4: Deploy Application with Credentials       │
+  │    └─ Push creds to app, restart GTP service       │
+  │                                                    │
+  └────────────────────────────────────────────────────┘
 ```
 
-## What You Will Configure in AAP
+---
 
-### Job Templates
+## Exercise 2.1 — Create the Job Templates
 
-| Template Name | Playbook | Purpose |
-|---------------|----------|---------|
-| Check DB Access Policy | `section2/playbooks/check-db-policy.yml` | OPA pre-check |
-| Create DB Credential | `section2/playbooks/create-db-credential.yml` | Vault dynamic creds |
-| Configure DB Access List | `section2/playbooks/configure-db-access.yml` | Cisco ACL for app→db |
-| Deploy Application | `section2/playbooks/deploy-application.yml` | Push creds, start app |
-| Rotate DB Credentials | `section2/playbooks/rotate-credentials.yml` | Revoke + recreate |
+All templates use **Inventory:** `ZTA Lab Inventory` and **Credentials:** `ZTA Machine Credential`.
 
-### Workflow Template
+| Template Name | Playbook | Extra Credentials |
+|---------------|----------|-------------------|
+| Check DB Access Policy | `section2/playbooks/check-db-policy.yml` | — |
+| Create DB Credential | `section2/playbooks/create-db-credential.yml` | — |
+| Configure DB Access List | `section2/playbooks/configure-db-access.yml` | `ZTA Cisco Credential` |
+| Deploy Application | `section2/playbooks/deploy-application.yml` | — |
+| Rotate DB Credentials | `section2/playbooks/rotate-credentials.yml` | — |
 
-Create a **Workflow Template** named `GitOps Deploy Pipeline` that chains:
+---
+
+## Exercise 2.2 — Build the Deployment Workflow
+
+Create a **Workflow Template** named `Deploy Application Pipeline`:
 
 ```
 Check DB Access Policy ──(success)──► Create DB Credential ──(success)──► Configure DB Access List ──(success)──► Deploy Application
-        │                                                                                                              
-     (failure)                                                                                                         
-        │                                                                                                              
-        ▼                                                                                                              
-    [Job Denied]                                                                                                       
+        │
+     (failure)
+        │
+        ▼
+   [Access Denied]
 ```
 
-### Webhook
+---
 
-Configure a webhook on the Workflow Template so a `git push` triggers the
-pipeline automatically.
+## Exercise 2.3 — Attempt Deployment as the Wrong User (DENIED)
 
-### Schedule
+1. Log into AAP as `neteng` (a network engineer — **not** in `app-deployers`)
+2. Launch the **Deploy Application Pipeline** workflow
+3. The first step (**Check DB Access Policy**) queries OPA:
 
-Create a schedule on the **Rotate DB Credentials** template to run every
-5 minutes.
+```
+OPA Database Access Decision:
+  User:       neteng
+  Groups:     (none)
+  Database:   ztaapp
+  Decision:   DENIED
+  Reason:     user 'neteng' is not authorised to request database credentials
 
-## Steps
+ACCESS DENIED by OPA policy.
+```
 
-### Step 1 — Create the Job Templates
+4. The workflow stops — Vault is never contacted, no credentials are issued,
+   the application is not touched
 
-Create each job template listed above. All use:
-- Inventory: `ZTA Lab Inventory`
-- Credentials: `ZTA Machine Credential` + `ZTA Vault Credential`
-- The Configure DB Access List template also needs `ZTA Cisco Credential`
+**Key takeaway:** OPA denied the request before any secret was generated.
+The wrong user never gets anywhere near the database.
 
-### Step 2 — Build the Workflow
+---
 
-1. Navigate to **Resources → Templates → Add → Workflow Template**
-2. Name: `GitOps Deploy Pipeline`
-3. Open the workflow visualiser and chain the templates in order
-4. Set the link from Check DB Access Policy to Create DB Credential as **On Success**
-5. Add a failure path from Check DB Access Policy to a notification or approval node
+## Exercise 2.4 — Examine the Policy
 
-### Step 3 — Test the Workflow
+Look at the OPA policy that blocked the request. Open
+`opa-policies/db_access.rego` (or query OPA directly):
 
-Launch the workflow manually first. Observe:
-- OPA allows the request (user is in `app-deployers`)
-- Vault generates a short-lived PostgreSQL user
-- The ACL is applied on the Cisco switch
-- The application starts with the dynamic credentials
-- After 5 minutes, the credentials expire
+The `zta.db_access` policy checks:
+- Is the user in the `app-deployers` group?
+- Is the target database `ztaapp`?
+- Are the requested permissions within bounds (SELECT, INSERT, UPDATE)?
 
-### Step 4 — Configure the Gitea Webhook
+**Fix option A** — Use the correct user:
+Log in as `appdev` (who is in `app-deployers`)
 
-1. Edit the workflow template in AAP
-2. Enable **Webhook** and select **Gitea** as the webhook service
-3. Copy the **Webhook URL** and **Webhook Key** from AAP
-4. In Gitea (`http://gitea.zta.lab:3000`):
-   - Navigate to the `{{ gitea_org }}/{{ gitea_repo }}` repository
-   - Go to **Settings → Webhooks → Add Webhook → Gitea**
-   - Target URL: paste the AAP webhook URL
-   - Secret: paste the AAP webhook key
-   - Trigger on: **Push Events**
-   - Save the webhook
-5. Test by pushing a commit — the workflow should trigger automatically
+**Fix option B** — Add the user to the group in IdM:
+```bash
+ipa group-add-member app-deployers --users=neteng
+```
 
-### Step 5 — Set Up Credential Rotation
+---
+
+## Exercise 2.5 — Deploy as the Correct User (ALLOWED)
+
+1. Log into AAP as `appdev` (member of `app-deployers`)
+2. Launch the **Deploy Application Pipeline** workflow
+3. Watch all four steps complete:
+
+**Step 1 — OPA Policy Check:**
+```
+Decision:   ALLOWED
+OPA policy check passed — proceeding with credential issuance
+```
+
+**Step 2 — Vault Dynamic Credentials:**
+```
+Dynamic database credentials created:
+  Username: v-root-ztaapp-s-abc123def
+  TTL:      300s
+  Lease:    database/creds/ztaapp-short-lived/...
+```
+
+**Step 3 — Network ACL:**
+```
+Network micro-segmentation applied:
+  ACL: ZTA-APP-TO-DB
+  PERMIT: app.zta.lab → db.zta.lab:5432
+  DENY:   any → db.zta.lab:5432
+```
+
+**Step 4 — Application Deployed:**
+```
+Application deployed successfully:
+  URL:     http://app.zta.lab:8080
+  Health:  ok
+  DB User: v-root-ztaapp-s-abc123def (dynamic, short-lived)
+```
+
+4. Open `http://app.zta.lab:8080` in your browser — the **Global Telemetry
+   Platform** dashboard should be live
+
+---
+
+## Exercise 2.6 — Observe Credential Expiry
+
+1. SSH into the database server and list PostgreSQL users:
+   ```bash
+   ssh rhel@db.zta.lab
+   sudo -u postgres psql -c "\du"
+   ```
+   You should see the Vault-generated user (e.g. `v-root-ztaapp-s-...`)
+
+2. Wait 5 minutes (the TTL) and check again:
+   ```bash
+   sudo -u postgres psql -c "\du"
+   ```
+   The user is **gone** — Vault automatically revoked it
+
+3. Check the application health:
+   ```
+   curl http://app.zta.lab:8080/health
+   ```
+   The app should now report unhealthy — it lost its database connection
+
+This demonstrates Zero Trust: credentials are ephemeral. If not rotated,
+access is automatically removed.
+
+---
+
+## Exercise 2.7 — Set Up Credential Rotation (Optional)
 
 1. Navigate to the **Rotate DB Credentials** template
 2. Click **Schedules → Add**
 3. Name: `Rotate every 5 minutes`
 4. Set frequency to every 5 minutes
-5. Enable the schedule
+
+The rotation job revokes old credentials, issues new ones from Vault, and
+restarts the application — keeping it healthy continuously.
+
+---
+
+## Exercise 2.8 — Wire Up Gitea Webhook (Optional)
+
+1. Edit the `Deploy Application Pipeline` workflow template
+2. Enable **Webhook** → select **Gitea**
+3. Copy the webhook URL and key
+4. In Gitea (`http://gitea.zta.lab:3000`): add a webhook pointing to AAP
+5. Push a commit — the pipeline triggers automatically
+
+---
+
+## Discussion Points
+
+- What happened when `neteng` tried to deploy? Did they ever see credentials?
+- Why does OPA check happen **before** Vault, not after?
+- What happens to the application when credentials expire?
+- Why is the Cisco ACL important if credentials are already short-lived?
+- If you added `neteng` to `app-deployers` in IdM, what changes?
+
+---
 
 ## Validation Checklist
 
-- [ ] OPA policy check returns `allow: true` for `app-deployers`
-- [ ] Vault generates dynamic PostgreSQL credentials
-- [ ] Cisco ACL permits `app.zta.lab` → `db.zta.lab:5432`
-- [ ] Application starts and the `/health` endpoint returns healthy
-- [ ] Credentials expire after TTL
-- [ ] Gitea webhook triggers the AAP workflow on `git push`
-- [ ] Rotation schedule creates new credentials and updates the application
+- [ ] Wrong user (`neteng`) is denied by OPA — workflow stops at step 1
+- [ ] Correct user (`appdev`) passes OPA — full workflow completes
+- [ ] Vault generates dynamic PostgreSQL credentials with unique username
+- [ ] Cisco ACL permits only `app.zta.lab` → `db.zta.lab:5432`
+- [ ] Application dashboard loads at `http://app.zta.lab:8080`
+- [ ] Credentials disappear from PostgreSQL after TTL expires
+- [ ] Application loses DB access when credentials expire

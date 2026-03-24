@@ -1,19 +1,22 @@
-# Section 1 — ZTA Foundation & AAP Integration
+# Section 1 — Configure ZTA Components & AAP Integration
 
 ## Objective
 
-Connect Ansible Automation Platform to the Zero Trust infrastructure so that
-all subsequent automation is identity-aware, secrets-managed, and
-policy-governed.
+Configure Ansible Automation Platform and connect it to the Zero Trust
+infrastructure. By the end of this section, AAP will be integrated with
+IdM (identity), Vault (secrets), OPA (policy), Netbox (CMDB), and Gitea
+(source control). You will verify every service is healthy and test the
+integrations.
 
-## What You Will Configure in AAP
+## Zero Trust Principles
 
-By the end of this section, AAP will have:
-
-1. **Credentials** for each integration point (IdM, Vault, Cisco, machines)
-2. **An Inventory** sourced from Netbox (CMDB as source of truth)
-3. **A Project** pointing to this workshop repository
-4. **Job Templates** for verifying ZTA services and testing the integration
+| Principle | How This Section Demonstrates It |
+|-----------|----------------------------------|
+| **Never trust, always verify** | Every service health is checked, not assumed |
+| **Short-lived credentials** | Vault dynamic DB credentials expire after TTL |
+| **No standing access** | SSH OTP replaces static machine passwords |
+| **Least privilege** | Vault policies scope secrets to specific roles |
+| **Policy-driven access** | OPA deny-by-default with explicit allow rules |
 
 ## Architecture
 
@@ -46,11 +49,11 @@ By the end of this section, AAP will have:
     └────────┘  └────────┘  └────────────┘  └────────────┘
 ```
 
-## Steps
+---
 
-### Step 1 — Create Machine Credential
+## Exercise 1.1 — Configure AAP Credentials
 
-In AAP Controller:
+### Machine Credential
 
 1. Navigate to **Resources → Credentials → Add**
 2. Name: `ZTA Machine Credential`
@@ -59,16 +62,17 @@ In AAP Controller:
 5. Password: from your lab assignment
 6. Privilege Escalation Method: `sudo`
 
-### Step 2 — Create HashiCorp Vault Credential
+### HashiCorp Vault Credential
 
 1. Navigate to **Resources → Credentials → Add**
 2. Name: `ZTA Vault Credential`
 3. Credential Type: `HashiCorp Vault Secret Lookup`
 4. Vault Server URL: `https://vault.zta.lab:8200`
-5. Token: your Vault root token
-6. API Version: `v2`
+5. Username: `admin`
+6. Password: `ansible123!`
+7. API Version: `v2`
 
-### Step 3 — Create Network Credential
+### Network Credential
 
 1. Navigate to **Resources → Credentials → Add**
 2. Name: `ZTA Cisco Credential`
@@ -76,7 +80,19 @@ In AAP Controller:
 4. Username: `admin`
 5. Password: retrieve from Vault (`secret/network/switch01`)
 
-### Step 4 — Create Inventory from Netbox
+### Source Control Credential (Gitea)
+
+1. Navigate to **Resources → Credentials → Add**
+2. Name: `ZTA Gitea Credential`
+3. Credential Type: `Source Control`
+4. Username: your Gitea username
+5. Password: your Gitea password or access token
+
+---
+
+## Exercise 1.2 — Configure Inventory & Project
+
+### Inventory from Netbox
 
 1. Navigate to **Resources → Inventories → Add**
 2. Name: `ZTA Lab Inventory`
@@ -85,15 +101,7 @@ In AAP Controller:
 5. Token: your Netbox API token
 6. Sync the inventory — verify all hosts appear
 
-### Step 5 — Create Source Control Credential (Gitea)
-
-1. Navigate to **Resources → Credentials → Add**
-2. Name: `ZTA Gitea Credential`
-3. Credential Type: `Source Control`
-4. Username: your Gitea username
-5. Password: your Gitea password or access token
-
-### Step 6 — Create Project from Gitea
+### Project from Gitea
 
 1. Navigate to **Resources → Projects → Add**
 2. Name: `ZTA Workshop`
@@ -102,9 +110,9 @@ In AAP Controller:
 5. Source Control Credential: `ZTA Gitea Credential`
 6. Sync the project — verify it pulls successfully
 
-### Step 7 — Create Job Templates
+---
 
-Create the following job templates:
+## Exercise 1.3 — Create Job Templates
 
 | Template Name | Playbook | Inventory | Credentials |
 |---------------|----------|-----------|-------------|
@@ -113,89 +121,89 @@ Create the following job templates:
 | Test Vault SSH OTP | `section1/playbooks/test-vault-ssh.yml` | ZTA Lab Inventory | ZTA Machine Credential |
 | Test OPA Policy | `section1/playbooks/test-opa-policy.yml` | ZTA Lab Inventory | ZTA Machine Credential |
 
-### Step 8 — Run Verification
+---
 
-Launch the **Verify ZTA Services** template and confirm all services report healthy.
+## Exercise 1.4 — Verify All ZTA Services
+
+Launch **Verify ZTA Services** and confirm every component is healthy:
+
+- IdM (FreeIPA): `RUNNING`
+- Vault: healthy and unsealed
+- OPA: loaded policies
+- Netbox: API accessible
+- Kerberos: TGT obtainable
+- DNS: all `*.zta.lab` names resolve
+- PostgreSQL: running and accepts queries
+- Cisco switch: responds with IOS facts
 
 ---
 
-## Vault SSH OTP — Short-Lived Machine Credentials
+## Exercise 1.5 — Test Vault Dynamic Credentials
 
-This section demonstrates one of the most powerful Zero Trust patterns:
-**eliminating static machine passwords** in favour of just-in-time, single-use
-credentials issued by Vault.
+Launch **Test Vault Integration**.
 
-### How It Works
+**What to observe:**
 
-```
-  ┌────────────┐        ┌─────────────┐        ┌──────────────┐
-  │  Operator / │  1.    │  HashiCorp  │        │  Target RHEL │
-  │  AAP Job    │───────▶│   Vault     │        │   Host       │
-  │             │ Request│  (SSH OTP)  │        │              │
-  │             │  OTP   │             │        │ vault-ssh    │
-  │             │◀───────│ key: a7b3.. │        │   user       │
-  │             │  2.    │             │        │              │
-  │             │        │             │        │ vault-ssh-   │
-  │             │───────────────────────────────▶│  helper      │
-  │             │  3. SSH with OTP               │              │
-  │             │                                │  ┌────────┐  │
-  │             │        │             │◀────────│──│  PAM   │  │
-  │             │        │  Validates  │  4.     │  └────────┘  │
-  │             │        │   OTP ✓     │ Verify  │              │
-  │             │        │  Marks used │         │  Login OK ✓  │
-  └────────────┘        └─────────────┘        └──────────────┘
-```
+- A KV secret is read from Vault (`secret/network/switch01`)
+- A dynamic PostgreSQL user is generated with a 5-minute TTL
+- The username is randomised (e.g. `v-root-ztaapp-s-...`)
+- The credentials are immediately revoked at the end
 
-1. **Request** — The operator (or AAP job) asks Vault for an OTP:
-   `vault write ssh/creds/rhel-otp ip=192.168.1.14`
-2. **Issue** — Vault generates a random OTP and records it
-3. **Login** — The operator SSHes as `vault-ssh` using the OTP as the password
-4. **Verify** — `vault-ssh-helper` (via PAM) calls back to Vault to validate.
-   Vault checks the OTP, marks it as consumed, and allows login.
-5. **Expired** — Any reuse attempt is rejected. The OTP is gone.
+Run the template twice — the usernames will be different each time. Vault
+never reuses credentials.
 
-### Zero Trust Properties
+---
 
-| Property | How It's Achieved |
-|----------|-------------------|
-| No standing access | `vault-ssh` has no static password |
-| Just-in-time | OTP generated only when needed |
-| Short-lived | Single-use — expires on first login |
-| Least privilege | `vault-ssh` has limited sudo (status/logs only) |
-| Audited | Every OTP request is logged in Vault's audit log |
-| Policy-governed | Vault policy `ssh-access` controls who can request OTPs |
+## Exercise 1.6 — Test Vault SSH OTP
 
-### Manual Demo (Outside AAP)
+Launch **Test Vault SSH OTP**.
 
-From the Vault server or any host with the Vault CLI:
+A `vault-ssh` user exists on each RHEL host with **no static password**. The
+only way to log in is via a Vault-issued one-time password.
+
+**What to observe:**
+
+- OTPs are generated for the `app` and `db` hosts
+- First use: SSH login succeeds
+- Second use (same OTP): **login denied** — single-use enforced
+
+### Manual Demo
 
 ```bash
-# Generate an OTP for the app server
 export VAULT_ADDR=https://vault.zta.lab:8200
 export VAULT_SKIP_VERIFY=true
-vault write ssh/creds/rhel-otp ip=192.168.1.14
+vault login -method=userpass username=admin password=ansible123!
 
-# Use the OTP to log in
-ssh vault-ssh@192.168.1.14
-# Enter the OTP when prompted — you're in!
-
-# Try the same OTP again — DENIED (single-use)
-ssh vault-ssh@192.168.1.14
-# Permission denied
+vault write ssh/creds/rhel-otp ip=192.168.1.14    # get an OTP
+ssh vault-ssh@192.168.1.14                          # works once
+ssh vault-ssh@192.168.1.14                          # denied
 ```
+
+---
+
+## Exercise 1.7 — Test OPA Policy Decisions
+
+Launch **Test OPA Policy**.
+
+| Test | Scenario | Expected |
+|------|----------|----------|
+| 1 | Patch — authorised user, all conditions met | ALLOWED |
+| 2 | Patch — user not in `patch-admins` | DENIED |
+| 3 | VLAN — network admin, valid VLAN | ALLOWED |
+| 4 | VLAN — engineer not in `network-admins` | DENIED |
+| 5 | DB access — app deployer, valid request | ALLOWED |
+
+OPA uses **deny-by-default**: no explicit allow rule = no access. Group
+membership in IdM determines what each user can do.
 
 ---
 
 ## Validation Checklist
 
-- [ ] Machine credential connects to all RHEL servers
-- [ ] Vault credential retrieves a test secret
-- [ ] Network credential connects to the Cisco switch
-- [ ] Gitea credential authenticates to `gitea.zta.lab:3000`
-- [ ] Netbox inventory sync shows all lab hosts
-- [ ] Project syncs from Gitea successfully
-- [ ] Verify ZTA Services job completes successfully
-- [ ] Test Vault Integration job retrieves database credentials
-- [ ] Test Vault SSH OTP job generates and uses an OTP successfully
-- [ ] Test Vault SSH OTP job confirms OTP reuse is blocked
-- [ ] Test OPA Policy job shows allow/deny decisions
+- [ ] All credentials created in AAP
+- [ ] Netbox inventory synced with all lab hosts
+- [ ] Gitea project synced successfully
+- [ ] Verify ZTA Services — all services healthy
+- [ ] Vault Integration — dynamic DB credentials generated and revoked
+- [ ] Vault SSH OTP — single-use login works, reuse blocked
+- [ ] OPA Policy — correct allow/deny for each scenario

@@ -1,0 +1,567 @@
+---
+# Pre-workshop setup: Seed Netbox CMDB with the full lab infrastructure
+#
+# Populates Netbox with:
+#   - Site, manufacturers, platforms, device roles, device types
+#   - All workshop devices with interfaces and IP addresses
+#   - IP prefixes and VLAN groups
+#   - Base VLANs (management, app-tier, data-tier)
+#   - ZTA-role tags for architecture documentation
+#
+# Prerequisites:
+#   - Netbox is running on netbox.zta.lab:8000
+#   - NETBOX_TOKEN environment variable is set (or default used)
+#
+# Usage:
+#   export NETBOX_TOKEN=<your-netbox-api-token>
+#   ansible-playbook -i inventory/hosts.ini setup/configure-netbox.yml
+
+- name: Seed Netbox CMDB with Workshop Infrastructure
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  vars:
+    nb_url: "{{ netbox_url }}"
+    nb_token: "{{ netbox_token }}"
+
+    site_name: ZTA Workshop Lab
+    site_slug: zta-workshop-lab
+
+    # ── Tags (ZTA architecture roles) ──
+    nb_tags:
+      - name: pep
+        slug: pep
+        color: "0000ff"
+        description: "Policy Enforcement Point — AAP"
+      - name: pdp
+        slug: pdp
+        color: "ff6600"
+        description: "Policy Decision Point — OPA"
+      - name: identity-provider
+        slug: identity-provider
+        color: "9900cc"
+        description: "Identity Provider — IdM/FreeIPA"
+      - name: secrets-manager
+        slug: secrets-manager
+        color: "ffcc00"
+        description: "Secrets Manager — HashiCorp Vault"
+      - name: siem
+        slug: siem
+        color: "cc0000"
+        description: "SIEM / Security Monitoring — Wazuh"
+      - name: cmdb
+        slug: cmdb
+        color: "00cc66"
+        description: "CMDB / Source of Truth — Netbox"
+      - name: workload
+        slug: workload
+        color: "3399ff"
+        description: "Application workload"
+      - name: network-infra
+        slug: network-infra
+        color: "999999"
+        description: "Network infrastructure"
+      - name: zero-trust
+        slug: zero-trust
+        color: "000000"
+        description: "Part of Zero Trust Architecture"
+
+    # ── Manufacturers ──
+    nb_manufacturers:
+      - name: Red Hat
+        slug: red-hat
+      - name: Cisco
+        slug: cisco
+      - name: HashiCorp
+        slug: hashicorp
+      - name: Wazuh
+        slug: wazuh
+      - name: NetBox
+        slug: netbox-vendor
+
+    # ── Platforms ──
+    nb_platforms:
+      - name: RHEL 9
+        slug: rhel-9
+        manufacturer: Red Hat
+      - name: Cisco IOS-XE
+        slug: cisco-ios-xe
+        manufacturer: Cisco
+
+    # ── Device Roles ──
+    nb_device_roles:
+      - name: Identity Provider
+        slug: identity-provider
+        color: "9900cc"
+      - name: Automation Controller
+        slug: automation-controller
+        color: "0000ff"
+      - name: Secrets Manager
+        slug: secrets-manager
+        color: "ffcc00"
+      - name: Security Appliance
+        slug: security-appliance
+        color: "cc0000"
+      - name: Application Server
+        slug: application-server
+        color: "3399ff"
+      - name: CMDB Server
+        slug: cmdb-server
+        color: "00cc66"
+      - name: Network Switch
+        slug: network-switch
+        color: "999999"
+
+    # ── Device Types ──
+    nb_device_types:
+      - model: RHEL 9 Virtual Machine
+        slug: rhel9-vm
+        manufacturer: Red Hat
+        part_number: RHEL-9-VM
+      - model: Catalyst 8000v
+        slug: catalyst-8000v
+        manufacturer: Cisco
+        part_number: C8000V
+
+    # ── Devices ──
+    nb_devices:
+      - name: central.zta.lab
+        role: Identity Provider
+        device_type: RHEL 9 Virtual Machine
+        platform: RHEL 9
+        tags: [identity-provider, pdp, zero-trust]
+        description: "IdM (FreeIPA) + OPA + Gitea — identity, policy, source control"
+        interfaces:
+          - name: eth0
+            type: virtual
+            ip: 192.168.1.11/24
+
+      - name: control.zta.lab
+        role: Automation Controller
+        device_type: RHEL 9 Virtual Machine
+        platform: RHEL 9
+        tags: [pep, zero-trust]
+        description: "Ansible Automation Platform — Policy Enforcement Point"
+        interfaces:
+          - name: eth0
+            type: virtual
+            ip: 192.168.1.10/24
+
+      - name: vault.zta.lab
+        role: Secrets Manager
+        device_type: RHEL 9 Virtual Machine
+        platform: RHEL 9
+        tags: [secrets-manager, zero-trust]
+        description: "HashiCorp Vault — dynamic secrets, SSH OTP, credential management"
+        interfaces:
+          - name: eth0
+            type: virtual
+            ip: 192.168.1.12/24
+
+      - name: wazuh.zta.lab
+        role: Security Appliance
+        device_type: RHEL 9 Virtual Machine
+        platform: RHEL 9
+        tags: [siem, zero-trust]
+        description: "Wazuh SIEM — security monitoring, intrusion detection, EDA integration"
+        interfaces:
+          - name: eth0
+            type: virtual
+            ip: 192.168.1.13/24
+
+      - name: node01.zta.lab
+        role: Application Server
+        device_type: RHEL 9 Virtual Machine
+        platform: RHEL 9
+        tags: [workload, zero-trust]
+        description: "Application + Database server — Global Telemetry Platform + PostgreSQL"
+        interfaces:
+          - name: eth0
+            type: virtual
+            ip: 192.168.1.14/24
+
+      - name: netbox.zta.lab
+        role: CMDB Server
+        device_type: RHEL 9 Virtual Machine
+        platform: RHEL 9
+        tags: [cmdb, zero-trust]
+        description: "Netbox — CMDB / Infrastructure Source of Truth"
+        interfaces:
+          - name: eth0
+            type: virtual
+            ip: 192.168.1.15/24
+
+      - name: switch01.zta.lab
+        role: Network Switch
+        device_type: Catalyst 8000v
+        platform: Cisco IOS-XE
+        tags: [network-infra, zero-trust]
+        description: "Cisco Catalyst 8000v — virtual switch for VLAN / network segmentation demos"
+        interfaces:
+          - name: GigabitEthernet1
+            type: 1000base-t
+            ip: 192.168.1.16/24
+
+    # ── IP Prefixes ──
+    nb_prefixes:
+      - prefix: "192.168.1.0/24"
+        description: "Management network — workshop lab"
+        status: active
+        is_pool: false
+      - prefix: "10.10.0.0/24"
+        description: "VLAN 10 — Management tier"
+        vlan_id: 10
+        status: active
+      - prefix: "10.20.0.0/24"
+        description: "VLAN 20 — Application tier"
+        vlan_id: 20
+        status: active
+      - prefix: "10.30.0.0/24"
+        description: "VLAN 30 — Data tier"
+        vlan_id: 30
+        status: active
+
+    # ── VLANs ──
+    nb_vlans:
+      - vid: 10
+        name: MGMT
+        status: active
+        description: "Management VLAN — infrastructure access"
+      - vid: 20
+        name: APP-TIER
+        status: active
+        description: "Application tier — web / API servers"
+      - vid: 30
+        name: DATA-TIER
+        status: active
+        description: "Data tier — database servers"
+
+    # ── Services (running on devices) ──
+    nb_services:
+      - device: central.zta.lab
+        name: IdM (FreeIPA)
+        ports: [389, 636, 88, 464, 80, 443]
+        protocol: tcp
+        description: "LDAP, LDAPS, Kerberos, HTTP/S"
+      - device: central.zta.lab
+        name: OPA
+        ports: [8181]
+        protocol: tcp
+        description: "Open Policy Agent — REST API"
+      - device: central.zta.lab
+        name: Gitea
+        ports: [3000]
+        protocol: tcp
+        description: "Git server — source control"
+      - device: central.zta.lab
+        name: SPIRE Server
+        ports: [8081]
+        protocol: tcp
+        description: "SPIFFE Runtime Environment — workload identity"
+      - device: control.zta.lab
+        name: AAP Controller
+        ports: [443]
+        protocol: tcp
+        description: "Ansible Automation Platform — web UI + API"
+      - device: control.zta.lab
+        name: EDA Controller
+        ports: [5000]
+        protocol: tcp
+        description: "Event-Driven Ansible — webhook endpoint"
+      - device: vault.zta.lab
+        name: Vault
+        ports: [8200]
+        protocol: tcp
+        description: "HashiCorp Vault — secrets management API"
+      - device: wazuh.zta.lab
+        name: Wazuh Manager
+        ports: [1514, 1515, 55000]
+        protocol: tcp
+        description: "Wazuh SIEM — agent comms + API"
+      - device: wazuh.zta.lab
+        name: Wazuh Dashboard
+        ports: [443]
+        protocol: tcp
+        description: "Wazuh web dashboard"
+      - device: node01.zta.lab
+        name: Global Telemetry Platform
+        ports: [8080]
+        protocol: tcp
+        description: "Flask application — workshop demo app"
+      - device: node01.zta.lab
+        name: PostgreSQL
+        ports: [5432]
+        protocol: tcp
+        description: "Database — dynamic credentials via Vault"
+      - device: netbox.zta.lab
+        name: Netbox
+        ports: [8000]
+        protocol: tcp
+        description: "CMDB — infrastructure source of truth"
+
+  tasks:
+    # ═══════════════════════════════════════════════════════════════════
+    # Phase 1 — Foundation objects (site, tags, manufacturers, roles)
+    # ═══════════════════════════════════════════════════════════════════
+
+    - name: "Phase 1 | Create site"
+      netbox.netbox.netbox_site:
+        netbox_url: "{{ nb_url }}"
+        netbox_token: "{{ nb_token }}"
+        data:
+          name: "{{ site_name }}"
+          slug: "{{ site_slug }}"
+          status: active
+          description: "Zero Trust Architecture workshop lab environment"
+        state: present
+      tags: [phase1, foundation]
+
+    - name: "Phase 1 | Create ZTA tags"
+      netbox.netbox.netbox_tag:
+        netbox_url: "{{ nb_url }}"
+        netbox_token: "{{ nb_token }}"
+        data:
+          name: "{{ item.name }}"
+          slug: "{{ item.slug }}"
+          color: "{{ item.color }}"
+          description: "{{ item.description }}"
+        state: present
+      loop: "{{ nb_tags }}"
+      loop_control:
+        label: "{{ item.name }}"
+      tags: [phase1, foundation]
+
+    - name: "Phase 1 | Create manufacturers"
+      netbox.netbox.netbox_manufacturer:
+        netbox_url: "{{ nb_url }}"
+        netbox_token: "{{ nb_token }}"
+        data:
+          name: "{{ item.name }}"
+          slug: "{{ item.slug }}"
+        state: present
+      loop: "{{ nb_manufacturers }}"
+      loop_control:
+        label: "{{ item.name }}"
+      tags: [phase1, foundation]
+
+    - name: "Phase 1 | Create platforms"
+      netbox.netbox.netbox_platform:
+        netbox_url: "{{ nb_url }}"
+        netbox_token: "{{ nb_token }}"
+        data:
+          name: "{{ item.name }}"
+          slug: "{{ item.slug }}"
+          manufacturer: "{{ item.manufacturer }}"
+        state: present
+      loop: "{{ nb_platforms }}"
+      loop_control:
+        label: "{{ item.name }}"
+      tags: [phase1, foundation]
+
+    - name: "Phase 1 | Create device roles"
+      netbox.netbox.netbox_device_role:
+        netbox_url: "{{ nb_url }}"
+        netbox_token: "{{ nb_token }}"
+        data:
+          name: "{{ item.name }}"
+          slug: "{{ item.slug }}"
+          color: "{{ item.color }}"
+        state: present
+      loop: "{{ nb_device_roles }}"
+      loop_control:
+        label: "{{ item.name }}"
+      tags: [phase1, foundation]
+
+    - name: "Phase 1 | Create device types"
+      netbox.netbox.netbox_device_type:
+        netbox_url: "{{ nb_url }}"
+        netbox_token: "{{ nb_token }}"
+        data:
+          model: "{{ item.model }}"
+          slug: "{{ item.slug }}"
+          manufacturer: "{{ item.manufacturer }}"
+          part_number: "{{ item.part_number }}"
+        state: present
+      loop: "{{ nb_device_types }}"
+      loop_control:
+        label: "{{ item.model }}"
+      tags: [phase1, foundation]
+
+    # ═══════════════════════════════════════════════════════════════════
+    # Phase 2 — Devices
+    # ═══════════════════════════════════════════════════════════════════
+
+    - name: "Phase 2 | Create devices"
+      netbox.netbox.netbox_device:
+        netbox_url: "{{ nb_url }}"
+        netbox_token: "{{ nb_token }}"
+        data:
+          name: "{{ item.name }}"
+          site: "{{ site_name }}"
+          device_role: "{{ item.role }}"
+          device_type: "{{ item.device_type }}"
+          platform: "{{ item.platform }}"
+          status: active
+          tags: "{{ item.tags }}"
+          comments: "{{ item.description }}"
+        state: present
+      loop: "{{ nb_devices }}"
+      loop_control:
+        label: "{{ item.name }}"
+      tags: [phase2, devices]
+
+    # ═══════════════════════════════════════════════════════════════════
+    # Phase 3 — Interfaces and IP addresses
+    # ═══════════════════════════════════════════════════════════════════
+
+    - name: "Phase 3 | Create interfaces"
+      netbox.netbox.netbox_device_interface:
+        netbox_url: "{{ nb_url }}"
+        netbox_token: "{{ nb_token }}"
+        data:
+          device: "{{ item.0.name }}"
+          name: "{{ item.1.name }}"
+          type: "{{ item.1.type }}"
+          enabled: true
+        state: present
+      loop: "{{ nb_devices | subelements('interfaces') }}"
+      loop_control:
+        label: "{{ item.0.name }} → {{ item.1.name }}"
+      tags: [phase3, interfaces]
+
+    - name: "Phase 3 | Assign IP addresses"
+      netbox.netbox.netbox_ip_address:
+        netbox_url: "{{ nb_url }}"
+        netbox_token: "{{ nb_token }}"
+        data:
+          address: "{{ item.1.ip }}"
+          status: active
+          assigned_object:
+            device: "{{ item.0.name }}"
+            name: "{{ item.1.name }}"
+          description: "{{ item.0.name }} primary"
+        state: present
+      loop: "{{ nb_devices | subelements('interfaces') }}"
+      loop_control:
+        label: "{{ item.0.name }} → {{ item.1.ip }}"
+      tags: [phase3, ip-addresses]
+
+    - name: "Phase 3 | Set primary IP on each device"
+      netbox.netbox.netbox_device:
+        netbox_url: "{{ nb_url }}"
+        netbox_token: "{{ nb_token }}"
+        data:
+          name: "{{ item.name }}"
+          primary_ip4: "{{ item.interfaces[0].ip }}"
+        state: present
+      loop: "{{ nb_devices }}"
+      loop_control:
+        label: "{{ item.name }} → {{ item.interfaces[0].ip }}"
+      tags: [phase3, ip-addresses]
+
+    # ═══════════════════════════════════════════════════════════════════
+    # Phase 4 — IP prefixes and VLANs
+    # ═══════════════════════════════════════════════════════════════════
+
+    - name: "Phase 4 | Create VLANs"
+      netbox.netbox.netbox_vlan:
+        netbox_url: "{{ nb_url }}"
+        netbox_token: "{{ nb_token }}"
+        data:
+          vid: "{{ item.vid }}"
+          name: "{{ item.name }}"
+          site: "{{ site_name }}"
+          status: "{{ item.status }}"
+          description: "{{ item.description }}"
+          tags:
+            - zero-trust
+        state: present
+      loop: "{{ nb_vlans }}"
+      loop_control:
+        label: "VLAN {{ item.vid }} ({{ item.name }})"
+      tags: [phase4, vlans]
+
+    - name: "Phase 4 | Create IP prefixes"
+      netbox.netbox.netbox_prefix:
+        netbox_url: "{{ nb_url }}"
+        netbox_token: "{{ nb_token }}"
+        data:
+          prefix: "{{ item.prefix }}"
+          site: "{{ site_name }}"
+          status: "{{ item.status }}"
+          description: "{{ item.description }}"
+          is_pool: "{{ item.is_pool | default(false) }}"
+        state: present
+      loop: "{{ nb_prefixes }}"
+      loop_control:
+        label: "{{ item.prefix }}"
+      tags: [phase4, prefixes]
+
+    # ═══════════════════════════════════════════════════════════════════
+    # Phase 5 — Services
+    # ═══════════════════════════════════════════════════════════════════
+
+    - name: "Phase 5 | Register services on devices"
+      netbox.netbox.netbox_service:
+        netbox_url: "{{ nb_url }}"
+        netbox_token: "{{ nb_token }}"
+        data:
+          device: "{{ item.device }}"
+          name: "{{ item.name }}"
+          ports: "{{ item.ports }}"
+          protocol: "{{ item.protocol }}"
+          description: "{{ item.description }}"
+          tags:
+            - zero-trust
+        state: present
+      loop: "{{ nb_services }}"
+      loop_control:
+        label: "{{ item.device }} → {{ item.name }}"
+      tags: [phase5, services]
+
+    # ═══════════════════════════════════════════════════════════════════
+    # Phase 6 — Summary
+    # ═══════════════════════════════════════════════════════════════════
+
+    - name: "Phase 6 | Display Netbox population summary"
+      debug:
+        msg: |
+          ╔════════════════════════════════════════════════════════════════════╗
+          ║           Netbox CMDB — Population Complete                       ║
+          ╠════════════════════════════════════════════════════════════════════╣
+          ║                                                                  ║
+          ║  Site:     {{ site_name | ljust(52) }}║
+          ║  URL:      {{ nb_url | ljust(52) }}║
+          ║                                                                  ║
+          ║  Devices ({{ nb_devices | length }}):                                                    ║
+          {% for dev in nb_devices %}
+          ║    {{ (dev.name | ljust(25) + dev.interfaces[0].ip | ljust(18) + dev.role) | ljust(62) }}║
+          {% endfor %}
+          ║                                                                  ║
+          ║  VLANs ({{ nb_vlans | length }}):                                                     ║
+          {% for vlan in nb_vlans %}
+          ║    {{ ('VLAN ' + vlan.vid | string + ' — ' + vlan.name + ' (' + vlan.description + ')') | ljust(62) }}║
+          {% endfor %}
+          ║                                                                  ║
+          ║  IP Prefixes ({{ nb_prefixes | length }}):                                                ║
+          {% for pfx in nb_prefixes %}
+          ║    {{ (pfx.prefix + ' — ' + pfx.description) | ljust(62) }}║
+          {% endfor %}
+          ║                                                                  ║
+          ║  Services ({{ nb_services | length }}):                                                  ║
+          {% for svc in nb_services %}
+          ║    {{ (svc.device | ljust(22) + svc.name) | ljust(62) }}║
+          {% endfor %}
+          ║                                                                  ║
+          ║  Tags:     {{ nb_tags | map(attribute='name') | join(', ') | ljust(52) }}║
+          ║                                                                  ║
+          ║  ZTA Architecture Mapping:                                       ║
+          ║    PEP:      control.zta.lab (AAP)                               ║
+          ║    PDP:      central.zta.lab (OPA)                               ║
+          ║    IdP:      central.zta.lab (IdM/FreeIPA)                       ║
+          ║    Secrets:  vault.zta.lab   (Vault)                             ║
+          ║    SIEM:     wazuh.zta.lab   (Wazuh)                             ║
+          ║    CMDB:     netbox.zta.lab  (Netbox)                            ║
+          ╚════════════════════════════════════════════════════════════════════╝
+      tags: [phase6, summary]

@@ -1,0 +1,139 @@
+---
+# Pre-workshop setup: Prepare RHEL hosts to accept Vault SSH OTP credentials
+#
+# This playbook:
+#   1. Creates a dedicated 'vault-ssh' local user on each RHEL host
+#   2. Installs the vault-ssh-helper binary
+#   3. Configures PAM and sshd so that the vault-ssh user authenticates
+#      via Vault OTP instead of a static password
+#
+# After this playbook runs, anyone with an SSH OTP from Vault can:
+#   vault write ssh/creds/rhel-otp ip=<target_ip>
+#   ssh vault-ssh@<target> # enter the OTP as the password
+#
+# The OTP is single-use and expires immediately after login or after 30s.
+
+- name: Configure RHEL Hosts for Vault SSH OTP
+  hosts: idm_clients
+  become: true
+  gather_facts: true
+
+  tasks:
+    # ── 1. Create the dedicated SSH OTP user ──
+    - name: Create vault-ssh local user
+      user:
+        name: "{{ vault_ssh_user }}"
+        comment: "Vault SSH OTP — short-lived access"
+        shell: /bin/bash
+        create_home: true
+        state: present
+
+    - name: Grant vault-ssh limited sudo for workshop demos
+      copy:
+        dest: "/etc/sudoers.d/{{ vault_ssh_user }}"
+        content: |
+          {{ vault_ssh_user }} ALL=(ALL) NOPASSWD: /usr/bin/systemctl status *, /usr/bin/journalctl *, /usr/bin/ss, /usr/bin/ip addr
+        mode: '0440'
+        validate: "visudo -cf %s"
+
+    # ── 2. Install vault-ssh-helper ──
+    - name: Create vault-ssh-helper directory
+      file:
+        path: /usr/local/bin
+        state: directory
+        mode: '0755'
+
+    - name: Download vault-ssh-helper
+      get_url:
+        url: "{{ vault_ssh_helper_url }}"
+        dest: /tmp/vault-ssh-helper.zip
+        mode: '0644'
+
+    - name: Install unzip
+      dnf:
+        name: unzip
+        state: present
+
+    - name: Extract vault-ssh-helper
+      unarchive:
+        src: /tmp/vault-ssh-helper.zip
+        dest: /usr/local/bin/
+        remote_src: true
+        mode: '0755'
+      notify: Restart sshd
+
+    - name: Verify vault-ssh-helper binary
+      command: /usr/local/bin/vault-ssh-helper -version
+      register: helper_version
+      changed_when: false
+
+    # ── 3. Configure vault-ssh-helper ──
+    - name: Create vault-ssh-helper config directory
+      file:
+        path: /etc/vault-ssh-helper.d
+        state: directory
+        mode: '0755'
+
+    - name: Write vault-ssh-helper configuration
+      copy:
+        dest: /etc/vault-ssh-helper.d/config.hcl
+        content: |
+          vault_addr = "{{ vault_addr }}"
+          ssh_mount_point = "{{ vault_ssh_secrets_path }}"
+          tls_skip_verify = {{ vault_skip_verify | lower }}
+          allowed_roles = "{{ vault_ssh_role_name }}"
+        mode: '0644'
+      notify: Restart sshd
+
+    # ── 4. Configure PAM for OTP verification ──
+    # We use a Match block in sshd_config so that ONLY the vault-ssh
+    # user goes through Vault OTP. All other users keep their normal auth.
+    - name: Deploy Vault PAM module
+      copy:
+        dest: /etc/pam.d/vault-ssh
+        content: |
+          #%PAM-1.0
+          auth       requisite  pam_exec.so quiet expose_authtok log=/var/log/vault-ssh.log /usr/local/bin/vault-ssh-helper -config=/etc/vault-ssh-helper.d/config.hcl
+          auth       optional   pam_unix.so not_set_pass use_first_pass nodelay
+          account    required   pam_unix.so
+          session    required   pam_limits.so
+        mode: '0644'
+      notify: Restart sshd
+
+    # ── 5. Configure sshd Match block for vault-ssh user ──
+    - name: Enable keyboard-interactive auth and Match block for vault-ssh
+      blockinfile:
+        path: /etc/ssh/sshd_config
+        block: |
+          # Vault SSH OTP — short-lived credentials for the vault-ssh user
+          Match User {{ vault_ssh_user }}
+              AuthenticationMethods keyboard-interactive
+              PasswordAuthentication yes
+              KbdInteractiveAuthentication yes
+              UsePAM yes
+              PAMServiceName vault-ssh
+        marker: "# {mark} VAULT SSH OTP"
+      notify: Restart sshd
+
+    - name: Ensure KbdInteractiveAuthentication is globally enabled
+      lineinfile:
+        path: /etc/ssh/sshd_config
+        regexp: "^#?KbdInteractiveAuthentication"
+        line: "KbdInteractiveAuthentication yes"
+        insertbefore: "^# VAULT SSH OTP"
+      notify: Restart sshd
+
+    # ── 6. Verification ──
+    - name: Display per-host summary
+      debug:
+        msg: >-
+          {{ inventory_hostname }}:
+          vault-ssh user created,
+          vault-ssh-helper {{ helper_version.stdout | default('installed') }},
+          PAM + sshd configured for OTP auth
+
+  handlers:
+    - name: Restart sshd
+      systemd:
+        name: sshd
+        state: restarted

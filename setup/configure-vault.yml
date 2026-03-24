@@ -73,6 +73,22 @@
         max_ttl="{{ vault_db_max_ttl }}"
       environment: "{{ vault_env }}"
 
+    # ── SSH Secrets Engine (One-Time Passwords for RHEL access) ──
+    - name: Enable SSH secrets engine
+      command: "vault secrets enable -path={{ vault_ssh_secrets_path }} ssh"
+      environment: "{{ vault_env }}"
+      register: ssh_enable
+      changed_when: ssh_enable.rc == 0
+      failed_when: ssh_enable.rc != 0 and 'already in use' not in ssh_enable.stderr
+
+    - name: Create SSH OTP role for RHEL machines
+      command: >
+        vault write {{ vault_ssh_secrets_path }}/roles/{{ vault_ssh_role_name }}
+        key_type=otp
+        default_user={{ vault_ssh_user }}
+        cidr_list=192.168.1.0/24,10.0.0.0/8
+      environment: "{{ vault_env }}"
+
     # ── Vault Policies ──
     - name: Write app-deployer policy
       copy:
@@ -104,6 +120,18 @@
           }
         mode: '0644'
 
+    - name: Write ssh-access policy
+      copy:
+        dest: /tmp/vault-policy-ssh-access.hcl
+        content: |
+          path "{{ vault_ssh_secrets_path }}/creds/{{ vault_ssh_role_name }}" {
+            capabilities = ["create", "update"]
+          }
+          path "{{ vault_ssh_secrets_path }}/roles/{{ vault_ssh_role_name }}" {
+            capabilities = ["read"]
+          }
+        mode: '0644'
+
     - name: Apply Vault policies
       command: "vault policy write {{ item.name }} {{ item.file }}"
       environment: "{{ vault_env }}"
@@ -111,6 +139,7 @@
         - { name: app-deployer, file: /tmp/vault-policy-app-deployer.hcl }
         - { name: network-admin, file: /tmp/vault-policy-network-admin.hcl }
         - { name: patch-admin, file: /tmp/vault-policy-patch-admin.hcl }
+        - { name: ssh-access, file: /tmp/vault-policy-ssh-access.hcl }
       loop_control:
         label: "{{ item.name }}"
 
@@ -122,6 +151,7 @@
         - /tmp/vault-policy-app-deployer.hcl
         - /tmp/vault-policy-network-admin.hcl
         - /tmp/vault-policy-patch-admin.hcl
+        - /tmp/vault-policy-ssh-access.hcl
 
     - name: Display Vault configuration summary
       debug:
@@ -139,8 +169,14 @@
             - Role: {{ vault_db_role_name }}
             - TTL:  {{ vault_db_default_ttl }} (max {{ vault_db_max_ttl }})
 
+          SSH OTP Engine:
+            - Path: {{ vault_ssh_secrets_path }}
+            - Role: {{ vault_ssh_role_name }}
+            - User: {{ vault_ssh_user }}
+
           Policies:
-            - app-deployer (DB creds read)
+            - app-deployer  (DB creds read)
             - network-admin (network creds read)
-            - patch-admin (IdM creds read)
+            - patch-admin   (IdM creds read)
+            - ssh-access    (SSH OTP generate)
           ═══════════════════════════════════════════

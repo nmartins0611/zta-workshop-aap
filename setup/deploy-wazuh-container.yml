@@ -195,40 +195,22 @@
         --pod {{ wazuh_pod_name }}
         --restart always
         -v {{ wazuh_data_dir }}/indexer/data:/var/lib/wazuh-indexer:z
-        -v {{ wazuh_data_dir }}/certs/root-ca.pem:/usr/share/wazuh-indexer/certs/root-ca.pem:ro,z
-        -v {{ wazuh_data_dir }}/certs/indexer.pem:/usr/share/wazuh-indexer/certs/indexer.pem:ro,z
-        -v {{ wazuh_data_dir }}/certs/indexer.key:/usr/share/wazuh-indexer/certs/indexer-key.pem:ro,z
-        -v {{ wazuh_data_dir }}/certs/admin.pem:/usr/share/wazuh-indexer/certs/admin.pem:ro,z
-        -v {{ wazuh_data_dir }}/certs/admin.key:/usr/share/wazuh-indexer/certs/admin-key.pem:ro,z
         -e 'OPENSEARCH_JAVA_OPTS=-Xms512m -Xmx512m'
         -e 'bootstrap.memory_lock=true'
         -e 'discovery.type=single-node'
-        -e 'plugins.security.ssl.transport.pemcert_filepath=certs/indexer.pem'
-        -e 'plugins.security.ssl.transport.pemkey_filepath=certs/indexer-key.pem'
-        -e 'plugins.security.ssl.transport.pemtrustedcas_filepath=certs/root-ca.pem'
-        -e 'plugins.security.ssl.http.enabled=true'
-        -e 'plugins.security.ssl.http.pemcert_filepath=certs/indexer.pem'
-        -e 'plugins.security.ssl.http.pemkey_filepath=certs/indexer-key.pem'
-        -e 'plugins.security.ssl.http.pemtrustedcas_filepath=certs/root-ca.pem'
-        -e 'plugins.security.authcz.admin_dn=CN=admin,O=ZTA,L=Lab,ST=Workshop,C=GB'
-        -e 'plugins.security.nodes_dn=CN=wazuh-indexer,O=ZTA,L=Lab,ST=Workshop,C=GB'
-        -e 'plugins.security.allow_default_init_securityindex=true'
+        -e 'plugins.security.disabled=true'
         -e 'compatibility.override_main_response_version=true'
         {{ wazuh_images.indexer }}
 
     - name: Wait for Wazuh Indexer to be ready
       uri:
-        url: "https://localhost:9200"
+        url: "http://localhost:9200"
         method: GET
-        user: admin
-        password: "{{ wazuh_indexer_password }}"
-        force_basic_auth: true
-        validate_certs: false
         status_code: [200]
       register: indexer_health
       until: indexer_health.status == 200
-      retries: 30
-      delay: 5
+      retries: 40
+      delay: 10
 
     # ── Wazuh Manager ──
     - name: Deploy Wazuh Manager ossec.conf
@@ -284,15 +266,8 @@
             <indexer>
               <enabled>yes</enabled>
               <hosts>
-                <host>https://localhost:9200</host>
+                <host>http://localhost:9200</host>
               </hosts>
-              <ssl>
-                <certificate_authorities>
-                  <ca>/etc/ssl/root-ca.pem</ca>
-                </certificate_authorities>
-                <certificate>/etc/ssl/filebeat.pem</certificate>
-                <key>/etc/ssl/filebeat.key</key>
-              </ssl>
             </indexer>
           </ossec_config>
         mode: '0660'
@@ -314,13 +289,10 @@
         -v {{ wazuh_data_dir }}/certs/root-ca.pem:/etc/ssl/root-ca.pem:ro,z
         -v {{ wazuh_data_dir }}/certs/manager.pem:/etc/ssl/filebeat.pem:ro,z
         -v {{ wazuh_data_dir }}/certs/manager.key:/etc/ssl/filebeat.key:ro,z
-        -e INDEXER_URL=https://localhost:9200
+        -e INDEXER_URL=http://localhost:9200
         -e INDEXER_USERNAME=admin
         -e INDEXER_PASSWORD={{ wazuh_indexer_password }}
         -e FILEBEAT_SSL_VERIFICATION_MODE=none
-        -e SSL_CERTIFICATE_AUTHORITIES=/etc/ssl/root-ca.pem
-        -e SSL_CERTIFICATE=/etc/ssl/filebeat.pem
-        -e SSL_KEY=/etc/ssl/filebeat.key
         -e API_USERNAME={{ wazuh_api_user }}
         -e API_PASSWORD={{ wazuh_api_password }}
         {{ wazuh_images.manager }}
@@ -343,8 +315,8 @@
         content: |
           server.host: "0.0.0.0"
           server.port: 5601
-          opensearch.hosts: ["https://localhost:9200"]
-          opensearch.ssl.verificationMode: none
+        opensearch.hosts: ["http://localhost:9200"]
+        opensearch.ssl.verificationMode: none
           opensearch.username: admin
           opensearch.password: {{ wazuh_dashboard_password }}
           opensearch.requestHeadersWhitelist: ["securitytenant", "Authorization"]
@@ -367,7 +339,7 @@
         -v {{ wazuh_data_dir }}/certs/root-ca.pem:/usr/share/wazuh-dashboard/certs/root-ca.pem:ro,z
         -v {{ wazuh_data_dir }}/certs/dashboard.pem:/usr/share/wazuh-dashboard/certs/dashboard.pem:ro,z
         -v {{ wazuh_data_dir }}/certs/dashboard.key:/usr/share/wazuh-dashboard/certs/dashboard-key.pem:ro,z
-        -e INDEXER_URL=https://localhost:9200
+        -e INDEXER_URL=http://localhost:9200
         -e INDEXER_USERNAME=admin
         -e INDEXER_PASSWORD={{ wazuh_indexer_password }}
         -e WAZUH_API_URL=https://localhost

@@ -40,15 +40,11 @@
           - python3-podman
         state: present
 
-    - name: Create Splunk persistent data directories
+    - name: Create Splunk persistent data directory
       file:
-        path: "{{ item }}"
+        path: "{{ splunk_data_dir }}"
         state: directory
         mode: '0755'
-      loop:
-        - "{{ splunk_data_dir }}"
-        - "{{ splunk_data_dir }}/etc"
-        - "{{ splunk_data_dir }}/var"
 
     # ── 2. Pull and run Splunk container ──
     - name: Check if Splunk container exists
@@ -67,22 +63,37 @@
       changed_when: "'Pulling' in pull_result.stdout or pull_result.rc == 0"
 
     - name: Run Splunk Enterprise container
-      command: >
+      shell: >
         podman run -d
         --name {{ splunk_container_name }}
         --hostname splunk.zta.lab
-        --restart always
         -p 8000:8000
         -p 8088:8088
         -p 8089:8089
         -p 9997:9997
-        -v {{ splunk_data_dir }}/etc:/opt/splunk/etc
-        -v {{ splunk_data_dir }}/var:/opt/splunk/var
-        -e SPLUNK_START_ARGS=--accept-license
-        -e SPLUNK_PASSWORD={{ splunk_password }}
-        -e SPLUNK_HEC_TOKEN={{ splunk_hec_token }}
+        -v {{ splunk_data_dir }}:/opt/splunk/var/lib/splunk
+        -e 'SPLUNK_START_ARGS=--accept-license'
+        -e 'SPLUNK_PASSWORD={{ splunk_password }}'
+        -e 'SPLUNK_HEC_TOKEN={{ splunk_hec_token }}'
         {{ splunk_image }}
       register: splunk_run
+
+    - name: Check container is running
+      command: "podman ps --filter name={{ splunk_container_name }} --format '{{ '{{' }}.Status{{ '}}' }}'"
+      register: container_status
+      changed_when: false
+
+    - name: Show container logs if not running
+      shell: "podman logs {{ splunk_container_name }} 2>&1 | tail -30"
+      register: container_logs
+      when: "'Up' not in container_status.stdout"
+      changed_when: false
+      failed_when: false
+
+    - name: Display container logs for debugging
+      debug:
+        msg: "{{ container_logs.stdout_lines }}"
+      when: container_logs is not skipped and container_logs.stdout_lines is defined
 
     # ── 3. Wait for Splunk to start ──
     - name: Wait for Splunk web interface (can take 60-90 seconds)

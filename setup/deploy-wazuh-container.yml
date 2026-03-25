@@ -125,22 +125,30 @@
         - { name: dashboard, cn: wazuh-dashboard }
         - { name: admin, cn: admin }
 
-    - name: Set certificate permissions
+    - name: Set ownership to wazuh-indexer UID (1000) for all certs
       file:
         path: "{{ wazuh_data_dir }}/certs"
         recurse: true
+        owner: "1000"
+        group: "1000"
         mode: '0644'
 
-    - name: Set private key permissions
+    - name: Set private key permissions (readable by wazuh-indexer)
       file:
         path: "{{ wazuh_data_dir }}/certs/{{ item }}"
-        mode: '0600'
+        owner: "1000"
+        group: "1000"
+        mode: '0640'
       loop:
         - root-ca.key
         - indexer.key
         - manager.key
         - dashboard.key
         - admin.key
+
+    - name: Set SELinux context on Wazuh data directory
+      command: "chcon -R -t container_file_t {{ wazuh_data_dir }}"
+      changed_when: true
 
     # ═══════════════════════════════════════════════════════════════════
     # Phase 3 — Clean up any existing deployment
@@ -186,12 +194,12 @@
         --name wazuh-indexer
         --pod {{ wazuh_pod_name }}
         --restart always
-        -v {{ wazuh_data_dir }}/indexer/data:/var/lib/wazuh-indexer
-        -v {{ wazuh_data_dir }}/certs/root-ca.pem:/usr/share/wazuh-indexer/certs/root-ca.pem:ro
-        -v {{ wazuh_data_dir }}/certs/indexer.pem:/usr/share/wazuh-indexer/certs/indexer.pem:ro
-        -v {{ wazuh_data_dir }}/certs/indexer.key:/usr/share/wazuh-indexer/certs/indexer-key.pem:ro
-        -v {{ wazuh_data_dir }}/certs/admin.pem:/usr/share/wazuh-indexer/certs/admin.pem:ro
-        -v {{ wazuh_data_dir }}/certs/admin.key:/usr/share/wazuh-indexer/certs/admin-key.pem:ro
+        -v {{ wazuh_data_dir }}/indexer/data:/var/lib/wazuh-indexer:z
+        -v {{ wazuh_data_dir }}/certs/root-ca.pem:/usr/share/wazuh-indexer/certs/root-ca.pem:ro,z
+        -v {{ wazuh_data_dir }}/certs/indexer.pem:/usr/share/wazuh-indexer/certs/indexer.pem:ro,z
+        -v {{ wazuh_data_dir }}/certs/indexer.key:/usr/share/wazuh-indexer/certs/indexer-key.pem:ro,z
+        -v {{ wazuh_data_dir }}/certs/admin.pem:/usr/share/wazuh-indexer/certs/admin.pem:ro,z
+        -v {{ wazuh_data_dir }}/certs/admin.key:/usr/share/wazuh-indexer/certs/admin-key.pem:ro,z
         -e 'OPENSEARCH_JAVA_OPTS=-Xms512m -Xmx512m'
         -e 'bootstrap.memory_lock=true'
         -e 'discovery.type=single-node'
@@ -295,17 +303,17 @@
         --name wazuh-manager
         --pod {{ wazuh_pod_name }}
         --restart always
-        -v {{ wazuh_data_dir }}/manager/etc:/var/ossec/etc
-        -v {{ wazuh_data_dir }}/manager/logs:/var/ossec/logs
-        -v {{ wazuh_data_dir }}/manager/queue:/var/ossec/queue
-        -v {{ wazuh_data_dir }}/manager/var:/var/ossec/var/multigroups
-        -v {{ wazuh_data_dir }}/manager/integrations:/var/ossec/integrations
-        -v {{ wazuh_data_dir }}/manager/active-response:/var/ossec/active-response/bin
-        -v {{ wazuh_data_dir }}/manager/agentless:/var/ossec/agentless
-        -v {{ wazuh_data_dir }}/manager/wodles:/var/ossec/wodles
-        -v {{ wazuh_data_dir }}/certs/root-ca.pem:/etc/ssl/root-ca.pem:ro
-        -v {{ wazuh_data_dir }}/certs/manager.pem:/etc/ssl/filebeat.pem:ro
-        -v {{ wazuh_data_dir }}/certs/manager.key:/etc/ssl/filebeat.key:ro
+        -v {{ wazuh_data_dir }}/manager/etc:/var/ossec/etc:z
+        -v {{ wazuh_data_dir }}/manager/logs:/var/ossec/logs:z
+        -v {{ wazuh_data_dir }}/manager/queue:/var/ossec/queue:z
+        -v {{ wazuh_data_dir }}/manager/var:/var/ossec/var/multigroups:z
+        -v {{ wazuh_data_dir }}/manager/integrations:/var/ossec/integrations:z
+        -v {{ wazuh_data_dir }}/manager/active-response:/var/ossec/active-response/bin:z
+        -v {{ wazuh_data_dir }}/manager/agentless:/var/ossec/agentless:z
+        -v {{ wazuh_data_dir }}/manager/wodles:/var/ossec/wodles:z
+        -v {{ wazuh_data_dir }}/certs/root-ca.pem:/etc/ssl/root-ca.pem:ro,z
+        -v {{ wazuh_data_dir }}/certs/manager.pem:/etc/ssl/filebeat.pem:ro,z
+        -v {{ wazuh_data_dir }}/certs/manager.key:/etc/ssl/filebeat.key:ro,z
         -e INDEXER_URL=https://localhost:9200
         -e INDEXER_USERNAME=admin
         -e INDEXER_PASSWORD={{ wazuh_indexer_password }}
@@ -355,10 +363,10 @@
         --name wazuh-dashboard
         --pod {{ wazuh_pod_name }}
         --restart always
-        -v {{ wazuh_data_dir }}/dashboard/opensearch_dashboards.yml:/usr/share/wazuh-dashboard/config/opensearch_dashboards.yml:ro
-        -v {{ wazuh_data_dir }}/certs/root-ca.pem:/usr/share/wazuh-dashboard/certs/root-ca.pem:ro
-        -v {{ wazuh_data_dir }}/certs/dashboard.pem:/usr/share/wazuh-dashboard/certs/dashboard.pem:ro
-        -v {{ wazuh_data_dir }}/certs/dashboard.key:/usr/share/wazuh-dashboard/certs/dashboard-key.pem:ro
+        -v {{ wazuh_data_dir }}/dashboard/opensearch_dashboards.yml:/usr/share/wazuh-dashboard/config/opensearch_dashboards.yml:ro,z
+        -v {{ wazuh_data_dir }}/certs/root-ca.pem:/usr/share/wazuh-dashboard/certs/root-ca.pem:ro,z
+        -v {{ wazuh_data_dir }}/certs/dashboard.pem:/usr/share/wazuh-dashboard/certs/dashboard.pem:ro,z
+        -v {{ wazuh_data_dir }}/certs/dashboard.key:/usr/share/wazuh-dashboard/certs/dashboard-key.pem:ro,z
         -e INDEXER_URL=https://localhost:9200
         -e INDEXER_USERNAME=admin
         -e INDEXER_PASSWORD={{ wazuh_indexer_password }}

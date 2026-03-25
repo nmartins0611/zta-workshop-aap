@@ -73,6 +73,7 @@
         -p 9997:9997
         -v {{ splunk_data_dir }}:/opt/splunk/var/lib/splunk
         -e 'SPLUNK_START_ARGS=--accept-license'
+        -e 'SPLUNK_GENERAL_TERMS=--accept-sgt-current-at-splunk-com'
         -e 'SPLUNK_PASSWORD={{ splunk_password }}'
         -e 'SPLUNK_HEC_TOKEN={{ splunk_hec_token }}'
         {{ splunk_image }}

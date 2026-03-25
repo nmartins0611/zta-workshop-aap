@@ -1,0 +1,236 @@
+---
+# Deploy Splunk Enterprise as a container on central
+#
+# Services exposed:
+#   - Web UI:                http://central.zta.lab:8000
+#   - HTTP Event Collector:  https://central.zta.lab:8088
+#   - Management API:        https://central.zta.lab:8089
+#   - Forwarder receiving:   central.zta.lab:9997
+#
+# Credentials:
+#   - Admin user:  admin
+#   - Password:    ansible123!
+#
+# Usage:
+#   ansible-playbook -i inventory/hosts.ini setup/deploy-splunk.yml
+
+- name: Deploy Splunk Enterprise Container
+  hosts: zta_services
+  become: true
+  gather_facts: true
+
+  vars:
+    splunk_container_name: splunk
+    splunk_image: docker.io/splunk/splunk:latest
+    splunk_password: "{{ idm_admin_password }}"
+    splunk_hec_token: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+    splunk_data_dir: /opt/splunk-data
+    splunk_ports:
+      - "8000:8000"
+      - "8088:8088"
+      - "8089:8089"
+      - "9997:9997"
+
+  tasks:
+    # ── 1. Prerequisites ──
+    - name: Ensure podman is installed
+      dnf:
+        name:
+          - podman
+          - python3-podman
+        state: present
+
+    - name: Create Splunk persistent data directories
+      file:
+        path: "{{ item }}"
+        state: directory
+        mode: '0755'
+      loop:
+        - "{{ splunk_data_dir }}"
+        - "{{ splunk_data_dir }}/etc"
+        - "{{ splunk_data_dir }}/var"
+
+    # ── 2. Pull and run Splunk container ──
+    - name: Check if Splunk container exists
+      command: "podman inspect {{ splunk_container_name }}"
+      register: splunk_inspect
+      changed_when: false
+      failed_when: false
+
+    - name: Remove existing Splunk container (for clean redeploy)
+      command: "podman rm -f {{ splunk_container_name }}"
+      when: splunk_inspect.rc == 0
+
+    - name: Pull Splunk image
+      command: "podman pull {{ splunk_image }}"
+      register: pull_result
+      changed_when: "'Pulling' in pull_result.stdout or pull_result.rc == 0"
+
+    - name: Run Splunk Enterprise container
+      command: >
+        podman run -d
+        --name {{ splunk_container_name }}
+        --hostname splunk.zta.lab
+        --restart always
+        -p 8000:8000
+        -p 8088:8088
+        -p 8089:8089
+        -p 9997:9997
+        -v {{ splunk_data_dir }}/etc:/opt/splunk/etc
+        -v {{ splunk_data_dir }}/var:/opt/splunk/var
+        -e SPLUNK_START_ARGS=--accept-license
+        -e SPLUNK_PASSWORD={{ splunk_password }}
+        -e SPLUNK_HEC_TOKEN={{ splunk_hec_token }}
+        {{ splunk_image }}
+      register: splunk_run
+
+    # ── 3. Wait for Splunk to start ──
+    - name: Wait for Splunk web interface (can take 60-90 seconds)
+      uri:
+        url: "http://localhost:8000"
+        method: GET
+        status_code: [200, 303]
+        validate_certs: false
+      register: splunk_health
+      until: splunk_health.status in [200, 303]
+      retries: 30
+      delay: 5
+
+    # ── 4. Configure HEC via REST API ──
+    - name: Wait for Splunk management API
+      uri:
+        url: "https://localhost:8089/services/server/info"
+        method: GET
+        user: admin
+        password: "{{ splunk_password }}"
+        force_basic_auth: true
+        validate_certs: false
+        status_code: [200]
+      register: mgmt_health
+      until: mgmt_health.status == 200
+      retries: 30
+      delay: 5
+
+    - name: Enable HTTP Event Collector
+      uri:
+        url: "https://localhost:8089/servicesNS/admin/splunk_httpinput/data/inputs/http/http"
+        method: POST
+        user: admin
+        password: "{{ splunk_password }}"
+        force_basic_auth: true
+        validate_certs: false
+        body_format: form-urlencoded
+        body:
+          disabled: "0"
+          enableSSL: "1"
+        status_code: [200, 201, 409]
+
+    - name: Create HEC token for Wazuh/ZTA integration
+      uri:
+        url: "https://localhost:8089/servicesNS/admin/splunk_httpinput/data/inputs/http"
+        method: POST
+        user: admin
+        password: "{{ splunk_password }}"
+        force_basic_auth: true
+        validate_certs: false
+        body_format: form-urlencoded
+        body:
+          name: zta-workshop
+          token: "{{ splunk_hec_token }}"
+          index: main
+          sourcetype: _json
+          disabled: "0"
+        status_code: [200, 201, 409]
+      register: hec_create
+
+    # ── 5. Create indexes for workshop data ──
+    - name: Create security events index
+      uri:
+        url: "https://localhost:8089/servicesNS/admin/search/data/indexes"
+        method: POST
+        user: admin
+        password: "{{ splunk_password }}"
+        force_basic_auth: true
+        validate_certs: false
+        body_format: form-urlencoded
+        body:
+          name: zta_security
+          datatype: event
+        status_code: [200, 201, 409]
+
+    - name: Create audit events index
+      uri:
+        url: "https://localhost:8089/servicesNS/admin/search/data/indexes"
+        method: POST
+        user: admin
+        password: "{{ splunk_password }}"
+        force_basic_auth: true
+        validate_certs: false
+        body_format: form-urlencoded
+        body:
+          name: zta_audit
+          datatype: event
+        status_code: [200, 201, 409]
+
+    # ── 6. Open firewall ports ──
+    - name: Open Splunk firewall ports
+      firewalld:
+        port: "{{ item }}"
+        permanent: true
+        immediate: true
+        state: enabled
+      loop:
+        - 8000/tcp
+        - 8088/tcp
+        - 8089/tcp
+        - 9997/tcp
+
+    # ── 7. Verify with a test HEC event ──
+    - name: Send test event to HEC
+      uri:
+        url: "https://localhost:8088/services/collector/event"
+        method: POST
+        headers:
+          Authorization: "Splunk {{ splunk_hec_token }}"
+        body_format: json
+        body:
+          event: "ZTA Workshop Splunk deployment verified"
+          sourcetype: "zta:setup"
+          source: "ansible"
+          index: main
+        validate_certs: false
+        status_code: [200]
+      register: hec_test
+
+    # ── Summary ──
+    - name: Display Splunk deployment summary
+      debug:
+        msg: |
+          ╔════════════════════════════════════════════════════════════════╗
+          ║         Splunk Enterprise — Deployment Complete               ║
+          ╠════════════════════════════════════════════════════════════════╣
+          ║                                                              ║
+          ║  Web UI:     http://central.zta.lab:8000                     ║
+          ║  HEC:        https://central.zta.lab:8088                    ║
+          ║  Mgmt API:   https://central.zta.lab:8089                    ║
+          ║  Forwarder:  central.zta.lab:9997                            ║
+          ║                                                              ║
+          ║  Credentials:                                                ║
+          ║    Username:  admin                                          ║
+          ║    Password:  {{ splunk_password | ljust(46) }}║
+          ║                                                              ║
+          ║  HEC Token:  {{ splunk_hec_token | ljust(46) }}║
+          ║                                                              ║
+          ║  Indexes:                                                    ║
+          ║    main          — default events                            ║
+          ║    zta_security  — security / brute-force / bypass alerts    ║
+          ║    zta_audit     — AAP job audit trail                       ║
+          ║                                                              ║
+          ║  HEC test:   {{ ('OK' if hec_test.status == 200 else 'FAILED') | ljust(46) }}║
+          ║                                                              ║
+          ║  To forward Wazuh alerts to Splunk:                          ║
+          ║    Configure ossec.conf <integration> with:                  ║
+          ║      name: splunk                                            ║
+          ║      hook_url: https://central.zta.lab:8088/...              ║
+          ║      api_key: {{ splunk_hec_token | ljust(38) }}║
+          ╚════════════════════════════════════════════════════════════════╝

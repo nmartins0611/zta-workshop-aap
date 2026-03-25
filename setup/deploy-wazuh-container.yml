@@ -181,7 +181,7 @@
 
     # ── Wazuh Indexer ──
     - name: Start Wazuh Indexer container
-      command: >
+      shell: >
         podman run -d
         --name wazuh-indexer
         --pod {{ wazuh_pod_name }}
@@ -192,20 +192,20 @@
         -v {{ wazuh_data_dir }}/certs/indexer.key:/usr/share/wazuh-indexer/certs/indexer-key.pem:ro
         -v {{ wazuh_data_dir }}/certs/admin.pem:/usr/share/wazuh-indexer/certs/admin.pem:ro
         -v {{ wazuh_data_dir }}/certs/admin.key:/usr/share/wazuh-indexer/certs/admin-key.pem:ro
-        -e OPENSEARCH_JAVA_OPTS=-Xms512m -Xmx512m
-        -e bootstrap.memory_lock=true
-        -e discovery.type=single-node
-        -e plugins.security.ssl.transport.pemcert_filepath=certs/indexer.pem
-        -e plugins.security.ssl.transport.pemkey_filepath=certs/indexer-key.pem
-        -e plugins.security.ssl.transport.pemtrustedcas_filepath=certs/root-ca.pem
-        -e plugins.security.ssl.http.enabled=true
-        -e plugins.security.ssl.http.pemcert_filepath=certs/indexer.pem
-        -e plugins.security.ssl.http.pemkey_filepath=certs/indexer-key.pem
-        -e plugins.security.ssl.http.pemtrustedcas_filepath=certs/root-ca.pem
-        -e plugins.security.authcz.admin_dn=CN=admin,O=ZTA,L=Lab,ST=Workshop,C=GB
-        -e plugins.security.nodes_dn=CN=wazuh-indexer,O=ZTA,L=Lab,ST=Workshop,C=GB
-        -e plugins.security.allow_default_init_securityindex=true
-        -e compatibility.override_main_response_version=true
+        -e 'OPENSEARCH_JAVA_OPTS=-Xms512m -Xmx512m'
+        -e 'bootstrap.memory_lock=true'
+        -e 'discovery.type=single-node'
+        -e 'plugins.security.ssl.transport.pemcert_filepath=certs/indexer.pem'
+        -e 'plugins.security.ssl.transport.pemkey_filepath=certs/indexer-key.pem'
+        -e 'plugins.security.ssl.transport.pemtrustedcas_filepath=certs/root-ca.pem'
+        -e 'plugins.security.ssl.http.enabled=true'
+        -e 'plugins.security.ssl.http.pemcert_filepath=certs/indexer.pem'
+        -e 'plugins.security.ssl.http.pemkey_filepath=certs/indexer-key.pem'
+        -e 'plugins.security.ssl.http.pemtrustedcas_filepath=certs/root-ca.pem'
+        -e 'plugins.security.authcz.admin_dn=CN=admin,O=ZTA,L=Lab,ST=Workshop,C=GB'
+        -e 'plugins.security.nodes_dn=CN=wazuh-indexer,O=ZTA,L=Lab,ST=Workshop,C=GB'
+        -e 'plugins.security.allow_default_init_securityindex=true'
+        -e 'compatibility.override_main_response_version=true'
         {{ wazuh_images.indexer }}
 
     - name: Wait for Wazuh Indexer to be ready

@@ -25,92 +25,84 @@
     splunk_password: "{{ idm_admin_password }}"
     splunk_hec_token: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
     splunk_data_dir: /opt/splunk-data
-    splunk_ports:
-      - "8000:8000"
-      - "8088:8088"
-      - "8089:8089"
-      - "9997:9997"
+    splunk_service_name: container-splunk
+    splunk_start_args: "--accept-license"
+    splunk_general_terms: "--accept-sgt-current-at-splunk-com"
 
   tasks:
-    # ── 1. Prerequisites ──
+    # ═══════════════════════════════════════════════════════════════════
+    # Phase 1 — Prerequisites
+    # ═══════════════════════════════════════════════════════════════════
+
     - name: Ensure podman is installed
-      dnf:
+      ansible.builtin.dnf:
         name:
           - podman
           - python3-podman
         state: present
 
-    - name: Create Splunk persistent data directory
-      file:
-        path: "{{ splunk_data_dir }}"
+    - name: Create Splunk persistent data directories
+      ansible.builtin.file:
+        path: "{{ item }}"
         state: directory
         mode: '0755'
+        owner: root
+        group: root
+      loop:
+        - "{{ splunk_data_dir }}"
+        - "{{ splunk_data_dir }}/var"
+        - "{{ splunk_data_dir }}/etc"
+        - "{{ splunk_data_dir }}/etc/apps"
 
-    # ── 2. Pull and run Splunk container ──
-    - name: Check if Splunk container exists
-      command: "podman inspect {{ splunk_container_name }}"
-      register: splunk_inspect
-      changed_when: false
+    # ═══════════════════════════════════════════════════════════════════
+    # Phase 2 — Deploy Splunk container
+    # ═══════════════════════════════════════════════════════════════════
+
+    - name: Stop any existing Splunk container
+      containers.podman.podman_container:
+        name: "{{ splunk_container_name }}"
+        state: absent
       failed_when: false
-
-    - name: Remove existing Splunk container (for clean redeploy)
-      command: "podman rm -f {{ splunk_container_name }}"
-      when: splunk_inspect.rc == 0
-
-    - name: Pull Splunk image
-      command: "podman pull {{ splunk_image }}"
-      register: pull_result
-      changed_when: "'Pulling' in pull_result.stdout or pull_result.rc == 0"
 
     - name: Run Splunk Enterprise container
-      shell: >
-        podman run -d
-        --name {{ splunk_container_name }}
-        --hostname splunk.zta.lab
-        -p 8000:8000
-        -p 8088:8088
-        -p 8089:8089
-        -p 9997:9997
-        -v {{ splunk_data_dir }}:/opt/splunk/var/lib/splunk
-        -e 'SPLUNK_START_ARGS=--accept-license'
-        -e 'SPLUNK_GENERAL_TERMS=--accept-sgt-current-at-splunk-com'
-        -e 'SPLUNK_PASSWORD={{ splunk_password }}'
-        -e 'SPLUNK_HEC_TOKEN={{ splunk_hec_token }}'
-        {{ splunk_image }}
-      register: splunk_run
+      containers.podman.podman_container:
+        name: "{{ splunk_container_name }}"
+        image: "{{ splunk_image }}"
+        state: started
+        hostname: splunk.zta.lab
+        privileged: true
+        ports:
+          - "8000:8000"
+          - "8088:8088"
+          - "8089:8089"
+          - "9997:9997"
+        env:
+          SPLUNK_START_ARGS: "{{ splunk_start_args }}"
+          SPLUNK_GENERAL_TERMS: "{{ splunk_general_terms }}"
+          SPLUNK_PASSWORD: "{{ splunk_password }}"
+          SPLUNK_HEC_TOKEN: "{{ splunk_hec_token }}"
+        volume:
+          - "{{ splunk_data_dir }}/var:/opt/splunk/var"
+          - "{{ splunk_data_dir }}/etc:/opt/splunk/etc"
+        detach: true
+      register: splunk_container
 
-    - name: Check container is running
-      command: "podman ps --filter name={{ splunk_container_name }} --format '{{ '{{' }}.Status{{ '}}' }}'"
-      register: container_status
-      changed_when: false
+    # ═══════════════════════════════════════════════════════════════════
+    # Phase 3 — Wait for Splunk to be ready
+    # ═══════════════════════════════════════════════════════════════════
 
-    - name: Show container logs if not running
-      shell: "podman logs {{ splunk_container_name }} 2>&1 | tail -30"
-      register: container_logs
-      when: "'Up' not in container_status.stdout"
-      changed_when: false
-      failed_when: false
-
-    - name: Display container logs for debugging
-      debug:
-        msg: "{{ container_logs.stdout_lines }}"
-      when: container_logs is not skipped and container_logs.stdout_lines is defined
-
-    # ── 3. Wait for Splunk to start ──
     - name: Wait for Splunk web interface (first boot takes 3-5 minutes)
-      uri:
+      ansible.builtin.uri:
         url: "http://localhost:8000"
         method: GET
-        status_code: [200, 303]
-        validate_certs: false
+        status_code: [200, 302, 303]
       register: splunk_health
-      until: splunk_health.status in [200, 303]
+      until: splunk_health.status in [200, 302, 303]
       retries: 60
       delay: 10
 
-    # ── 4. Configure HEC via REST API ──
     - name: Wait for Splunk management API
-      uri:
+      ansible.builtin.uri:
         url: "https://localhost:8089/services/server/info"
         method: GET
         user: admin
@@ -123,8 +115,12 @@
       retries: 30
       delay: 5
 
+    # ═══════════════════════════════════════════════════════════════════
+    # Phase 4 — Configure HEC and indexes
+    # ═══════════════════════════════════════════════════════════════════
+
     - name: Enable HTTP Event Collector
-      uri:
+      ansible.builtin.uri:
         url: "https://localhost:8089/servicesNS/admin/splunk_httpinput/data/inputs/http/http"
         method: POST
         user: admin
@@ -137,8 +133,8 @@
           enableSSL: "1"
         status_code: [200, 201, 409]
 
-    - name: Create HEC token for Wazuh/ZTA integration
-      uri:
+    - name: Create HEC token for ZTA integration
+      ansible.builtin.uri:
         url: "https://localhost:8089/servicesNS/admin/splunk_httpinput/data/inputs/http"
         method: POST
         user: admin
@@ -153,11 +149,9 @@
           sourcetype: _json
           disabled: "0"
         status_code: [200, 201, 409]
-      register: hec_create
 
-    # ── 5. Create indexes for workshop data ──
-    - name: Create security events index
-      uri:
+    - name: Create workshop indexes
+      ansible.builtin.uri:
         url: "https://localhost:8089/servicesNS/admin/search/data/indexes"
         method: POST
         user: admin
@@ -166,9 +160,10 @@
         validate_certs: false
         body_format: form-urlencoded
         body:
-          name: zta_security
+          name: "{{ item.name }}"
           datatype: event
         status_code: [200, 201, 409]
+<<<<<<< HEAD
 
     - name: Create audit events index
       uri:
@@ -187,6 +182,20 @@
     # # ── 6. Open firewall ports ──
     # - name: Open Splunk firewall ports
     #   firewalld:
+=======
+      loop:
+        - { name: zta_security, description: "security / bypass alerts" }
+        - { name: zta_audit, description: "AAP job audit trail" }
+      loop_control:
+        label: "{{ item.name }}"
+
+    # ═══════════════════════════════════════════════════════════════════
+    # Phase 5 — Firewall
+    # ═══════════════════════════════════════════════════════════════════
+
+    # - name: Open Splunk firewall ports
+    #   ansible.builtin.firewalld:
+>>>>>>> d0edbb2 (update)
     #     port: "{{ item }}"
     #     permanent: true
     #     immediate: true
@@ -196,10 +205,35 @@
     #     - 8088/tcp
     #     - 8089/tcp
     #     - 9997/tcp
+<<<<<<< HEAD
+=======
 
-    # ── 7. Verify with a test HEC event ──
+    # ═══════════════════════════════════════════════════════════════════
+    # Phase 6 — Systemd service for reboot persistence
+    # ═══════════════════════════════════════════════════════════════════
+
+    - name: Generate systemd service file for Splunk container
+      containers.podman.podman_generate_systemd:
+        name: "{{ splunk_container_name }}"
+        dest: /etc/systemd/system/
+        restart_policy: always
+        new: false
+      register: splunk_systemd
+
+    - name: Enable and start Splunk systemd service
+      ansible.builtin.systemd:
+        name: "{{ splunk_service_name }}"
+        enabled: true
+        state: started
+        daemon_reload: true
+
+    # ═══════════════════════════════════════════════════════════════════
+    # Phase 7 — Verify with a test HEC event
+    # ═══════════════════════════════════════════════════════════════════
+>>>>>>> d0edbb2 (update)
+
     - name: Send test event to HEC
-      uri:
+      ansible.builtin.uri:
         url: "https://localhost:8088/services/collector/event"
         method: POST
         headers:
@@ -214,18 +248,21 @@
         status_code: [200]
       register: hec_test
 
-    # ── Summary ──
+    # ═══════════════════════════════════════════════════════════════════
+    # Summary
+    # ═══════════════════════════════════════════════════════════════════
+
     - name: Display Splunk deployment summary
-      debug:
+      ansible.builtin.debug:
         msg: |
           ╔════════════════════════════════════════════════════════════════╗
           ║         Splunk Enterprise — Deployment Complete               ║
           ╠════════════════════════════════════════════════════════════════╣
           ║                                                              ║
-          ║  Web UI:     http://central.zta.lab:8000                     ║
-          ║  HEC:        https://central.zta.lab:8088                    ║
-          ║  Mgmt API:   https://central.zta.lab:8089                    ║
-          ║  Forwarder:  central.zta.lab:9997                            ║
+          ║  Web UI:     http://{{ ansible_default_ipv4.address }}:8000{{ ' ' * 23 }}║
+          ║  HEC:        https://{{ ansible_default_ipv4.address }}:8088{{ ' ' * 22 }}║
+          ║  Mgmt API:   https://{{ ansible_default_ipv4.address }}:8089{{ ' ' * 22 }}║
+          ║  Forwarder:  {{ ansible_default_ipv4.address }}:9997{{ ' ' * 27 }}║
           ║                                                              ║
           ║  Credentials:                                                ║
           ║    Username:  admin                                          ║
@@ -240,9 +277,7 @@
           ║                                                              ║
           ║  HEC test:   {{ ('OK' if hec_test.status == 200 else 'FAILED') | ljust(46) }}║
           ║                                                              ║
-          ║  To forward Wazuh alerts to Splunk:                          ║
-          ║    Configure ossec.conf <integration> with:                  ║
-          ║      name: splunk                                            ║
-          ║      hook_url: https://central.zta.lab:8088/...              ║
-          ║      api_key: {{ splunk_hec_token | ljust(38) }}║
+          ║  Systemd:    {{ splunk_service_name | ljust(46) }}║
+          ║  Status:     systemctl status {{ splunk_service_name | ljust(31) }}║
+          ║  Logs:       journalctl -u {{ splunk_service_name | ljust(33) }}║
           ╚════════════════════════════════════════════════════════════════╝

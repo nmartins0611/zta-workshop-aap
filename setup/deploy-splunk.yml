@@ -184,18 +184,18 @@
           datatype: event
         status_code: [200, 201, 409]
 
-    # ── 6. Open firewall ports ──
-    - name: Open Splunk firewall ports
-      firewalld:
-        port: "{{ item }}"
-        permanent: true
-        immediate: true
-        state: enabled
-      loop:
-        - 8000/tcp
-        - 8088/tcp
-        - 8089/tcp
-        - 9997/tcp
+    # # ── 6. Open firewall ports ──
+    # - name: Open Splunk firewall ports
+    #   firewalld:
+    #     port: "{{ item }}"
+    #     permanent: true
+    #     immediate: true
+    #     state: enabled
+    #   loop:
+    #     - 8000/tcp
+    #     - 8088/tcp
+    #     - 8089/tcp
+    #     - 9997/tcp
 
     # ── 7. Verify with a test HEC event ──
     - name: Send test event to HEC

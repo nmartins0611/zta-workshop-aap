@@ -382,18 +382,18 @@
     # Phase 6 — Firewall and verification
     # ═══════════════════════════════════════════════════════════════════
 
-    - name: Open Wazuh firewall ports
-      firewalld:
-        port: "{{ item }}"
-        permanent: true
-        immediate: true
-        state: enabled
-      loop:
-        - 9200/tcp
-        - 55000/tcp
-        - 1514/tcp
-        - 1515/tcp
-        - 5601/tcp
+    # - name: Open Wazuh firewall ports
+    #   firewalld:
+    #     port: "{{ item }}"
+    #     permanent: true
+    #     immediate: true
+    #     state: enabled
+    #   loop:
+    #     - 9200/tcp
+    #     - 55000/tcp
+    #     - 1514/tcp
+    #     - 1515/tcp
+    #     - 5601/tcp
 
     - name: Verify all containers are running
       command: "podman pod ps --format '{{ '{{' }}.Name{{ '}}' }} {{ '{{' }}.Status{{ '}}' }}'"

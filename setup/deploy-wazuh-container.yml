@@ -188,6 +188,18 @@
         -p 5601:5601
 
     # ── Wazuh Indexer ──
+    - name: Write custom opensearch.yml (security plugin disabled)
+      copy:
+        dest: "{{ wazuh_data_dir }}/indexer/opensearch.yml"
+        content: |
+          cluster.name: wazuh-cluster
+          node.name: node-1
+          network.host: 0.0.0.0
+          discovery.type: single-node
+          compatibility.override_main_response_version: true
+          plugins.security.disabled: true
+        mode: '0644'
+
     - name: Start Wazuh Indexer container
       shell: >
         podman run -d
@@ -195,11 +207,9 @@
         --pod {{ wazuh_pod_name }}
         --restart always
         -v {{ wazuh_data_dir }}/indexer/data:/var/lib/wazuh-indexer:z
+        -v {{ wazuh_data_dir }}/indexer/opensearch.yml:/usr/share/wazuh-indexer/opensearch.yml:ro,z
         -e 'OPENSEARCH_JAVA_OPTS=-Xms512m -Xmx512m'
         -e 'bootstrap.memory_lock=true'
-        -e 'discovery.type=single-node'
-        -e 'plugins.security.disabled=true'
-        -e 'compatibility.override_main_response_version=true'
         {{ wazuh_images.indexer }}
 
     - name: Wait for Wazuh Indexer to be ready

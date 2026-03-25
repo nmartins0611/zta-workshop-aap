@@ -315,8 +315,8 @@
         content: |
           server.host: "0.0.0.0"
           server.port: 5601
-        opensearch.hosts: ["http://localhost:9200"]
-        opensearch.ssl.verificationMode: none
+          opensearch.hosts: ["http://localhost:9200"]
+          opensearch.ssl.verificationMode: none
           opensearch.username: admin
           opensearch.password: {{ wazuh_dashboard_password }}
           opensearch.requestHeadersWhitelist: ["securitytenant", "Authorization"]

@@ -97,7 +97,7 @@
       when: container_logs is not skipped and container_logs.stdout_lines is defined
 
     # ── 3. Wait for Splunk to start ──
-    - name: Wait for Splunk web interface (can take 60-90 seconds)
+    - name: Wait for Splunk web interface (first boot takes 3-5 minutes)
       uri:
         url: "http://localhost:8000"
         method: GET
@@ -105,8 +105,8 @@
         validate_certs: false
       register: splunk_health
       until: splunk_health.status in [200, 303]
-      retries: 30
-      delay: 5
+      retries: 60
+      delay: 10
 
     # ── 4. Configure HEC via REST API ──
     - name: Wait for Splunk management API

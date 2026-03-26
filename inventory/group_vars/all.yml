@@ -29,11 +29,19 @@ gitea_repo: zta-app
 gitea_webhook_secret: "{{ lookup('env', 'GITEA_WEBHOOK_SECRET') | default('zta-webhook-secret', true) }}"
 
 # ── Wazuh / SIEM (own VM) ──────────────────────────────────────────
-wazuh_url: "https://wazuh.zta.lab"
+wazuh_url: "http://wazuh.zta.lab:5601"
 wazuh_api_url: "https://wazuh.zta.lab:55000"
 wazuh_api_user: wazuh
-wazuh_api_password: "{{ lookup('env', 'WAZUH_API_PASSWORD') | default('wazuh', true) }}"
+wazuh_api_password: "x8.E0+DZi6zCCz3cG9jvXimSBn5+s4tx"
 wazuh_manager_host: wazuh.zta.lab
+
+# ── Splunk (container on central) ───────────────────────────────────
+splunk_url: "http://splunk.zta.lab:8000"
+splunk_hec_url: "https://splunk.zta.lab:8088"
+splunk_hec_token: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+
+# ── Keycloak (container on central) ─────────────────────────────────
+keycloak_url: "https://keycloak.zta.lab:8543"
 
 # ── AAP Controller (own VM) ─────────────────────────────────────────
 aap_controller_url: "https://aap.zta.lab"

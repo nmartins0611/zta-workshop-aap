@@ -260,16 +260,45 @@
       register: aap_status
       failed_when: false
 
-- name: Verify Network Device
-  hosts: network
+- name: Verify Arista cEOS Switches
+  hosts: zta_services
+  become: true
   gather_facts: false
-  tags: [network]
+  tags: [network, arista, ceos]
 
   tasks:
-    - name: Test switch reachability
-      cisco.ios.ios_facts:
-        gather_subset: min
-      register: switch_facts
+    - name: Check cEOS containers are running
+      command: podman ps --filter name=ceos --format '{{ '{{' }}.Names{{ '}}' }}'
+      register: ceos_containers
+      changed_when: false
+      failed_when: false
+
+    - name: Verify cEOS SSH ports
+      ansible.builtin.wait_for:
+        host: localhost
+        port: "{{ item.port }}"
+        timeout: 5
+      loop:
+        - { name: ceos1, port: 2001 }
+        - { name: ceos2, port: 2002 }
+        - { name: ceos3, port: 2003 }
+      loop_control:
+        label: "{{ item.name }}"
+      register: arista_ssh_check
+      failed_when: false
+
+    - name: Verify cEOS eAPI ports
+      ansible.builtin.wait_for:
+        host: localhost
+        port: "{{ item.port }}"
+        timeout: 5
+      loop:
+        - { name: ceos1, port: 6031 }
+        - { name: ceos2, port: 6032 }
+        - { name: ceos3, port: 6033 }
+      loop_control:
+        label: "{{ item.name }}"
+      register: arista_eapi_check
       failed_when: false
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -327,6 +356,6 @@
           ║  PostgreSQL:       {{ ('OK' if (hostvars['db']['db_check']['rc'] | default(1)) == 0 else 'SKIPPED' if hostvars['db']['db_check'] is not defined else 'FAILED') | ljust(46) }}║
           ║  App Server:       {{ ('OK' if (hostvars['app']['app_http_status']['status'] | default(0)) in [200,302] else 'SKIPPED' if hostvars['app']['app_http_status'] is not defined else 'DOWN/NOT DEPLOYED') | ljust(46) }}║
           ║  AAP Controller:   {{ ('OK' if (hostvars['control']['aap_status']['status'] | default(0)) == 200 else 'SKIPPED' if hostvars['control']['aap_status'] is not defined else 'FAILED') | ljust(46) }}║
-          ║  Cisco Switch:     {{ ('OK' if hostvars['switch01']['switch_facts'] is defined and not (hostvars['switch01']['switch_facts']['failed'] | default(true)) else 'SKIPPED' if hostvars['switch01']['switch_facts'] is not defined else 'FAILED') | ljust(46) }}║
+          ║  Arista cEOS:      {{ ('OK' if central.arista_ssh_check is defined and not (central.arista_ssh_check.results[0].failed | default(true)) else 'SKIPPED' if central.arista_ssh_check is not defined else 'FAILED') | ljust(46) }}║
           ║                                                                ║
           ╚══════════════════════════════════════════════════════════════════╝

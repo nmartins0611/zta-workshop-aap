@@ -7,7 +7,10 @@
   gather_facts: false
 
   vars:
+    central_ip: "{{ hostvars['central']['ansible_host'] }}"
+
     dns_records:
+      # ── Physical hosts ──
       - hostname: central
         ip: "{{ hostvars['central']['ansible_host'] }}"
       - hostname: control
@@ -18,20 +21,27 @@
         ip: "{{ hostvars['netbox']['ansible_host'] }}"
       - hostname: gitea
         ip: "{{ hostvars['gitea']['ansible_host'] }}"
-      - hostname: wazuh
-        ip: "{{ hostvars['wazuh']['ansible_host'] }}"
       - hostname: app
         ip: "{{ hostvars['app']['ansible_host'] }}"
       - hostname: db
         ip: "{{ hostvars['db']['ansible_host'] }}"
-      - hostname: switch01
-        ip: "{{ hostvars['switch01']['ansible_host'] }}"
       - hostname: aap
         ip: "{{ hostvars['control']['ansible_host'] }}"
+      # ── Services on central (containers) ──
       - hostname: keycloak
-        ip: "{{ hostvars['central']['ansible_host'] }}"
+        ip: "{{ central_ip }}"
       - hostname: opa
-        ip: "{{ hostvars['central']['ansible_host'] }}"
+        ip: "{{ central_ip }}"
+      - hostname: splunk
+        ip: "{{ central_ip }}"
+      - hostname: wazuh
+        ip: "{{ central_ip }}"
+      - hostname: ceos1
+        ip: "{{ central_ip }}"
+      - hostname: ceos2
+        ip: "{{ central_ip }}"
+      - hostname: ceos3
+        ip: "{{ central_ip }}"
 
   tasks:
     - name: Add DNS A records for workshop VMs

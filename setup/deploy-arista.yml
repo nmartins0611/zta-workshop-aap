@@ -236,9 +236,9 @@
           ║    ceos3:  http://central.zta.lab:6033                       ║
           ║                                                              ║
           ║  Management IPs:                                             ║
-          ║    ceos1:  {{ ceos_addresses.ceos1 | default('unknown') | ljust(46) }}║
-          ║    ceos2:  {{ ceos_addresses.ceos2 | default('unknown') | ljust(46) }}║
-          ║    ceos3:  {{ ceos_addresses.ceos3 | default('unknown') | ljust(46) }}║
+          ║    ceos1:  {{ ceos_addresses.ceos1 | default('unknown') }}
+          ║    ceos2:  {{ ceos_addresses.ceos2 | default('unknown') }}
+          ║    ceos3:  {{ ceos_addresses.ceos3 | default('unknown') }}
           ║                                                              ║
           ║  Networks:                                                   ║
           ║    management — mgmt plane (all switches)                    ║

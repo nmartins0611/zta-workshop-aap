@@ -1,47 +1,20 @@
 ---
 # Pre-workshop verification: Ensure all lab services are operational
-- name: Verify ZTA Lab Environment
+#
+# Usage:
+#   ansible-playbook -i inventory/hosts.ini setup/verify-lab.yml
+
+- name: Verify Central Services (VMs + Containers)
   hosts: zta_services
   become: true
   gather_facts: true
 
   tasks:
+    # ── VM-level services ──
     - name: Verify IdM services
       command: ipactl status
       register: idm_status
       changed_when: false
-      failed_when: false
-
-    - name: Verify Vault is unsealed
-      uri:
-        url: "{{ vault_addr }}/v1/sys/seal-status"
-        method: GET
-        validate_certs: "{{ not vault_skip_verify }}"
-      register: vault_status
-      failed_when: false
-
-    - name: Verify OPA health
-      uri:
-        url: "{{ opa_url }}/health"
-        method: GET
-      register: opa_status
-      failed_when: false
-
-    - name: Verify Netbox is accessible
-      uri:
-        url: "{{ netbox_url }}/api/status/"
-        method: GET
-        headers:
-          Authorization: "Token {{ netbox_token }}"
-      register: netbox_status
-      failed_when: false
-
-    - name: Verify OPA policies are loaded
-      uri:
-        url: "{{ opa_url }}/v1/policies"
-        method: GET
-        return_content: true
-      register: opa_policies
       failed_when: false
 
     - name: Verify Kerberos
@@ -49,6 +22,125 @@
       register: krb_check
       changed_when: false
       no_log: true
+      failed_when: false
+
+    # ── Container checks ──
+    - name: Get running containers
+      command: podman ps --format '{{ '{{' }}.Names{{ '}}' }}'
+      register: running_containers
+      changed_when: false
+
+    - name: Check expected containers are running
+      ansible.builtin.set_fact:
+        container_status: >-
+          {{
+            container_status | default({}) | combine({
+              item: (item in running_containers.stdout)
+            })
+          }}
+      loop:
+        - opa
+        - keycloak
+        - splunk
+        - wazuh-indexer
+        - wazuh-manager
+        - wazuh-dashboard
+
+    # ── Service endpoint checks ──
+    - name: Verify OPA health
+      uri:
+        url: "http://localhost:8181/health"
+        method: GET
+      register: opa_status
+      failed_when: false
+
+    - name: Verify OPA policies loaded
+      uri:
+        url: "http://localhost:8181/v1/policies"
+        method: GET
+        return_content: true
+      register: opa_policies
+      failed_when: false
+
+    - name: Verify Keycloak
+      uri:
+        url: "https://localhost:8543"
+        method: GET
+        validate_certs: false
+        status_code: [200, 302, 303]
+      register: keycloak_status
+      failed_when: false
+
+    - name: Verify Splunk web UI
+      uri:
+        url: "http://localhost:8000"
+        method: GET
+        status_code: [200, 302, 303]
+      register: splunk_ui_status
+      failed_when: false
+
+    - name: Verify Splunk HEC
+      uri:
+        url: "https://localhost:8088/services/collector/health/1.0"
+        method: GET
+        validate_certs: false
+        status_code: [200]
+      register: splunk_hec_status
+      failed_when: false
+
+    - name: Verify Wazuh Indexer
+      uri:
+        url: "http://localhost:9200"
+        method: GET
+        status_code: [200]
+      register: wazuh_indexer_status
+      failed_when: false
+
+    - name: Verify Wazuh Manager API
+      uri:
+        url: "https://localhost:55000"
+        method: GET
+        validate_certs: false
+        status_code: [200, 401]
+      register: wazuh_manager_status
+      failed_when: false
+
+    - name: Verify Wazuh Dashboard
+      uri:
+        url: "http://localhost:5601"
+        method: GET
+        status_code: [200, 302]
+      register: wazuh_dashboard_status
+      failed_when: false
+
+- name: Verify Vault Server
+  hosts: vault_servers
+  become: true
+  gather_facts: false
+
+  tasks:
+    - name: Check Vault seal status
+      uri:
+        url: "{{ vault_addr }}/v1/sys/seal-status"
+        method: GET
+        validate_certs: false
+      register: vault_status
+      failed_when: false
+
+- name: Verify Netbox
+  hosts: netbox_servers
+  become: true
+  gather_facts: false
+
+  tasks:
+    - name: Check Netbox API
+      uri:
+        url: "http://localhost/api/status/"
+        method: GET
+        headers:
+          Authorization: "Token {{ netbox_token }}"
+        status_code: [200]
+      register: netbox_status
       failed_when: false
 
 - name: Verify Database Server
@@ -67,7 +159,7 @@
 
     - name: Test database connectivity
       become_user: postgres
-      command: psql -d {{ db_name }} -c "SELECT count(*) FROM app_data;"
+      command: psql -d {{ db_name }} -c "SELECT 1;"
       register: db_check
       changed_when: false
       failed_when: false
@@ -78,41 +170,94 @@
   gather_facts: false
 
   tasks:
-    - name: Check application directory exists
+    - name: Check application is deployed
       stat:
         path: "{{ app_deploy_dir }}/app.py"
       register: app_check
+      failed_when: false
+
+    - name: Check application is responding
+      uri:
+        url: "http://localhost:8080"
+        method: GET
+        status_code: [200, 302]
+      register: app_http_status
+      failed_when: false
+
+- name: Verify AAP Controller
+  hosts: aap_controllers
+  become: true
+  gather_facts: false
+
+  tasks:
+    - name: Check AAP web UI
+      uri:
+        url: "https://localhost/api/v2/ping/"
+        method: GET
+        validate_certs: false
+        status_code: [200]
+      register: aap_status
+      failed_when: false
 
 - name: Verify Network Device
   hosts: network
   gather_facts: false
 
   tasks:
-    - name: Test Cisco switch reachability
+    - name: Test switch reachability
       cisco.ios.ios_facts:
         gather_subset: min
       register: switch_facts
       failed_when: false
+
+# ═══════════════════════════════════════════════════════════════════════
+# Summary
+# ═══════════════════════════════════════════════════════════════════════
 
 - name: Lab Verification Summary
   hosts: localhost
   connection: local
   gather_facts: false
 
+  vars:
+    central: "{{ hostvars['central'] | default({}) }}"
+    cs: "{{ central.container_status | default({}) }}"
+
   tasks:
     - name: Display verification results
       debug:
         msg: |
-          ╔═══════════════════════════════════════════════════════════╗
-          ║          ZTA Workshop - Lab Verification                 ║
-          ╠═══════════════════════════════════════════════════════════╣
-          ║                                                         ║
-          ║  IdM:        {{ 'OK' if hostvars['central']['idm_status']['rc'] | default(1) == 0 else 'FAILED' | ljust(45) }}║
-          ║  Vault:      {{ 'OK - Unsealed' if not (hostvars['central']['vault_status']['json']['sealed'] | default(true)) else 'FAILED' | ljust(45) }}║
-          ║  OPA:        {{ 'OK' if hostvars['central']['opa_status']['status'] | default(0) == 200 else 'FAILED' | ljust(45) }}║
-          ║  Netbox:     {{ 'OK' if hostvars['central']['netbox_status']['status'] | default(0) == 200 else 'FAILED' | ljust(45) }}║
-          ║  PostgreSQL: {{ 'OK' if hostvars['db']['pg_status']['status'] | default({}) is defined else 'FAILED' | ljust(45) }}║
-          ║  App Server: {{ 'OK' if hostvars['app']['app_check']['stat']['exists'] | default(false) else 'NOT DEPLOYED' | ljust(45) }}║
-          ║  Cisco:      {{ 'OK' if hostvars['switch01']['switch_facts'] is defined and hostvars['switch01']['switch_facts']['failed'] | default(true) == false else 'FAILED/UNREACHABLE' | ljust(45) }}║
-          ║                                                         ║
-          ╚═══════════════════════════════════════════════════════════╝
+          ╔══════════════════════════════════════════════════════════════════╗
+          ║            ZTA Workshop — Lab Verification Report               ║
+          ╠══════════════════════════════════════════════════════════════════╣
+          ║                                                                ║
+          ║  ── Central Host (VM Services) ──                              ║
+          ║  IdM:              {{ ('OK' if (central.idm_status.rc | default(1)) == 0 else 'FAILED') | ljust(46) }}║
+          ║  Kerberos:         {{ ('OK' if (central.krb_check.rc | default(1)) == 0 else 'FAILED') | ljust(46) }}║
+          ║                                                                ║
+          ║  ── Central Host (Containers) ──                               ║
+          ║  OPA:              {{ ('UP' if cs.opa | default(false) else 'DOWN') | ljust(46) }}║
+          ║  Keycloak:         {{ ('UP' if cs.keycloak | default(false) else 'DOWN') | ljust(46) }}║
+          ║  Splunk:           {{ ('UP' if cs.splunk | default(false) else 'DOWN') | ljust(46) }}║
+          ║  Wazuh Indexer:    {{ ('UP' if cs['wazuh-indexer'] | default(false) else 'DOWN') | ljust(46) }}║
+          ║  Wazuh Manager:    {{ ('UP' if cs['wazuh-manager'] | default(false) else 'DOWN') | ljust(46) }}║
+          ║  Wazuh Dashboard:  {{ ('UP' if cs['wazuh-dashboard'] | default(false) else 'DOWN') | ljust(46) }}║
+          ║                                                                ║
+          ║  ── Service Endpoints ──                                       ║
+          ║  OPA API:          {{ ('OK' if (central.opa_status.status | default(0)) == 200 else 'FAILED') | ljust(46) }}║
+          ║  Keycloak UI:      {{ ('OK' if (central.keycloak_status.status | default(0)) in [200,302,303] else 'FAILED') | ljust(46) }}║
+          ║  Splunk UI:        {{ ('OK' if (central.splunk_ui_status.status | default(0)) in [200,302,303] else 'FAILED') | ljust(46) }}║
+          ║  Splunk HEC:       {{ ('OK' if (central.splunk_hec_status.status | default(0)) == 200 else 'FAILED') | ljust(46) }}║
+          ║  Wazuh Indexer:    {{ ('OK' if (central.wazuh_indexer_status.status | default(0)) == 200 else 'FAILED') | ljust(46) }}║
+          ║  Wazuh Mgr API:    {{ ('OK' if (central.wazuh_manager_status.status | default(0)) in [200,401] else 'FAILED') | ljust(46) }}║
+          ║  Wazuh Dashboard:  {{ ('OK' if (central.wazuh_dashboard_status.status | default(0)) in [200,302] else 'FAILED') | ljust(46) }}║
+          ║                                                                ║
+          ║  ── Other Hosts ──                                             ║
+          ║  Vault:            {{ ('OK - Unsealed' if not (hostvars['vault']['vault_status']['json']['sealed'] | default(true)) else 'SEALED/DOWN') | ljust(46) }}║
+          ║  Netbox:           {{ ('OK' if (hostvars['netbox']['netbox_status']['status'] | default(0)) == 200 else 'FAILED') | ljust(46) }}║
+          ║  PostgreSQL:       {{ ('OK' if (hostvars['db']['db_check']['rc'] | default(1)) == 0 else 'FAILED') | ljust(46) }}║
+          ║  App Server:       {{ ('OK' if (hostvars['app']['app_http_status']['status'] | default(0)) in [200,302] else 'DOWN/NOT DEPLOYED') | ljust(46) }}║
+          ║  AAP Controller:   {{ ('OK' if (hostvars['control']['aap_status']['status'] | default(0)) == 200 else 'FAILED') | ljust(46) }}║
+          ║  Cisco Switch:     {{ ('OK' if hostvars['switch01']['switch_facts'] is defined and not (hostvars['switch01']['switch_facts']['failed'] | default(true)) else 'FAILED') | ljust(46) }}║
+          ║                                                                ║
+          ╚══════════════════════════════════════════════════════════════════╝

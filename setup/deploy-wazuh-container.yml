@@ -222,6 +222,17 @@
       retries: 40
       delay: 10
 
+    - name: Clear any cluster index-creation blocks
+      uri:
+        url: "http://localhost:9200/_cluster/settings"
+        method: PUT
+        body_format: json
+        body:
+          persistent:
+            cluster.blocks.create_index: null
+            cluster.blocks.read_only_allow_delete: null
+        status_code: [200]
+
     # ── Wazuh Manager ──
     - name: Start Wazuh Manager container
       shell: >

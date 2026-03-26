@@ -1,0 +1,18 @@
+! ceos3 — leaf (app-tier gateway)
+!
+hostname ceos3
+!
+username admin privilege 15 role network-admin secret 0 admin
+!
+aaa authorization exec default local
+!
+interface Management0
+   no shutdown
+!
+management api http-commands
+   no shutdown
+!
+management ssh
+   idle-timeout 120
+!
+end

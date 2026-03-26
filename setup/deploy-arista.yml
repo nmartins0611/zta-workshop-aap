@@ -28,7 +28,7 @@
 
   vars:
     ceos_image: quay.io/nmartins/ceoslab-rh
-    config_repo: https://github.com/nmartins0611/Instruqt_netops.git
+    config_local: "{{ playbook_dir }}/switch-configs"
     config_dir: /tmp/setup
     ceos_memory: 4g
 
@@ -96,7 +96,7 @@
         state: present
 
     # ═══════════════════════════════════════════════════════════════════
-    # Phase 2 — Clone startup configs
+    # Phase 2 — Deploy startup configs
     # ═══════════════════════════════════════════════════════════════════
 
     - name: Remove stale config directory
@@ -104,12 +104,11 @@
         path: "{{ config_dir }}"
         state: absent
 
-    - name: Clone switch startup configurations
-      ansible.builtin.git:
-        repo: "{{ config_repo }}"
-        dest: "{{ config_dir }}"
-        version: main
-        force: true
+    - name: Copy switch startup configurations to target
+      ansible.builtin.copy:
+        src: "{{ config_local }}/"
+        dest: "{{ config_dir }}/"
+        mode: "0644"
 
     # ═══════════════════════════════════════════════════════════════════
     # Phase 3 — Clean up any previous deployment
@@ -223,7 +222,6 @@
         ip routing
         ip route 10.20.0.0/24 10.10.0.1
         end
-        write memory
         "
       changed_when: true
 
@@ -238,7 +236,6 @@
         ip routing
         ip route 10.30.0.0/24 10.20.0.254
         end
-        write memory
         "
       changed_when: true
 
@@ -257,7 +254,6 @@
         ip routing
         ip route 10.30.0.0/24 10.10.0.2
         end
-        write memory
         "
       changed_when: true
 
@@ -273,9 +269,19 @@
         interface ethernet3
           ip access-group ZTA-DATA-TIER in
         end
-        write memory
         "
       changed_when: true
+
+    - name: Save running-config on all switches (retry — flash may be busy)
+      shell: "podman exec {{ item }} Cli -p 15 -c 'write memory'"
+      loop:
+        - ceos1
+        - ceos2
+        - ceos3
+      register: write_mem
+      retries: 5
+      delay: 5
+      until: write_mem.rc == 0
 
     # ═══════════════════════════════════════════════════════════════════
     # Phase 9 — Gather management IPs

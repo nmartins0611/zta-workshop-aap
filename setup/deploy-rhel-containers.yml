@@ -1,0 +1,225 @@
+---
+# Deploy two RHEL "VM-like" containers on central for DB and App
+#
+# These are full systemd-enabled RHEL UBI9 containers that:
+#   - Run systemd as PID 1
+#   - Have SSH enabled (so AAP can manage them like real hosts)
+#   - Support dnf patching (for workshop Section 3 exercises)
+#   - Persist data across restarts
+#
+# After this playbook, run setup/deploy-db-app.yml as normal —
+# it will SSH into these containers and set up PostgreSQL / the app.
+#
+# Exposed ports on central:
+#   DB container:
+#     - SSH:        2022 → 22
+#     - PostgreSQL: 5432 → 5432
+#   App container:
+#     - SSH:        2023 → 22
+#     - App HTTP:   8080 → 8080
+#
+# Usage:
+#   ansible-playbook -i inventory/hosts.ini setup/deploy-rhel-containers.yml
+
+- name: Deploy RHEL systemd containers for DB and App
+  hosts: zta_services
+  become: true
+  gather_facts: true
+
+  vars:
+    rhel_image: registry.access.redhat.com/ubi9/ubi-init:latest
+    container_user: rhel
+    container_password: "{{ idm_admin_password }}"
+    containers:
+      - name: db
+        hostname: db.zta.lab
+        ssh_port: 2022
+        extra_ports:
+          - "5432:5432"
+        packages:
+          - postgresql-server
+          - postgresql
+          - python3-psycopg2
+          - python3
+        data_volume: db-data
+      - name: app
+        hostname: app.zta.lab
+        ssh_port: 2023
+        extra_ports:
+          - "8080:8080"
+        packages:
+          - python3
+          - python3-pip
+        data_volume: app-data
+
+  tasks:
+    # ═══════════════════════════════════════════════════════════════════
+    # Phase 1 — Prerequisites
+    # ═══════════════════════════════════════════════════════════════════
+
+    - name: Ensure podman is installed
+      dnf:
+        name:
+          - podman
+          - python3-podman
+        state: present
+
+    - name: Pull RHEL UBI9 init image
+      command: "podman pull {{ rhel_image }}"
+      register: pull_result
+      changed_when: "'Pulling' in pull_result.stdout or pull_result.rc == 0"
+
+    # ═══════════════════════════════════════════════════════════════════
+    # Phase 2 — Build a systemd+SSH enabled image
+    # ═══════════════════════════════════════════════════════════════════
+
+    - name: Create build directory
+      file:
+        path: /opt/rhel-containers
+        state: directory
+        mode: '0755'
+
+    - name: Write Containerfile for SSH-enabled RHEL
+      copy:
+        dest: /opt/rhel-containers/Containerfile
+        mode: '0644'
+        content: |
+          FROM {{ rhel_image }}
+
+          RUN dnf -y install openssh-server openssh-clients sudo passwd procps-ng \
+              iproute iputils dnf-utils && \
+              dnf clean all && \
+              ssh-keygen -A && \
+              sed -i 's/^#PermitRootLogin.*/PermitRootLogin yes/' /etc/ssh/sshd_config && \
+              sed -i 's/^#PasswordAuthentication.*/PasswordAuthentication yes/' /etc/ssh/sshd_config && \
+              systemctl enable sshd
+
+          RUN useradd -m -s /bin/bash {{ container_user }} && \
+              echo "{{ container_user }}:{{ container_password }}" | chpasswd && \
+              echo "{{ container_user }} ALL=(ALL) NOPASSWD: ALL" > /etc/sudoers.d/{{ container_user }}
+
+          RUN echo "root:{{ container_password }}" | chpasswd
+
+          EXPOSE 22
+
+          CMD ["/sbin/init"]
+
+    - name: Build SSH-enabled RHEL image
+      command: >
+        podman build
+        -t rhel-ssh:latest
+        -f /opt/rhel-containers/Containerfile
+        /opt/rhel-containers/
+      register: build_result
+      changed_when: true
+
+    # ═══════════════════════════════════════════════════════════════════
+    # Phase 3 — Stop any existing containers
+    # ═══════════════════════════════════════════════════════════════════
+
+    - name: Stop and remove existing containers
+      command: "podman rm -f {{ item.name }}"
+      loop: "{{ containers }}"
+      loop_control:
+        label: "{{ item.name }}"
+      failed_when: false
+      changed_when: false
+
+    # ═══════════════════════════════════════════════════════════════════
+    # Phase 4 — Start containers
+    # ═══════════════════════════════════════════════════════════════════
+
+    - name: Start RHEL systemd containers
+      shell: >
+        podman run -d
+        --name {{ item.name }}
+        --hostname {{ item.hostname }}
+        --privileged
+        --restart always
+        -v {{ item.data_volume }}:/data:z
+        -p {{ item.ssh_port }}:22
+        {% for p in item.extra_ports %}
+        -p {{ p }}
+        {% endfor %}
+        rhel-ssh:latest
+      loop: "{{ containers }}"
+      loop_control:
+        label: "{{ item.name }}"
+
+    - name: Wait for SSH to be available
+      ansible.builtin.wait_for:
+        host: localhost
+        port: "{{ item.ssh_port }}"
+        timeout: 30
+      loop: "{{ containers }}"
+      loop_control:
+        label: "{{ item.name }} (port {{ item.ssh_port }})"
+
+    # ═══════════════════════════════════════════════════════════════════
+    # Phase 5 — Install role-specific packages
+    # ═══════════════════════════════════════════════════════════════════
+
+    - name: Install packages in containers
+      command: >
+        podman exec {{ item.name }}
+        dnf -y install {{ item.packages | join(' ') }}
+      loop: "{{ containers }}"
+      loop_control:
+        label: "{{ item.name }}"
+      register: pkg_install
+      changed_when: "'Complete!' in pkg_install.stdout"
+
+    # ═══════════════════════════════════════════════════════════════════
+    # Phase 6 — Verify
+    # ═══════════════════════════════════════════════════════════════════
+
+    - name: Verify SSH access to containers
+      command: >
+        sshpass -p '{{ container_password }}'
+        ssh -o StrictHostKeyChecking=no
+        -p {{ item.ssh_port }}
+        {{ container_user }}@localhost
+        hostname
+      loop: "{{ containers }}"
+      loop_control:
+        label: "{{ item.name }}"
+      register: ssh_verify
+      changed_when: false
+
+    - name: Verify dnf works (patching readiness)
+      command: >
+        podman exec {{ item.name }} dnf check-update --quiet
+      loop: "{{ containers }}"
+      loop_control:
+        label: "{{ item.name }}"
+      register: dnf_check
+      failed_when: false
+      changed_when: false
+
+    - name: Display deployment summary
+      debug:
+        msg: |
+          ╔════════════════════════════════════════════════════════════════╗
+          ║     RHEL Containers — Deployment Complete                     ║
+          ╠════════════════════════════════════════════════════════════════╣
+          ║                                                              ║
+          ║  DB Container:                                               ║
+          ║    SSH:        ssh {{ container_user }}@central.zta.lab -p 2022
+          ║    PostgreSQL: central.zta.lab:5432                          ║
+          ║    Hostname:   db.zta.lab                                    ║
+          ║                                                              ║
+          ║  App Container:                                              ║
+          ║    SSH:        ssh {{ container_user }}@central.zta.lab -p 2023
+          ║    HTTP:       http://central.zta.lab:8080                   ║
+          ║    Hostname:   app.zta.lab                                   ║
+          ║                                                              ║
+          ║  Credentials:  {{ container_user }} / {{ container_password }}
+          ║  Privilege:    sudo (NOPASSWD)                               ║
+          ║  Patching:     dnf update works in both containers           ║
+          ║                                                              ║
+          ║  Next steps:                                                 ║
+          ║    1. Update inventory (hosts.yml) to point db/app           ║
+          ║       to central.zta.lab with custom SSH ports               ║
+          ║    2. Run setup/deploy-db-app.yml to set up                  ║
+          ║       PostgreSQL and the Flask application                   ║
+          ╚════════════════════════════════════════════════════════════════╝

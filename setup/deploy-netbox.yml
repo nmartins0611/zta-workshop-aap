@@ -82,30 +82,35 @@
       command: podman-compose pull
       args:
         chdir: "{{ netbox_dir }}"
-      register: pull_result
       changed_when: true
 
-    - name: Start NetBox stack
-      command: podman-compose up -d
+    # Start backing services first — podman-compose 1.5.x blocks
+    # on depends_on health check conditions if started all at once.
+    - name: Start PostgreSQL and Redis
+      command: podman-compose up -d postgres redis redis-cache
       args:
         chdir: "{{ netbox_dir }}"
-      register: start_result
       changed_when: true
 
-    # ═══════════════════════════════════════════════════════════════════
-    # Phase 4 — Wait for services
-    # ═══════════════════════════════════════════════════════════════════
-
     - name: Wait for PostgreSQL to accept connections
-      command: >
-        podman exec netbox-docker_postgres_1
+      shell: >
+        podman exec $(podman ps --filter name=postgres --format '{{ '{{' }}.Names{{ '}}' }}' | head -1)
         pg_isready -U netbox
       register: pg_ready
       until: pg_ready.rc == 0
       retries: 30
       delay: 5
       changed_when: false
-      failed_when: false
+
+    - name: Start NetBox application containers
+      command: podman-compose up -d netbox netbox-worker netbox-housekeeping
+      args:
+        chdir: "{{ netbox_dir }}"
+      changed_when: true
+
+    # ═══════════════════════════════════════════════════════════════════
+    # Phase 4 — Wait for NetBox to be ready
+    # ═══════════════════════════════════════════════════════════════════
 
     - name: Wait for NetBox API to respond
       uri:

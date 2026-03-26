@@ -262,36 +262,19 @@
       delay: 5
 
     # ── Wazuh Dashboard ──
-    - name: Deploy Wazuh Dashboard configuration
-      copy:
-        dest: "{{ wazuh_data_dir }}/dashboard/opensearch_dashboards.yml"
-        content: |
-          server.host: "0.0.0.0"
-          server.port: 5601
-          server.ssl.enabled: false
-          opensearch.hosts: ["http://localhost:9200"]
-          opensearch.ssl.verificationMode: none
-          uiSettings.overrides.defaultRoute: /app/wazuh
-        mode: '0644'
-
-    - name: Create empty directory to mask security plugin
-      ansible.builtin.file:
-        path: "{{ wazuh_data_dir }}/dashboard/security-disabled"
-        state: directory
-        mode: '0755'
-
     - name: Start Wazuh Dashboard container
       shell: >
         podman run -d
         --name wazuh-dashboard
         --pod {{ wazuh_pod_name }}
         --restart always
-        -v {{ wazuh_data_dir }}/dashboard/opensearch_dashboards.yml:/usr/share/wazuh-dashboard/config/opensearch_dashboards.yml:z
-        -v {{ wazuh_data_dir }}/dashboard/security-disabled:/usr/share/wazuh-dashboard/plugins/securityDashboards:z
         -e INDEXER_URL=http://localhost:9200
+        -e INDEXER_USERNAME=admin
+        -e INDEXER_PASSWORD={{ wazuh_indexer_password }}
         -e WAZUH_API_URL=https://localhost
         -e API_USERNAME={{ wazuh_api_user }}
         -e 'API_PASSWORD={{ wazuh_api_password }}'
+        -e SERVER_SSL_ENABLED=false
         {{ wazuh_images.dashboard }}
 
     - name: Wait for Wazuh Dashboard

@@ -280,6 +280,7 @@
         --restart always
         -v {{ wazuh_data_dir }}/certs/dashboard.pem:/etc/wazuh-dashboard/certs/dashboard.pem:ro,z
         -v {{ wazuh_data_dir }}/certs/dashboard.key:/etc/wazuh-dashboard/certs/dashboard-key.pem:ro,z
+        -v {{ wazuh_data_dir }}/certs/dashboard.pem:/etc/wazuh-dashboard/certs/root-ca.pem:ro,z
         -e INDEXER_URL=http://localhost:9200
         -e INDEXER_USERNAME=admin
         -e INDEXER_PASSWORD={{ wazuh_indexer_password }}

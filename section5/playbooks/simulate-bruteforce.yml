@@ -94,5 +94,5 @@
           ║    - Wazuh dashboard for brute force alerts                  ║
           ║    - EDA Controller for rulebook activation events           ║
           ║    - AAP for the triggered revocation job                    ║
-          ║    - http://app.zta.lab:8080/health for app health           ║
+          ║    - http://app.zta.lab:8081/health for app health           ║
           ╚════════════════════════════════════════════════════════════════╝

@@ -106,7 +106,7 @@ executing.
 | Gitea | `http://gitea.zta.lab:3000` | *provided by instructor* |
 | Wazuh Dashboard | `http://wazuh.zta.lab:5601` | *provided by instructor* (container on central) |
 | Splunk | `http://splunk.zta.lab:8000` | admin / *configured password* (container on central) |
-| Application | `http://app.zta.lab:8080` | (no auth — dashboard) |
+| Application | `http://app.zta.lab:8081` | (no auth — dashboard, container on central) |
 
 ### Workshop Users in IdM
 
@@ -428,7 +428,7 @@ The `zta.db_access` policy checks:
    - Arista ACL: only `10.20.0.10` (app) can reach `10.30.0.10:5432` (db)
    - Application deployed with dynamic credentials
 
-4. Open `http://app.zta.lab:8080` — the **Global Telemetry Platform** dashboard is live
+4. Open `http://app.zta.lab:8081` — the **Global Telemetry Platform** dashboard is live
 
 ---
 
@@ -695,7 +695,7 @@ Attacker → SSH brute force → Wazuh detects → EDA receives → AAP revokes 
 ### Exercise 5.2 — Verify Pre-Attack Health
 
 ```bash
-curl http://app.zta.lab:8080/health     # should be healthy
+curl http://app.zta.lab:8081/health     # should be healthy
 ssh rhel@db.zta.lab
 sudo -u postgres psql -c "\du" | grep v-root   # Vault DB user exists
 ```
@@ -715,7 +715,7 @@ SSH login attempts to `app.zta.lab`.
 2. **EDA Controller**: Event received, rulebook matched, job triggered
 3. **AAP Jobs**: "Emergency: Revoke App Credentials" appears — triggered by EDA,
    no human clicked Launch
-4. **Application**: `curl http://app.zta.lab:8080/health` → unhealthy or refused
+4. **Application**: `curl http://app.zta.lab:8081/health` → unhealthy or refused
 5. **Database**: `\du` shows no Vault-generated users — credentials revoked
 
 **The application has been automatically isolated from the database.**
@@ -735,7 +735,7 @@ After investigating, launch **Restore App Credentials**:
 - Health check passes
 
 ```bash
-curl http://app.zta.lab:8080/health     # healthy again
+curl http://app.zta.lab:8081/health     # healthy again
 ```
 
 ---

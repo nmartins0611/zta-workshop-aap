@@ -9,7 +9,7 @@ class Config:
     DB_PASSWORD = os.environ.get("DB_PASSWORD", "postgres123!")
 
     APP_HOST = os.environ.get("APP_HOST", "0.0.0.0")
-    APP_PORT = int(os.environ.get("APP_PORT", 8080))
+    APP_PORT = int(os.environ.get("APP_PORT", 8081))
 
     @classmethod
     def dsn(cls):

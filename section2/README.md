@@ -148,12 +148,12 @@ Network micro-segmentation applied on ceos2:
 **Step 4 — Application Deployed:**
 ```
 Application deployed successfully:
-  URL:     http://app.zta.lab:8080
+  URL:     http://app.zta.lab:8081
   Health:  ok
   DB User: v-root-ztaapp-s-abc123def (dynamic, short-lived)
 ```
 
-4. Open `http://app.zta.lab:8080` in your browser — the **Global Telemetry
+4. Open `http://app.zta.lab:8081` in your browser — the **Global Telemetry
    Platform** dashboard should be live
 
 ---
@@ -175,7 +175,7 @@ Application deployed successfully:
 
 3. Check the application health:
    ```
-   curl http://app.zta.lab:8080/health
+   curl http://app.zta.lab:8081/health
    ```
    The app should now report unhealthy — it lost its database connection
 
@@ -222,6 +222,6 @@ restarts the application — keeping it healthy continuously.
 - [ ] Correct user (`appdev`) passes OPA — full workflow completes
 - [ ] Vault generates dynamic PostgreSQL credentials with unique username
 - [ ] Arista ACL on ceos2 permits only `10.20.0.10` → `10.30.0.10:5432`
-- [ ] Application dashboard loads at `http://app.zta.lab:8080`
+- [ ] Application dashboard loads at `http://app.zta.lab:8081`
 - [ ] Credentials disappear from PostgreSQL after TTL expires
 - [ ] Application loses DB access when credentials expire

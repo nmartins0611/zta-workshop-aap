@@ -113,7 +113,7 @@ Before the attack, confirm everything is working:
 
 ```bash
 # Check the app is serving the dashboard
-curl -s http://app.zta.lab:8080/health
+curl -s http://app.zta.lab:8081/health
 
 # Check the database credentials are active
 ssh -p 2022 rhel@central.zta.lab
@@ -170,7 +170,7 @@ Navigate to **Jobs** — you should see:
 ### Check the Application
 
 ```bash
-curl -s http://app.zta.lab:8080/health
+curl -s http://app.zta.lab:8081/health
 # Expected: connection refused or unhealthy — the app is stopped
 
 ssh -p 2022 rhel@central.zta.lab
@@ -194,14 +194,14 @@ Application Restored
 
   New DB User:  v-root-ztaapp-s-xyz789abc
   Health:       HEALTHY
-  URL:          http://app.zta.lab:8080
+  URL:          http://app.zta.lab:8081
 
   Fresh credentials issued. The application is back online.
 ```
 
 Verify:
 ```bash
-curl -s http://app.zta.lab:8080/health
+curl -s http://app.zta.lab:8081/health
 # Expected: healthy again
 ```
 
@@ -243,6 +243,6 @@ credential revocation.
 - [ ] EDA triggers "Emergency: Revoke App Credentials" in AAP
 - [ ] Vault DB lease is revoked (no `v-root-*` user in PostgreSQL)
 - [ ] Application service is stopped
-- [ ] `http://app.zta.lab:8080/health` returns unhealthy or connection refused
+- [ ] `http://app.zta.lab:8081/health` returns unhealthy or connection refused
 - [ ] Restore playbook brings the application back with fresh credentials
 - [ ] Total time from attack to revocation is under 30 seconds

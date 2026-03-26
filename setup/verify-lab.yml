@@ -268,7 +268,7 @@
   tasks:
     - name: Check application is responding
       uri:
-        url: "http://localhost:8080"
+        url: "http://localhost:8081"
         method: GET
         status_code: [200, 302]
       register: app_http_status
@@ -365,7 +365,7 @@
         ok: "{{ not (hostvars['vault']['vault_status']['json']['sealed'] | default(true)) }}"
       - name: PostgreSQL (db host)
         ok: "{{ (hostvars['db']['db_check']['rc'] | default(1)) == 0 }}"
-      - name: Application (8080)
+      - name: Application (8081)
         ok: "{{ (hostvars['app']['app_http_status']['status'] | default(0)) in [200,302] }}"
       - name: AAP Controller
         ok: "{{ (hostvars['control']['aap_status']['status'] | default(0)) == 200 }}"

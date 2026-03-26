@@ -30,7 +30,7 @@
     ceos_image: quay.io/nmartins/ceoslab-rh
     config_local: "{{ playbook_dir }}/switch-configs"
     config_dir: /tmp/setup
-    ceos_memory: 4g
+    ceos_memory: 2g
 
     ceos_env: &ceos_env
       INTFTYPE: eth

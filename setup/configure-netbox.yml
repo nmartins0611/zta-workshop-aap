@@ -319,7 +319,7 @@
         description: "Wazuh web dashboard"
       - device: app.zta.lab
         name: Global Telemetry Platform
-        ports: [8080]
+        ports: [8081]
         protocol: tcp
         description: "Flask application — workshop demo app (container on central)"
       - device: db.zta.lab

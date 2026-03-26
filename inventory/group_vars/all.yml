@@ -75,10 +75,10 @@ db_admin_password: "{{ lookup('env', 'DB_ADMIN_PASSWORD') | default('postgres123
 db_data_ip: "10.30.0.10"
 
 # ── Application Server (container on central) ─────────────────────
-# Management plane: accessible via central.zta.lab:8080 / SSH port 2023
+# Management plane: accessible via central.zta.lab:8081 / SSH port 2023
 # Data plane: 10.20.0.10 on net3 (routed through ceos3)
 app_host: app.zta.lab
-app_port: 8080
+app_port: 8081
 app_deploy_dir: /opt/ztaapp
 app_data_ip: "10.20.0.10"
 

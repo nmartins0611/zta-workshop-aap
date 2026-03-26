@@ -130,7 +130,7 @@
     # ═══════════════════════════════════════════════════════════════════
 
     - name: Create podman networks
-      command: "podman network create {{ item }}"
+      command: "podman network create --disable-dns {{ item }}"
       loop: "{{ podman_networks }}"
 
     # ═══════════════════════════════════════════════════════════════════

@@ -3,6 +3,16 @@
 #
 # Usage:
 #   ansible-playbook -i inventory/hosts.ini setup/verify-lab.yml
+#
+# Skip specific checks with --skip-tags:
+#   ansible-playbook -i inventory/hosts.ini setup/verify-lab.yml --skip-tags wazuh,splunk
+#
+# Run only specific checks with --tags:
+#   ansible-playbook -i inventory/hosts.ini setup/verify-lab.yml --tags vault,db
+#
+# Available tags:
+#   idm, kerberos, containers, opa, keycloak, splunk,
+#   wazuh, vault, netbox, db, app, aap, network, summary
 
 - name: Verify Central Services (VMs + Containers)
   hosts: zta_services
@@ -16,6 +26,7 @@
       register: idm_status
       changed_when: false
       failed_when: false
+      tags: [idm, central]
 
     - name: Verify Kerberos
       shell: echo '{{ idm_admin_password }}' | kinit admin && klist
@@ -23,12 +34,14 @@
       changed_when: false
       no_log: true
       failed_when: false
+      tags: [kerberos, idm, central]
 
     # ── Container checks ──
     - name: Get running containers
       command: podman ps --format '{{ '{{' }}.Names{{ '}}' }}'
       register: running_containers
       changed_when: false
+      tags: [containers, central]
 
     - name: Check expected containers are running
       ansible.builtin.set_fact:
@@ -45,6 +58,10 @@
         - wazuh-indexer
         - wazuh-manager
         - wazuh-dashboard
+        - ceos1
+        - ceos2
+        - ceos3
+      tags: [containers, central]
 
     # ── Service endpoint checks ──
     - name: Verify OPA health
@@ -53,6 +70,7 @@
         method: GET
       register: opa_status
       failed_when: false
+      tags: [opa, central]
 
     - name: Verify OPA policies loaded
       uri:
@@ -61,6 +79,7 @@
         return_content: true
       register: opa_policies
       failed_when: false
+      tags: [opa, central]
 
     - name: Verify Keycloak
       uri:
@@ -70,6 +89,7 @@
         status_code: [200, 302, 303]
       register: keycloak_status
       failed_when: false
+      tags: [keycloak, central]
 
     - name: Verify Splunk web UI
       uri:
@@ -78,6 +98,7 @@
         status_code: [200, 302, 303]
       register: splunk_ui_status
       failed_when: false
+      tags: [splunk, central]
 
     - name: Verify Splunk HEC
       uri:
@@ -87,6 +108,7 @@
         status_code: [200]
       register: splunk_hec_status
       failed_when: false
+      tags: [splunk, central]
 
     - name: Verify Wazuh Indexer
       uri:
@@ -95,6 +117,7 @@
         status_code: [200]
       register: wazuh_indexer_status
       failed_when: false
+      tags: [wazuh, central]
 
     - name: Verify Wazuh Manager API
       uri:
@@ -104,6 +127,7 @@
         status_code: [200, 401]
       register: wazuh_manager_status
       failed_when: false
+      tags: [wazuh, central]
 
     - name: Verify Wazuh Dashboard
       uri:
@@ -112,11 +136,44 @@
         status_code: [200, 302]
       register: wazuh_dashboard_status
       failed_when: false
+      tags: [wazuh, central]
+
+    # ── Arista cEOS checks ──
+    - name: Verify cEOS SSH reachability
+      ansible.builtin.wait_for:
+        host: localhost
+        port: "{{ item.port }}"
+        timeout: 5
+      loop:
+        - { name: ceos1, port: 2001 }
+        - { name: ceos2, port: 2002 }
+        - { name: ceos3, port: 2003 }
+      loop_control:
+        label: "{{ item.name }} (port {{ item.port }})"
+      register: ceos_ssh_status
+      failed_when: false
+      tags: [arista, ceos, central]
+
+    - name: Verify cEOS eAPI reachability
+      ansible.builtin.wait_for:
+        host: localhost
+        port: "{{ item.port }}"
+        timeout: 5
+      loop:
+        - { name: ceos1, port: 6031 }
+        - { name: ceos2, port: 6032 }
+        - { name: ceos3, port: 6033 }
+      loop_control:
+        label: "{{ item.name }} (port {{ item.port }})"
+      register: ceos_eapi_status
+      failed_when: false
+      tags: [arista, ceos, central]
 
 - name: Verify Vault Server
   hosts: vault_servers
   become: true
   gather_facts: false
+  tags: [vault]
 
   tasks:
     - name: Check Vault seal status
@@ -131,6 +188,7 @@
   hosts: netbox_servers
   become: true
   gather_facts: false
+  tags: [netbox]
 
   tasks:
     - name: Check Netbox API
@@ -147,6 +205,7 @@
   hosts: db_servers
   become: true
   gather_facts: false
+  tags: [db]
 
   tasks:
     - name: Check PostgreSQL is running
@@ -168,6 +227,7 @@
   hosts: app_servers
   become: true
   gather_facts: false
+  tags: [app]
 
   tasks:
     - name: Check application is deployed
@@ -188,6 +248,7 @@
   hosts: aap_controllers
   become: true
   gather_facts: false
+  tags: [aap]
 
   tasks:
     - name: Check AAP web UI
@@ -202,6 +263,7 @@
 - name: Verify Network Device
   hosts: network
   gather_facts: false
+  tags: [network]
 
   tasks:
     - name: Test switch reachability
@@ -218,6 +280,7 @@
   hosts: localhost
   connection: local
   gather_facts: false
+  tags: [summary, always]
 
   vars:
     central: "{{ hostvars['central'] | default({}) }}"
@@ -232,32 +295,38 @@
           ╠══════════════════════════════════════════════════════════════════╣
           ║                                                                ║
           ║  ── Central Host (VM Services) ──                              ║
-          ║  IdM:              {{ ('OK' if (central.idm_status.rc | default(1)) == 0 else 'FAILED') | ljust(46) }}║
-          ║  Kerberos:         {{ ('OK' if (central.krb_check.rc | default(1)) == 0 else 'FAILED') | ljust(46) }}║
+          ║  IdM:              {{ ('OK' if (central.idm_status.rc | default(1)) == 0 else 'SKIPPED' if central.idm_status is not defined else 'FAILED') | ljust(46) }}║
+          ║  Kerberos:         {{ ('OK' if (central.krb_check.rc | default(1)) == 0 else 'SKIPPED' if central.krb_check is not defined else 'FAILED') | ljust(46) }}║
           ║                                                                ║
           ║  ── Central Host (Containers) ──                               ║
-          ║  OPA:              {{ ('UP' if cs.opa | default(false) else 'DOWN') | ljust(46) }}║
-          ║  Keycloak:         {{ ('UP' if cs.keycloak | default(false) else 'DOWN') | ljust(46) }}║
-          ║  Splunk:           {{ ('UP' if cs.splunk | default(false) else 'DOWN') | ljust(46) }}║
-          ║  Wazuh Indexer:    {{ ('UP' if cs['wazuh-indexer'] | default(false) else 'DOWN') | ljust(46) }}║
-          ║  Wazuh Manager:    {{ ('UP' if cs['wazuh-manager'] | default(false) else 'DOWN') | ljust(46) }}║
-          ║  Wazuh Dashboard:  {{ ('UP' if cs['wazuh-dashboard'] | default(false) else 'DOWN') | ljust(46) }}║
+          ║  OPA:              {{ ('UP' if cs.opa | default(false) else 'SKIPPED' if not cs else 'DOWN') | ljust(46) }}║
+          ║  Keycloak:         {{ ('UP' if cs.keycloak | default(false) else 'SKIPPED' if not cs else 'DOWN') | ljust(46) }}║
+          ║  Splunk:           {{ ('UP' if cs.splunk | default(false) else 'SKIPPED' if not cs else 'DOWN') | ljust(46) }}║
+          ║  Wazuh Indexer:    {{ ('UP' if cs['wazuh-indexer'] | default(false) else 'SKIPPED' if not cs else 'DOWN') | ljust(46) }}║
+          ║  Wazuh Manager:    {{ ('UP' if cs['wazuh-manager'] | default(false) else 'SKIPPED' if not cs else 'DOWN') | ljust(46) }}║
+          ║  Wazuh Dashboard:  {{ ('UP' if cs['wazuh-dashboard'] | default(false) else 'SKIPPED' if not cs else 'DOWN') | ljust(46) }}║
+          ║  ceos1 (spine):    {{ ('UP' if cs.ceos1 | default(false) else 'SKIPPED' if not cs else 'DOWN') | ljust(46) }}║
+          ║  ceos2 (leaf):     {{ ('UP' if cs.ceos2 | default(false) else 'SKIPPED' if not cs else 'DOWN') | ljust(46) }}║
+          ║  ceos3 (leaf):     {{ ('UP' if cs.ceos3 | default(false) else 'SKIPPED' if not cs else 'DOWN') | ljust(46) }}║
           ║                                                                ║
           ║  ── Service Endpoints ──                                       ║
-          ║  OPA API:          {{ ('OK' if (central.opa_status.status | default(0)) == 200 else 'FAILED') | ljust(46) }}║
-          ║  Keycloak UI:      {{ ('OK' if (central.keycloak_status.status | default(0)) in [200,302,303] else 'FAILED') | ljust(46) }}║
-          ║  Splunk UI:        {{ ('OK' if (central.splunk_ui_status.status | default(0)) in [200,302,303] else 'FAILED') | ljust(46) }}║
-          ║  Splunk HEC:       {{ ('OK' if (central.splunk_hec_status.status | default(0)) == 200 else 'FAILED') | ljust(46) }}║
-          ║  Wazuh Indexer:    {{ ('OK' if (central.wazuh_indexer_status.status | default(0)) == 200 else 'FAILED') | ljust(46) }}║
-          ║  Wazuh Mgr API:    {{ ('OK' if (central.wazuh_manager_status.status | default(0)) in [200,401] else 'FAILED') | ljust(46) }}║
-          ║  Wazuh Dashboard:  {{ ('OK' if (central.wazuh_dashboard_status.status | default(0)) in [200,302] else 'FAILED') | ljust(46) }}║
+          ║  OPA API:          {{ ('OK' if (central.opa_status.status | default(0)) == 200 else 'SKIPPED' if central.opa_status is not defined else 'FAILED') | ljust(46) }}║
+          ║  Keycloak UI:      {{ ('OK' if (central.keycloak_status.status | default(0)) in [200,302,303] else 'SKIPPED' if central.keycloak_status is not defined else 'FAILED') | ljust(46) }}║
+          ║  Splunk UI:        {{ ('OK' if (central.splunk_ui_status.status | default(0)) in [200,302,303] else 'SKIPPED' if central.splunk_ui_status is not defined else 'FAILED') | ljust(46) }}║
+          ║  Splunk HEC:       {{ ('OK' if (central.splunk_hec_status.status | default(0)) == 200 else 'SKIPPED' if central.splunk_hec_status is not defined else 'FAILED') | ljust(46) }}║
+          ║  Wazuh Indexer:    {{ ('OK' if (central.wazuh_indexer_status.status | default(0)) == 200 else 'SKIPPED' if central.wazuh_indexer_status is not defined else 'FAILED') | ljust(46) }}║
+          ║  Wazuh Mgr API:    {{ ('OK' if (central.wazuh_manager_status.status | default(0)) in [200,401] else 'SKIPPED' if central.wazuh_manager_status is not defined else 'FAILED') | ljust(46) }}║
+          ║  Wazuh Dashboard:  {{ ('OK' if (central.wazuh_dashboard_status.status | default(0)) in [200,302] else 'SKIPPED' if central.wazuh_dashboard_status is not defined else 'FAILED') | ljust(46) }}║
+          ║  ceos1 SSH:        {{ ('OK' if central.ceos_ssh_status is defined and not (central.ceos_ssh_status.results[0].failed | default(true)) else 'SKIPPED' if central.ceos_ssh_status is not defined else 'FAILED') | ljust(46) }}║
+          ║  ceos2 SSH:        {{ ('OK' if central.ceos_ssh_status is defined and not (central.ceos_ssh_status.results[1].failed | default(true)) else 'SKIPPED' if central.ceos_ssh_status is not defined else 'FAILED') | ljust(46) }}║
+          ║  ceos3 SSH:        {{ ('OK' if central.ceos_ssh_status is defined and not (central.ceos_ssh_status.results[2].failed | default(true)) else 'SKIPPED' if central.ceos_ssh_status is not defined else 'FAILED') | ljust(46) }}║
           ║                                                                ║
           ║  ── Other Hosts ──                                             ║
-          ║  Vault:            {{ ('OK - Unsealed' if not (hostvars['vault']['vault_status']['json']['sealed'] | default(true)) else 'SEALED/DOWN') | ljust(46) }}║
-          ║  Netbox:           {{ ('OK' if (hostvars['netbox']['netbox_status']['status'] | default(0)) == 200 else 'FAILED') | ljust(46) }}║
-          ║  PostgreSQL:       {{ ('OK' if (hostvars['db']['db_check']['rc'] | default(1)) == 0 else 'FAILED') | ljust(46) }}║
-          ║  App Server:       {{ ('OK' if (hostvars['app']['app_http_status']['status'] | default(0)) in [200,302] else 'DOWN/NOT DEPLOYED') | ljust(46) }}║
-          ║  AAP Controller:   {{ ('OK' if (hostvars['control']['aap_status']['status'] | default(0)) == 200 else 'FAILED') | ljust(46) }}║
-          ║  Cisco Switch:     {{ ('OK' if hostvars['switch01']['switch_facts'] is defined and not (hostvars['switch01']['switch_facts']['failed'] | default(true)) else 'FAILED') | ljust(46) }}║
+          ║  Vault:            {{ ('OK - Unsealed' if not (hostvars['vault']['vault_status']['json']['sealed'] | default(true)) else 'SKIPPED' if hostvars['vault']['vault_status'] is not defined else 'SEALED/DOWN') | ljust(46) }}║
+          ║  Netbox:           {{ ('OK' if (hostvars['netbox']['netbox_status']['status'] | default(0)) == 200 else 'SKIPPED' if hostvars['netbox']['netbox_status'] is not defined else 'FAILED') | ljust(46) }}║
+          ║  PostgreSQL:       {{ ('OK' if (hostvars['db']['db_check']['rc'] | default(1)) == 0 else 'SKIPPED' if hostvars['db']['db_check'] is not defined else 'FAILED') | ljust(46) }}║
+          ║  App Server:       {{ ('OK' if (hostvars['app']['app_http_status']['status'] | default(0)) in [200,302] else 'SKIPPED' if hostvars['app']['app_http_status'] is not defined else 'DOWN/NOT DEPLOYED') | ljust(46) }}║
+          ║  AAP Controller:   {{ ('OK' if (hostvars['control']['aap_status']['status'] | default(0)) == 200 else 'SKIPPED' if hostvars['control']['aap_status'] is not defined else 'FAILED') | ljust(46) }}║
+          ║  Cisco Switch:     {{ ('OK' if hostvars['switch01']['switch_facts'] is defined and not (hostvars['switch01']['switch_facts']['failed'] | default(true)) else 'SKIPPED' if hostvars['switch01']['switch_facts'] is not defined else 'FAILED') | ljust(46) }}║
           ║                                                                ║
           ╚══════════════════════════════════════════════════════════════════╝

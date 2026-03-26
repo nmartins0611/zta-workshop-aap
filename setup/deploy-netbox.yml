@@ -114,7 +114,7 @@
       changed_when: false
 
     - name: Start NetBox application containers
-      command: podman-compose up -d netbox netbox-worker
+      shell: timeout 120 podman-compose up --no-deps -d netbox netbox-worker
       args:
         chdir: "{{ netbox_dir }}"
       changed_when: true

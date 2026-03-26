@@ -1,26 +1,27 @@
 ---
-# Pre-workshop verification: Ensure all lab services are operational
+# Pre-workshop verification: check all lab services, never fail — just report.
 #
 # Usage:
 #   ansible-playbook -i inventory/hosts.ini setup/verify-lab.yml
 #
-# Skip specific checks with --skip-tags:
-#   ansible-playbook -i inventory/hosts.ini setup/verify-lab.yml --skip-tags wazuh,splunk
+# Skip specific checks:
+#   ansible-playbook ... --skip-tags wazuh,splunk
 #
-# Run only specific checks with --tags:
-#   ansible-playbook -i inventory/hosts.ini setup/verify-lab.yml --tags vault,db
+# Run only specific checks:
+#   ansible-playbook ... --tags vault,db
 #
 # Available tags:
-#   idm, kerberos, containers, opa, keycloak, splunk,
-#   wazuh, vault, netbox, db, app, aap, network, summary
+#   idm, kerberos, containers, opa, keycloak, splunk, netbox,
+#   wazuh, vault, db, app, aap, arista, ceos, summary
 
 - name: Verify Central Services (VMs + Containers)
   hosts: zta_services
   become: true
   gather_facts: true
+  ignore_errors: true
+  ignore_unreachable: true
 
   tasks:
-    # ── VM-level services ──
     - name: Verify IdM services
       command: ipactl status
       register: idm_status
@@ -36,11 +37,11 @@
       failed_when: false
       tags: [kerberos, idm, central]
 
-    # ── Container checks ──
     - name: Get running containers
       command: podman ps --format '{{ '{{' }}.Names{{ '}}' }}'
       register: running_containers
       changed_when: false
+      failed_when: false
       tags: [containers, central]
 
     - name: Check expected containers are running
@@ -48,7 +49,7 @@
         container_status: >-
           {{
             container_status | default({}) | combine({
-              item: (item in running_containers.stdout)
+              item: (item in (running_containers.stdout | default('')))
             })
           }}
       loop:
@@ -63,21 +64,16 @@
         - ceos3
       tags: [containers, central]
 
-    # ── Service endpoint checks ──
+    - name: Check NetBox containers are running
+      ansible.builtin.set_fact:
+        netbox_containers_up: "{{ 'netbox-docker' in (running_containers.stdout | default('')) }}"
+      tags: [containers, netbox, central]
+
     - name: Verify OPA health
       uri:
         url: "http://localhost:8181/health"
         method: GET
       register: opa_status
-      failed_when: false
-      tags: [opa, central]
-
-    - name: Verify OPA policies loaded
-      uri:
-        url: "http://localhost:8181/v1/policies"
-        method: GET
-        return_content: true
-      register: opa_policies
       failed_when: false
       tags: [opa, central]
 
@@ -138,7 +134,15 @@
       failed_when: false
       tags: [wazuh, central]
 
-    # ── Arista cEOS checks ──
+    - name: Verify NetBox API
+      uri:
+        url: "http://localhost:8880/api/status/"
+        method: GET
+        status_code: [200]
+      register: netbox_status
+      failed_when: false
+      tags: [netbox, central]
+
     - name: Verify cEOS SSH reachability
       ansible.builtin.wait_for:
         host: localhost
@@ -149,7 +153,7 @@
         - { name: ceos2, port: 2002 }
         - { name: ceos3, port: 2003 }
       loop_control:
-        label: "{{ item.name }} (port {{ item.port }})"
+        label: "{{ item.name }}"
       register: ceos_ssh_status
       failed_when: false
       tags: [arista, ceos, central]
@@ -164,7 +168,7 @@
         - { name: ceos2, port: 6032 }
         - { name: ceos3, port: 6033 }
       loop_control:
-        label: "{{ item.name }} (port {{ item.port }})"
+        label: "{{ item.name }}"
       register: ceos_eapi_status
       failed_when: false
       tags: [arista, ceos, central]
@@ -173,6 +177,8 @@
   hosts: vault_servers
   become: true
   gather_facts: false
+  ignore_errors: true
+  ignore_unreachable: true
   tags: [vault]
 
   tasks:
@@ -184,27 +190,12 @@
       register: vault_status
       failed_when: false
 
-- name: Verify Netbox
-  hosts: netbox_servers
-  become: true
-  gather_facts: false
-  tags: [netbox]
-
-  tasks:
-    - name: Check Netbox API
-      uri:
-        url: "http://localhost/api/status/"
-        method: GET
-        headers:
-          Authorization: "Token {{ netbox_token }}"
-        status_code: [200]
-      register: netbox_status
-      failed_when: false
-
 - name: Verify Database Server
   hosts: db_servers
   become: true
   gather_facts: false
+  ignore_errors: true
+  ignore_unreachable: true
   tags: [db]
 
   tasks:
@@ -227,15 +218,11 @@
   hosts: app_servers
   become: true
   gather_facts: false
+  ignore_errors: true
+  ignore_unreachable: true
   tags: [app]
 
   tasks:
-    - name: Check application is deployed
-      stat:
-        path: "{{ app_deploy_dir }}/app.py"
-      register: app_check
-      failed_when: false
-
     - name: Check application is responding
       uri:
         url: "http://localhost:8080"
@@ -245,9 +232,11 @@
       failed_when: false
 
 - name: Verify AAP Controller
-  hosts: aap_controllers
+  hosts: automation
   become: true
   gather_facts: false
+  ignore_errors: true
+  ignore_unreachable: true
   tags: [aap]
 
   tasks:
@@ -260,49 +249,8 @@
       register: aap_status
       failed_when: false
 
-- name: Verify Arista cEOS Switches
-  hosts: zta_services
-  become: true
-  gather_facts: false
-  tags: [network, arista, ceos]
-
-  tasks:
-    - name: Check cEOS containers are running
-      command: podman ps --filter name=ceos --format '{{ '{{' }}.Names{{ '}}' }}'
-      register: ceos_containers
-      changed_when: false
-      failed_when: false
-
-    - name: Verify cEOS SSH ports
-      ansible.builtin.wait_for:
-        host: localhost
-        port: "{{ item.port }}"
-        timeout: 5
-      loop:
-        - { name: ceos1, port: 2001 }
-        - { name: ceos2, port: 2002 }
-        - { name: ceos3, port: 2003 }
-      loop_control:
-        label: "{{ item.name }}"
-      register: arista_ssh_check
-      failed_when: false
-
-    - name: Verify cEOS eAPI ports
-      ansible.builtin.wait_for:
-        host: localhost
-        port: "{{ item.port }}"
-        timeout: 5
-      loop:
-        - { name: ceos1, port: 6031 }
-        - { name: ceos2, port: 6032 }
-        - { name: ceos3, port: 6033 }
-      loop_control:
-        label: "{{ item.name }}"
-      register: arista_eapi_check
-      failed_when: false
-
 # ═══════════════════════════════════════════════════════════════════════
-# Summary
+# Summary — always runs, collects all results into a single report
 # ═══════════════════════════════════════════════════════════════════════
 
 - name: Lab Verification Summary
@@ -312,50 +260,85 @@
   tags: [summary, always]
 
   vars:
-    central: "{{ hostvars['central'] | default({}) }}"
-    cs: "{{ central.container_status | default({}) }}"
+    c: "{{ hostvars['central'] | default({}) }}"
+    cs: "{{ c.container_status | default({}) }}"
+
+    checks:
+      - name: IdM
+        ok: "{{ (c.idm_status.rc | default(1)) == 0 }}"
+      - name: Kerberos
+        ok: "{{ (c.krb_check.rc | default(1)) == 0 }}"
+      - name: OPA container
+        ok: "{{ cs.opa | default(false) }}"
+      - name: Keycloak container
+        ok: "{{ cs.keycloak | default(false) }}"
+      - name: Splunk container
+        ok: "{{ cs.splunk | default(false) }}"
+      - name: Wazuh Indexer container
+        ok: "{{ cs['wazuh-indexer'] | default(false) }}"
+      - name: Wazuh Manager container
+        ok: "{{ cs['wazuh-manager'] | default(false) }}"
+      - name: Wazuh Dashboard container
+        ok: "{{ cs['wazuh-dashboard'] | default(false) }}"
+      - name: NetBox containers
+        ok: "{{ c.netbox_containers_up | default(false) }}"
+      - name: ceos1 container
+        ok: "{{ cs.ceos1 | default(false) }}"
+      - name: ceos2 container
+        ok: "{{ cs.ceos2 | default(false) }}"
+      - name: ceos3 container
+        ok: "{{ cs.ceos3 | default(false) }}"
+      - name: OPA API (8181)
+        ok: "{{ (c.opa_status.status | default(0)) == 200 }}"
+      - name: Keycloak UI (8543)
+        ok: "{{ (c.keycloak_status.status | default(0)) in [200,302,303] }}"
+      - name: Splunk UI (8000)
+        ok: "{{ (c.splunk_ui_status.status | default(0)) in [200,302,303] }}"
+      - name: Splunk HEC (8088)
+        ok: "{{ (c.splunk_hec_status.status | default(0)) == 200 }}"
+      - name: Wazuh Indexer API (9200)
+        ok: "{{ (c.wazuh_indexer_status.status | default(0)) == 200 }}"
+      - name: Wazuh Manager API (55000)
+        ok: "{{ (c.wazuh_manager_status.status | default(0)) in [200,401] }}"
+      - name: Wazuh Dashboard (5601)
+        ok: "{{ (c.wazuh_dashboard_status.status | default(0)) in [200,302] }}"
+      - name: NetBox API (8880)
+        ok: "{{ (c.netbox_status.status | default(0)) == 200 }}"
+      - name: Vault
+        ok: "{{ not (hostvars['vault']['vault_status']['json']['sealed'] | default(true)) }}"
+      - name: PostgreSQL (db host)
+        ok: "{{ (hostvars['db']['db_check']['rc'] | default(1)) == 0 }}"
+      - name: Application (8080)
+        ok: "{{ (hostvars['app']['app_http_status']['status'] | default(0)) in [200,302] }}"
+      - name: AAP Controller
+        ok: "{{ (hostvars['control']['aap_status']['status'] | default(0)) == 200 }}"
 
   tasks:
-    - name: Display verification results
+    - name: Build results
+      set_fact:
+        passed: "{{ checks | selectattr('ok') | list }}"
+        failed_checks: "{{ checks | rejectattr('ok') | list }}"
+
+    - name: Display verification report
       debug:
         msg: |
           ╔══════════════════════════════════════════════════════════════════╗
           ║            ZTA Workshop — Lab Verification Report               ║
           ╠══════════════════════════════════════════════════════════════════╣
           ║                                                                ║
-          ║  ── Central Host (VM Services) ──                              ║
-          ║  IdM:              {{ ('OK' if (central.idm_status.rc | default(1)) == 0 else 'SKIPPED' if central.idm_status is not defined else 'FAILED') }}║
-          ║  Kerberos:         {{ ('OK' if (central.krb_check.rc | default(1)) == 0 else 'SKIPPED' if central.krb_check is not defined else 'FAILED') }}║
+          ║  PASSED: {{ passed | length }} / {{ checks | length }}
           ║                                                                ║
-          ║  ── Central Host (Containers) ──                               ║
-          ║  OPA:              {{ ('UP' if cs.opa | default(false) else 'SKIPPED' if not cs else 'DOWN') }}║
-          ║  Keycloak:         {{ ('UP' if cs.keycloak | default(false) else 'SKIPPED' if not cs else 'DOWN') }}║
-          ║  Splunk:           {{ ('UP' if cs.splunk | default(false) else 'SKIPPED' if not cs else 'DOWN') }}║
-          ║  Wazuh Indexer:    {{ ('UP' if cs['wazuh-indexer'] | default(false) else 'SKIPPED' if not cs else 'DOWN') }}║
-          ║  Wazuh Manager:    {{ ('UP' if cs['wazuh-manager'] | default(false) else 'SKIPPED' if not cs else 'DOWN') }}║
-          ║  Wazuh Dashboard:  {{ ('UP' if cs['wazuh-dashboard'] | default(false) else 'SKIPPED' if not cs else 'DOWN') }}║
-          ║  ceos1 (spine):    {{ ('UP' if cs.ceos1 | default(false) else 'SKIPPED' if not cs else 'DOWN') }}║
-          ║  ceos2 (leaf):     {{ ('UP' if cs.ceos2 | default(false) else 'SKIPPED' if not cs else 'DOWN') }}║
-          ║  ceos3 (leaf):     {{ ('UP' if cs.ceos3 | default(false) else 'SKIPPED' if not cs else 'DOWN') }}║
+          {% for item in checks %}
+          ║  {{ '✓' if item.ok else '✗' }}  {{ item.name }}
+          {% endfor %}
           ║                                                                ║
-          ║  ── Service Endpoints ──                                       ║
-          ║  OPA API:          {{ ('OK' if (central.opa_status.status | default(0)) == 200 else 'SKIPPED' if central.opa_status is not defined else 'FAILED') }}║
-          ║  Keycloak UI:      {{ ('OK' if (central.keycloak_status.status | default(0)) in [200,302,303] else 'SKIPPED' if central.keycloak_status is not defined else 'FAILED') }}║
-          ║  Splunk UI:        {{ ('OK' if (central.splunk_ui_status.status | default(0)) in [200,302,303] else 'SKIPPED' if central.splunk_ui_status is not defined else 'FAILED') }}║
-          ║  Splunk HEC:       {{ ('OK' if (central.splunk_hec_status.status | default(0)) == 200 else 'SKIPPED' if central.splunk_hec_status is not defined else 'FAILED') }}║
-          ║  Wazuh Indexer:    {{ ('OK' if (central.wazuh_indexer_status.status | default(0)) == 200 else 'SKIPPED' if central.wazuh_indexer_status is not defined else 'FAILED') }}║
-          ║  Wazuh Mgr API:    {{ ('OK' if (central.wazuh_manager_status.status | default(0)) in [200,401] else 'SKIPPED' if central.wazuh_manager_status is not defined else 'FAILED') }}║
-          ║  Wazuh Dashboard:  {{ ('OK' if (central.wazuh_dashboard_status.status | default(0)) in [200,302] else 'SKIPPED' if central.wazuh_dashboard_status is not defined else 'FAILED') }}║
-          ║  ceos1 SSH:        {{ ('OK' if central.ceos_ssh_status is defined and not (central.ceos_ssh_status.results[0].failed | default(true)) else 'SKIPPED' if central.ceos_ssh_status is not defined else 'FAILED') }}║
-          ║  ceos2 SSH:        {{ ('OK' if central.ceos_ssh_status is defined and not (central.ceos_ssh_status.results[1].failed | default(true)) else 'SKIPPED' if central.ceos_ssh_status is not defined else 'FAILED') }}║
-          ║  ceos3 SSH:        {{ ('OK' if central.ceos_ssh_status is defined and not (central.ceos_ssh_status.results[2].failed | default(true)) else 'SKIPPED' if central.ceos_ssh_status is not defined else 'FAILED') }}║
-          ║                                                                ║
-          ║  ── Other Hosts ──                                             ║
-          ║  Vault:            {{ ('OK - Unsealed' if not (hostvars['vault']['vault_status']['json']['sealed'] | default(true)) else 'SKIPPED' if hostvars['vault']['vault_status'] is not defined else 'SEALED/DOWN') }}║
-          ║  Netbox:           {{ ('OK' if (hostvars['netbox']['netbox_status']['status'] | default(0)) == 200 else 'SKIPPED' if hostvars['netbox']['netbox_status'] is not defined else 'FAILED') }}║
-          ║  PostgreSQL:       {{ ('OK' if (hostvars['db']['db_check']['rc'] | default(1)) == 0 else 'SKIPPED' if hostvars['db']['db_check'] is not defined else 'FAILED') }}║
-          ║  App Server:       {{ ('OK' if (hostvars['app']['app_http_status']['status'] | default(0)) in [200,302] else 'SKIPPED' if hostvars['app']['app_http_status'] is not defined else 'DOWN/NOT DEPLOYED') }}║
-          ║  AAP Controller:   {{ ('OK' if (hostvars['control']['aap_status']['status'] | default(0)) == 200 else 'SKIPPED' if hostvars['control']['aap_status'] is not defined else 'FAILED') }}║
-          ║  Arista cEOS:      {{ ('OK' if central.arista_ssh_check is defined and not (central.arista_ssh_check.results[0].failed | default(true)) else 'SKIPPED' if central.arista_ssh_check is not defined else 'FAILED') }}║
+          {% if failed_checks | length > 0 %}
+          ║  ── NOT RUNNING ──                                             ║
+          {% for item in failed_checks %}
+          ║    - {{ item.name }}
+          {% endfor %}
+          {% else %}
+          ║  All services operational.                                     ║
+          {% endif %}
           ║                                                                ║
           ╚══════════════════════════════════════════════════════════════════╝

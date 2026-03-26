@@ -89,32 +89,20 @@
       failed_when: false
       changed_when: "'netbox-docker_default' in net_create.stdout"
 
+    - name: Strip depends_on health conditions (podman-compose 1.5.x hangs on them)
+      shell: |
+        sed -i 's/condition: service_healthy//g' {{ netbox_dir }}/docker-compose.yml
+        sed -i 's/condition: service_started//g' {{ netbox_dir }}/docker-compose.yml
+      changed_when: true
+
     - name: Pull NetBox images
       command: podman-compose pull
       args:
         chdir: "{{ netbox_dir }}"
       changed_when: true
 
-    # Start backing services first — podman-compose 1.5.x blocks
-    # on depends_on health check conditions if started all at once.
-    - name: Start PostgreSQL and Redis
-      command: podman-compose up -d postgres redis redis-cache
-      args:
-        chdir: "{{ netbox_dir }}"
-      changed_when: true
-
-    - name: Wait for PostgreSQL to accept connections
-      shell: >
-        podman exec $(podman ps --filter name=postgres --format '{{ '{{' }}.Names{{ '}}' }}' | head -1)
-        pg_isready -U netbox
-      register: pg_ready
-      until: pg_ready.rc == 0
-      retries: 30
-      delay: 5
-      changed_when: false
-
-    - name: Start NetBox application containers
-      shell: timeout 120 podman-compose up --no-deps -d netbox netbox-worker
+    - name: Start all NetBox containers
+      command: podman-compose up -d
       args:
         chdir: "{{ netbox_dir }}"
       changed_when: true

@@ -176,16 +176,16 @@
     # Phase 5 — Create pod and start containers
     # ═══════════════════════════════════════════════════════════════════
 
-    - name: Create Wazuh pod with published ports
-      command: >
-        podman pod create
-        --name {{ wazuh_pod_name }}
-        --hostname wazuh.zta.lab
-        -p 9200:9200
-        -p 55000:55000
-        -p 1514:1514
-        -p 1515:1515
-        -p 5601:5601
+    # - name: Create Wazuh pod with published ports
+    #   command: >
+    #     podman pod create
+    #     --name {{ wazuh_pod_name }}
+    #     --hostname wazuh.zta.lab
+    #     -p 9200:9200
+    #     -p 55000:55000
+    #     -p 1514:1514
+    #     -p 1515:1515
+    #     -p 5601:5601
 
     # ── Wazuh Indexer ──
     - name: Write custom opensearch.yml (security plugin disabled)
@@ -283,26 +283,18 @@
         mode: '0660'
 
     - name: Start Wazuh Manager container
-      command: >
+      shell: >
         podman run -d
         --name wazuh-manager
         --pod {{ wazuh_pod_name }}
         --restart always
-        -v {{ wazuh_data_dir }}/manager/etc:/var/ossec/etc:z
+        -v {{ wazuh_data_dir }}/manager/etc/ossec.conf:/var/ossec/etc/ossec.conf:z
         -v {{ wazuh_data_dir }}/manager/logs:/var/ossec/logs:z
         -v {{ wazuh_data_dir }}/manager/queue:/var/ossec/queue:z
-        -v {{ wazuh_data_dir }}/manager/var:/var/ossec/var/multigroups:z
-        -v {{ wazuh_data_dir }}/manager/integrations:/var/ossec/integrations:z
-        -v {{ wazuh_data_dir }}/manager/active-response:/var/ossec/active-response/bin:z
-        -v {{ wazuh_data_dir }}/manager/agentless:/var/ossec/agentless:z
-        -v {{ wazuh_data_dir }}/manager/wodles:/var/ossec/wodles:z
-        -v {{ wazuh_data_dir }}/certs/root-ca.pem:/etc/ssl/root-ca.pem:ro,z
-        -v {{ wazuh_data_dir }}/certs/manager.pem:/etc/ssl/filebeat.pem:ro,z
-        -v {{ wazuh_data_dir }}/certs/manager.key:/etc/ssl/filebeat.key:ro,z
         -e INDEXER_URL=http://localhost:9200
         -e INDEXER_USERNAME=admin
         -e INDEXER_PASSWORD={{ wazuh_indexer_password }}
-        -e FILEBEAT_SSL_VERIFICATION_MODE=none
+        -e 'FILEBEAT_SSL_VERIFICATION_MODE=none'
         -e API_USERNAME={{ wazuh_api_user }}
         -e API_PASSWORD={{ wazuh_api_password }}
         {{ wazuh_images.manager }}

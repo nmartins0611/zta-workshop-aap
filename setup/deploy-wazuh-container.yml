@@ -257,43 +257,31 @@
         content: |
           server.host: "0.0.0.0"
           server.port: 5601
+          server.ssl.enabled: false
           opensearch.hosts: ["http://localhost:9200"]
           opensearch.ssl.verificationMode: none
-          opensearch.username: admin
-          opensearch.password: {{ wazuh_dashboard_password }}
-          opensearch.requestHeadersWhitelist: ["securitytenant", "Authorization"]
-          opensearch_security.multitenancy.enabled: false
-          opensearch_security.readonly_mode.roles: ["kibana_read_only"]
-          server.ssl.enabled: true
-          server.ssl.key: /usr/share/wazuh-dashboard/certs/dashboard-key.pem
-          server.ssl.certificate: /usr/share/wazuh-dashboard/certs/dashboard.pem
-          opensearch.ssl.certificateAuthorities: ["/usr/share/wazuh-dashboard/certs/root-ca.pem"]
           uiSettings.overrides.defaultRoute: /app/wazuh
         mode: '0644'
 
     - name: Start Wazuh Dashboard container
-      command: >
+      shell: >
         podman run -d
         --name wazuh-dashboard
         --pod {{ wazuh_pod_name }}
         --restart always
         -v {{ wazuh_data_dir }}/dashboard/opensearch_dashboards.yml:/usr/share/wazuh-dashboard/config/opensearch_dashboards.yml:ro,z
-        -v {{ wazuh_data_dir }}/certs/root-ca.pem:/usr/share/wazuh-dashboard/certs/root-ca.pem:ro,z
-        -v {{ wazuh_data_dir }}/certs/dashboard.pem:/usr/share/wazuh-dashboard/certs/dashboard.pem:ro,z
-        -v {{ wazuh_data_dir }}/certs/dashboard.key:/usr/share/wazuh-dashboard/certs/dashboard-key.pem:ro,z
         -e INDEXER_URL=http://localhost:9200
         -e INDEXER_USERNAME=admin
         -e INDEXER_PASSWORD={{ wazuh_indexer_password }}
         -e WAZUH_API_URL=https://localhost
         -e API_USERNAME={{ wazuh_api_user }}
-        -e API_PASSWORD={{ wazuh_api_password }}
+        -e 'API_PASSWORD={{ wazuh_api_password }}'
         {{ wazuh_images.dashboard }}
 
     - name: Wait for Wazuh Dashboard
       uri:
-        url: "https://localhost:5601"
+        url: "http://localhost:5601"
         method: GET
-        validate_certs: false
         status_code: [200, 302]
       register: dashboard_health
       until: dashboard_health.status in [200, 302]
@@ -335,7 +323,7 @@
           ║        Wazuh Stack — Container Deployment Complete            ║
           ╠════════════════════════════════════════════════════════════════╣
           ║                                                              ║
-          ║  Dashboard:   https://central.zta.lab:5601                   ║
+          ║  Dashboard:   http://central.zta.lab:5601                    ║
           ║  Manager API: https://central.zta.lab:55000                  ║
           ║  Agent Port:  central.zta.lab:1514 (TCP)                     ║
           ║  Enrollment:  central.zta.lab:1515                           ║
@@ -358,7 +346,7 @@
           ║    /var/ossec/bin/agent-auth -m central.zta.lab              ║
           ║                                                              ║
           ║  NOTE: Update inventory/group_vars/all.yml:                  ║
-          ║    wazuh_url: https://central.zta.lab:5601                   ║
+          ║    wazuh_url: http://central.zta.lab:5601                    ║
           ║    wazuh_api_url: https://central.zta.lab:55000              ║
           ║    wazuh_manager_host: central.zta.lab                       ║
           ╚════════════════════════════════════════════════════════════════╝

@@ -1,0 +1,411 @@
+---
+# Deploy Wazuh SIEM stack (Indexer + Manager + Dashboard) as containers on central
+#
+# Components:
+#   - Wazuh Indexer  (OpenSearch):           event storage and search
+#   - Wazuh Manager:                         SIEM engine, agent mgmt, Filebeat
+#   - Wazuh Dashboard (OpenSearch Dashboards): web UI
+#
+# Services exposed:
+#   - Dashboard:          http://central.zta.lab:5601
+#   - Manager API:        https://central.zta.lab:55000
+#   - Indexer API:        http://central.zta.lab:9200
+#   - Agent connection:   central.zta.lab:1514 (TCP)
+#   - Agent enrollment:   central.zta.lab:1515 (TCP)
+#   - Syslog collection:  central.zta.lab:514  (UDP)
+#
+# Credentials:
+#   - Wazuh API:  wazuh_api_user / wazuh_api_password  (from group_vars/all.yml)
+#
+# Persistent data:
+#   - /opt/wazuh-data/      — indexer data, manager config/logs/queue/integrations
+#   - /opt/wazuh-config/    — mounted configuration files
+#
+# Note: configure-wazuh-eda.yml writes to /var/ossec/ paths. For the
+#   containerized deployment, those files live under /opt/wazuh-data/manager-*
+#   on the host, or use:  podman exec -it wazuh-manager /bin/bash
+#
+# Usage:
+#   ansible-playbook -i inventory/hosts.ini setup/deploy-wazuh.yml
+
+- name: Deploy Wazuh SIEM Stack
+  hosts: zta_services
+  become: true
+  gather_facts: true
+
+  vars:
+    wazuh_version: "4.9.2"
+    wazuh_data_dir: /opt/wazuh-data
+    wazuh_config_dir: /opt/wazuh-config
+    wazuh_network_name: wazuh-net
+    wazuh_indexer_container: wazuh-indexer
+    wazuh_manager_container: wazuh-manager
+    wazuh_dashboard_container: wazuh-dashboard
+    wazuh_indexer_image: "docker.io/wazuh/wazuh-indexer:{{ wazuh_version }}"
+    wazuh_manager_image: "docker.io/wazuh/wazuh-manager:{{ wazuh_version }}"
+    wazuh_dashboard_image: "docker.io/wazuh/wazuh-dashboard:{{ wazuh_version }}"
+    wazuh_indexer_java_opts: "-Xms1g -Xmx1g"
+
+  tasks:
+    # ═══════════════════════════════════════════════════════════════════
+    # Phase 1 — Prerequisites
+    # ═══════════════════════════════════════════════════════════════════
+
+    - name: Ensure podman is installed
+      ansible.builtin.dnf:
+        name:
+          - podman
+          - python3-podman
+        state: present
+
+    - name: Configure vm.max_map_count for Wazuh Indexer (OpenSearch requirement)
+      ansible.builtin.copy:
+        dest: /etc/sysctl.d/99-wazuh.conf
+        content: |
+          vm.max_map_count=262144
+        mode: '0644'
+      register: sysctl_wazuh
+
+    - name: Apply sysctl settings
+      ansible.builtin.command: sysctl -p /etc/sysctl.d/99-wazuh.conf
+      when: sysctl_wazuh.changed
+
+    - name: Create Wazuh persistent data directories
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        mode: '0755'
+        owner: root
+        group: root
+      loop:
+        - "{{ wazuh_data_dir }}"
+        - "{{ wazuh_data_dir }}/indexer-data"
+        - "{{ wazuh_data_dir }}/manager-api-config"
+        - "{{ wazuh_data_dir }}/manager-etc"
+        - "{{ wazuh_data_dir }}/manager-logs"
+        - "{{ wazuh_data_dir }}/manager-queue"
+        - "{{ wazuh_data_dir }}/manager-var-multigroups"
+        - "{{ wazuh_data_dir }}/manager-integrations"
+        - "{{ wazuh_data_dir }}/filebeat-lib"
+        - "{{ wazuh_config_dir }}"
+
+    - name: Set SELinux context on Wazuh data directories
+      ansible.builtin.command: "chcon -R -t container_file_t {{ item }}"
+      changed_when: true
+      loop:
+        - "{{ wazuh_data_dir }}"
+        - "{{ wazuh_config_dir }}"
+
+    - name: Set ownership of indexer data directory (UID 1000 = opensearch)
+      ansible.builtin.file:
+        path: "{{ wazuh_data_dir }}/indexer-data"
+        owner: '1000'
+        group: '1000'
+        recurse: true
+
+    - name: Create Podman network for Wazuh inter-container communication
+      containers.podman.podman_network:
+        name: "{{ wazuh_network_name }}"
+        state: present
+
+    # ═══════════════════════════════════════════════════════════════════
+    # Phase 2 — Configuration files
+    # ═══════════════════════════════════════════════════════════════════
+
+    - name: Deploy Wazuh Indexer configuration (security disabled for lab)
+      ansible.builtin.copy:
+        dest: "{{ wazuh_config_dir }}/opensearch.yml"
+        mode: '0644'
+        content: |
+          network.host: 0.0.0.0
+          node.name: wazuh-indexer
+          cluster.name: wazuh-cluster
+          discovery.type: single-node
+          compatibility.override_main_response_version: true
+          plugins.security.disabled: true
+
+    - name: Deploy Filebeat configuration for Wazuh Manager
+      ansible.builtin.copy:
+        dest: "{{ wazuh_config_dir }}/filebeat.yml"
+        mode: '0644'
+        content: |
+          filebeat.modules:
+            - module: wazuh
+              alerts:
+                enabled: true
+              archives:
+                enabled: false
+
+          setup.template.json.enabled: true
+          setup.template.json.path: /etc/filebeat/wazuh-template.json
+          setup.template.json.name: wazuh
+          setup.template.overwrite: true
+          setup.ilm.enabled: false
+
+          output.elasticsearch:
+            hosts:
+              - http://wazuh-indexer:9200
+
+    - name: Deploy Wazuh Dashboard configuration (TLS disabled for lab)
+      ansible.builtin.copy:
+        dest: "{{ wazuh_config_dir }}/opensearch_dashboards.yml"
+        mode: '0644'
+        content: |
+          server.host: 0.0.0.0
+          server.port: 5601
+          opensearch.hosts:
+            - http://wazuh-indexer:9200
+          opensearch_security.multitenancy.enabled: false
+          opensearch_security.readonly_mode.roles:
+            - kibana_read_only
+          server.ssl.enabled: false
+
+    # ═══════════════════════════════════════════════════════════════════
+    # Phase 3 — Deploy Wazuh Indexer
+    # ═══════════════════════════════════════════════════════════════════
+
+    - name: Stop any existing Wazuh containers
+      containers.podman.podman_container:
+        name: "{{ item }}"
+        state: absent
+      failed_when: false
+      loop:
+        - "{{ wazuh_dashboard_container }}"
+        - "{{ wazuh_manager_container }}"
+        - "{{ wazuh_indexer_container }}"
+
+    - name: Run Wazuh Indexer container
+      containers.podman.podman_container:
+        name: "{{ wazuh_indexer_container }}"
+        image: "{{ wazuh_indexer_image }}"
+        state: started
+        hostname: wazuh-indexer
+        network:
+          - "{{ wazuh_network_name }}"
+        ports:
+          - "9200:9200"
+        env:
+          OPENSEARCH_JAVA_OPTS: "{{ wazuh_indexer_java_opts }}"
+          bootstrap.memory_lock: "true"
+        volume:
+          - "{{ wazuh_data_dir }}/indexer-data:/var/lib/wazuh-indexer:z"
+          - "{{ wazuh_config_dir }}/opensearch.yml:/usr/share/wazuh-indexer/opensearch.yml:ro,z"
+        ulimit:
+          - "memlock=-1:-1"
+          - "nofile=65536:65536"
+        detach: true
+      register: indexer_container
+
+    - name: Wait for Wazuh Indexer to be ready
+      ansible.builtin.uri:
+        url: "http://localhost:9200"
+        method: GET
+        status_code: [200]
+      register: indexer_health
+      until: indexer_health.status == 200
+      retries: 30
+      delay: 10
+
+    # ═══════════════════════════════════════════════════════════════════
+    # Phase 4 — Deploy Wazuh Manager
+    # ═══════════════════════════════════════════════════════════════════
+
+    - name: Run Wazuh Manager container
+      containers.podman.podman_container:
+        name: "{{ wazuh_manager_container }}"
+        image: "{{ wazuh_manager_image }}"
+        state: started
+        hostname: wazuh-manager
+        network:
+          - "{{ wazuh_network_name }}"
+        ports:
+          - "1514:1514"
+          - "1515:1515"
+          - "514:514/udp"
+          - "55000:55000"
+        env:
+          INDEXER_URL: "http://wazuh-indexer:9200"
+          INDEXER_USERNAME: ""
+          INDEXER_PASSWORD: ""
+          FILEBEAT_SSL_VERIFICATION_MODE: "none"
+          API_USERNAME: "{{ wazuh_api_user }}"
+          API_PASSWORD: "{{ wazuh_api_password }}"
+        volume:
+          - "{{ wazuh_data_dir }}/manager-api-config:/var/ossec/api/configuration:z"
+          - "{{ wazuh_data_dir }}/manager-etc:/var/ossec/etc:z"
+          - "{{ wazuh_data_dir }}/manager-logs:/var/ossec/logs:z"
+          - "{{ wazuh_data_dir }}/manager-queue:/var/ossec/queue:z"
+          - "{{ wazuh_data_dir }}/manager-var-multigroups:/var/ossec/var/multigroups:z"
+          - "{{ wazuh_data_dir }}/manager-integrations:/var/ossec/integrations:z"
+          - "{{ wazuh_data_dir }}/filebeat-lib:/var/lib/filebeat:z"
+          - "{{ wazuh_config_dir }}/filebeat.yml:/etc/filebeat/filebeat.yml:ro,z"
+        detach: true
+      register: manager_container
+
+    - name: Wait for Wazuh Manager API (first boot takes 2-3 minutes)
+      ansible.builtin.uri:
+        url: "https://localhost:55000"
+        method: GET
+        validate_certs: false
+        status_code: [200, 401]
+      register: manager_health
+      until: manager_health.status in [200, 401]
+      retries: 30
+      delay: 10
+
+    # ═══════════════════════════════════════════════════════════════════
+    # Phase 5 — Deploy Wazuh Dashboard
+    # ═══════════════════════════════════════════════════════════════════
+
+    - name: Run Wazuh Dashboard container
+      containers.podman.podman_container:
+        name: "{{ wazuh_dashboard_container }}"
+        image: "{{ wazuh_dashboard_image }}"
+        state: started
+        hostname: wazuh-dashboard
+        network:
+          - "{{ wazuh_network_name }}"
+        ports:
+          - "5601:5601"
+        env:
+          INDEXER_URL: "http://wazuh-indexer:9200"
+          INDEXER_USERNAME: ""
+          INDEXER_PASSWORD: ""
+          WAZUH_API_URL: "https://wazuh-manager:55000"
+          API_USERNAME: "{{ wazuh_api_user }}"
+          API_PASSWORD: "{{ wazuh_api_password }}"
+          SERVER_SSL_ENABLED: "false"
+        volume:
+          - "{{ wazuh_config_dir }}/opensearch_dashboards.yml:/usr/share/wazuh-dashboard/config/opensearch_dashboards.yml:ro,z"
+        detach: true
+      register: dashboard_container
+
+    - name: Wait for Wazuh Dashboard (first boot takes 1-2 minutes)
+      ansible.builtin.uri:
+        url: "http://localhost:5601"
+        method: GET
+        status_code: [200, 302]
+      register: dashboard_health
+      until: dashboard_health.status in [200, 302]
+      retries: 30
+      delay: 10
+
+    # ═══════════════════════════════════════════════════════════════════
+    # Phase 6 — Firewall
+    # ═══════════════════════════════════════════════════════════════════
+
+    # - name: Open Wazuh firewall ports
+    #   ansible.builtin.firewalld:
+    #     port: "{{ item }}"
+    #     permanent: true
+    #     immediate: true
+    #     state: enabled
+    #   loop:
+    #     - 9200/tcp
+    #     - 55000/tcp
+    #     - 5601/tcp
+    #     - 1514/tcp
+    #     - 1515/tcp
+    #     - 514/udp
+
+    # ═══════════════════════════════════════════════════════════════════
+    # Phase 7 — Systemd services for reboot persistence
+    # ═══════════════════════════════════════════════════════════════════
+
+    - name: Generate systemd service for Wazuh Indexer
+      containers.podman.podman_generate_systemd:
+        name: "{{ wazuh_indexer_container }}"
+        dest: /etc/systemd/system/
+        restart_policy: always
+        new: false
+
+    - name: Generate systemd service for Wazuh Manager
+      containers.podman.podman_generate_systemd:
+        name: "{{ wazuh_manager_container }}"
+        dest: /etc/systemd/system/
+        restart_policy: always
+        new: false
+
+    - name: Generate systemd service for Wazuh Dashboard
+      containers.podman.podman_generate_systemd:
+        name: "{{ wazuh_dashboard_container }}"
+        dest: /etc/systemd/system/
+        restart_policy: always
+        new: false
+
+    - name: Enable and start Wazuh systemd services
+      ansible.builtin.systemd:
+        name: "container-{{ item }}"
+        enabled: true
+        state: started
+        daemon_reload: true
+      loop:
+        - "{{ wazuh_indexer_container }}"
+        - "{{ wazuh_manager_container }}"
+        - "{{ wazuh_dashboard_container }}"
+
+    # ═══════════════════════════════════════════════════════════════════
+    # Phase 8 — Verify Wazuh API
+    # ═══════════════════════════════════════════════════════════════════
+
+    - name: Authenticate to Wazuh Manager API
+      ansible.builtin.uri:
+        url: "https://localhost:55000/security/user/authenticate"
+        method: POST
+        user: "{{ wazuh_api_user }}"
+        password: "{{ wazuh_api_password }}"
+        force_basic_auth: true
+        validate_certs: false
+        status_code: [200]
+      register: wazuh_auth
+
+    - name: Get Wazuh Manager info
+      ansible.builtin.uri:
+        url: "https://localhost:55000/"
+        method: GET
+        headers:
+          Authorization: "Bearer {{ wazuh_auth.json.data.token }}"
+        validate_certs: false
+        status_code: [200]
+      register: wazuh_info
+      when: wazuh_auth.status == 200
+
+    # ═══════════════════════════════════════════════════════════════════
+    # Summary
+    # ═══════════════════════════════════════════════════════════════════
+
+    - name: Display Wazuh deployment summary
+      ansible.builtin.debug:
+        msg: |
+          ╔════════════════════════════════════════════════════════════════╗
+          ║         Wazuh SIEM — Deployment Complete                     ║
+          ╠════════════════════════════════════════════════════════════════╣
+          ║                                                              ║
+          ║  Dashboard:    http://{{ ansible_default_ipv4.address }}:5601{{ ' ' * (23 - ansible_default_ipv4.address | length) }}║
+          ║  Manager API:  https://{{ ansible_default_ipv4.address }}:55000{{ ' ' * (21 - ansible_default_ipv4.address | length) }}║
+          ║  Indexer API:  http://{{ ansible_default_ipv4.address }}:9200{{ ' ' * (23 - ansible_default_ipv4.address | length) }}║
+          ║                                                              ║
+          ║  Agent ports:                                                ║
+          ║    Connection:   {{ ansible_default_ipv4.address }}:1514 (TCP){{ ' ' * (22 - ansible_default_ipv4.address | length) }}║
+          ║    Enrollment:   {{ ansible_default_ipv4.address }}:1515 (TCP){{ ' ' * (22 - ansible_default_ipv4.address | length) }}║
+          ║    Syslog:       {{ ansible_default_ipv4.address }}:514  (UDP){{ ' ' * (22 - ansible_default_ipv4.address | length) }}║
+          ║                                                              ║
+          ║  Credentials:                                                ║
+          ║    API user:     {{ wazuh_api_user }}{{ ' ' * (41 - wazuh_api_user | length) }}║
+          ║    API password: (see group_vars/all.yml)                    ║
+          ║                                                              ║
+          ║  API test:       {{ ('OK' if wazuh_info.status | default(0) == 200 else 'FAILED') }}{{ ' ' * 39 }}║
+          ║                                                              ║
+          ║  Containers:                                                 ║
+          ║    wazuh-indexer    → event storage (OpenSearch)              ║
+          ║    wazuh-manager    → SIEM engine / agent management         ║
+          ║    wazuh-dashboard  → web UI                                 ║
+          ║                                                              ║
+          ║  Systemd:                                                    ║
+          ║    systemctl status container-wazuh-indexer                   ║
+          ║    systemctl status container-wazuh-manager                  ║
+          ║    systemctl status container-wazuh-dashboard                ║
+          ║                                                              ║
+          ║  Data:    {{ wazuh_data_dir }}/{{ ' ' * (40 - wazuh_data_dir | length) }}║
+          ║  Config:  {{ wazuh_config_dir }}/{{ ' ' * (38 - wazuh_config_dir | length) }}║
+          ╚════════════════════════════════════════════════════════════════╝

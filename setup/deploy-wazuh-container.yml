@@ -1,10 +1,6 @@
 ---
 # Deploy Wazuh (Manager + Indexer + Dashboard) as containers on central
 #
-# The Wazuh Docker images have built-in opensearch.yml and security init
-# scripts. This playbook generates certs matching the expected subjects
-# and mounts them at the expected paths — no custom opensearch.yml needed.
-#
 # Services exposed:
 #   - Dashboard:         https://central.zta.lab:5601
 #   - Manager API:       https://central.zta.lab:55000
@@ -64,11 +60,17 @@
         - "{{ wazuh_data_dir }}/dashboard-config"
 
     # ═══════════════════════════════════════════════════════════════════
-    # Phase 2 — Generate certs matching Wazuh image expectations
+    # Phase 2 — Generate certs with EXACT names the Wazuh images expect
     #
-    # The Wazuh indexer image's opensearch.yml expects:
-    #   nodes_dn:  CN=wazuh.indexer,OU=Wazuh,O=Wazuh,L=California,C=US
-    #   admin_dn:  CN=admin,OU=Wazuh,O=Wazuh,L=California,C=US
+    # Indexer image expects in /usr/share/wazuh-indexer/certs/:
+    #   wazuh.indexer.pem, wazuh.indexer.key, root-ca.pem,
+    #   admin.pem, admin-key.pem
+    #
+    # Dashboard image expects in /usr/share/wazuh-dashboard/certs/:
+    #   wazuh-dashboard.pem, wazuh-dashboard-key.pem, root-ca.pem
+    #
+    # Indexer opensearch.yml nodes_dn expects:
+    #   CN=wazuh.indexer,OU=Wazuh,O=Wazuh,L=California,C=US
     # ═══════════════════════════════════════════════════════════════════
 
     - name: Generate CA private key
@@ -113,9 +115,19 @@
       args:
         creates: "{{ wazuh_data_dir }}/certs/{{ item.file }}.pem"
       loop:
-        - { file: indexer,   cn: wazuh.indexer }
-        - { file: dashboard, cn: wazuh.dashboard }
-        - { file: admin,     cn: admin }
+        - { file: wazuh.indexer,   cn: wazuh.indexer }
+        - { file: wazuh-dashboard, cn: wazuh.dashboard }
+        - { file: admin,           cn: admin }
+
+    - name: Create key symlinks matching image expectations
+      file:
+        src: "{{ wazuh_data_dir }}/certs/{{ item.src }}"
+        dest: "{{ wazuh_data_dir }}/certs/{{ item.dest }}"
+        state: link
+        force: true
+      loop:
+        - { src: admin.key,           dest: admin-key.pem }
+        - { src: wazuh-dashboard.key, dest: wazuh-dashboard-key.pem }
 
     - name: Set cert ownership to UID 1000 (wazuh-indexer)
       file:
@@ -128,14 +140,13 @@
       shell: |
         chmod 644 {{ wazuh_data_dir }}/certs/*.pem
         chmod 640 {{ wazuh_data_dir }}/certs/*.key
-        chmod 644 {{ wazuh_data_dir }}/certs/*.csr 2>/dev/null || true
 
     - name: Apply SELinux context
       command: chcon -R -t container_file_t {{ wazuh_data_dir }}
       changed_when: true
 
     # ═══════════════════════════════════════════════════════════════════
-    # Phase 3 — Dashboard config (mounted into container)
+    # Phase 3 — Dashboard config
     # ═══════════════════════════════════════════════════════════════════
 
     - name: Write opensearch_dashboards.yml
@@ -194,8 +205,8 @@
         -p 5601:5601
 
     # ── Wazuh Indexer ──
-    # No custom opensearch.yml — the image has its own with correct
-    # security config. We just mount certs at the expected paths.
+    # Mount entire certs directory — avoids Podman overlay conflicts
+    # from multiple individual file mounts into the same container path.
     - name: Start Wazuh Indexer container
       shell: >
         podman run -d
@@ -203,13 +214,10 @@
         --pod {{ wazuh_pod_name }}
         --restart always
         -v {{ wazuh_data_dir }}/indexer/data:/var/lib/wazuh-indexer:z
-        -v {{ wazuh_data_dir }}/certs/root-ca.pem:/usr/share/wazuh-indexer/certs/root-ca.pem:ro,z
-        -v {{ wazuh_data_dir }}/certs/indexer.pem:/usr/share/wazuh-indexer/certs/wazuh.indexer.pem:ro,z
-        -v {{ wazuh_data_dir }}/certs/indexer.key:/usr/share/wazuh-indexer/certs/wazuh.indexer.key:ro,z
-        -v {{ wazuh_data_dir }}/certs/admin.pem:/usr/share/wazuh-indexer/certs/admin.pem:ro,z
-        -v {{ wazuh_data_dir }}/certs/admin.key:/usr/share/wazuh-indexer/certs/admin-key.pem:ro,z
+        -v {{ wazuh_data_dir }}/certs:/usr/share/wazuh-indexer/certs:z
         -e 'OPENSEARCH_JAVA_OPTS=-Xms1g -Xmx1g'
         -e 'bootstrap.memory_lock=true'
+        -e 'discovery.type=single-node'
         {{ wazuh_images.indexer }}
 
     - name: Wait for Wazuh Indexer to be ready
@@ -251,8 +259,8 @@
         -v {{ wazuh_data_dir }}/manager/logs:/var/ossec/logs:z
         -v {{ wazuh_data_dir }}/manager/queue:/var/ossec/queue:z
         -v {{ wazuh_data_dir }}/certs/root-ca.pem:/etc/ssl/root-ca.pem:ro,z
-        -v {{ wazuh_data_dir }}/certs/indexer.pem:/etc/ssl/filebeat.pem:ro,z
-        -v {{ wazuh_data_dir }}/certs/indexer.key:/etc/ssl/filebeat.key:ro,z
+        -v {{ wazuh_data_dir }}/certs/wazuh.indexer.pem:/etc/ssl/filebeat.pem:ro,z
+        -v {{ wazuh_data_dir }}/certs/wazuh.indexer.key:/etc/ssl/filebeat.key:ro,z
         -e INDEXER_URL=https://localhost:9200
         -e INDEXER_USERNAME=admin
         -e INDEXER_PASSWORD={{ wazuh_indexer_password }}
@@ -279,9 +287,7 @@
         --name wazuh-dashboard
         --pod {{ wazuh_pod_name }}
         --restart always
-        -v {{ wazuh_data_dir }}/certs/dashboard.pem:/usr/share/wazuh-dashboard/certs/wazuh-dashboard.pem:ro,z
-        -v {{ wazuh_data_dir }}/certs/dashboard.key:/usr/share/wazuh-dashboard/certs/wazuh-dashboard-key.pem:ro,z
-        -v {{ wazuh_data_dir }}/certs/root-ca.pem:/usr/share/wazuh-dashboard/certs/root-ca.pem:ro,z
+        -v {{ wazuh_data_dir }}/certs:/usr/share/wazuh-dashboard/certs:ro,z
         -v {{ wazuh_data_dir }}/dashboard-config/opensearch_dashboards.yml:/usr/share/wazuh-dashboard/config/opensearch_dashboards.yml:ro,z
         -e INDEXER_USERNAME=admin
         -e INDEXER_PASSWORD={{ wazuh_indexer_password }}

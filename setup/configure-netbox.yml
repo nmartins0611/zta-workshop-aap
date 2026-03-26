@@ -531,30 +531,30 @@
           ║           Netbox CMDB — Population Complete                       ║
           ╠════════════════════════════════════════════════════════════════════╣
           ║                                                                  ║
-          ║  Site:     {{ site_name | ljust(52) }}║
-          ║  URL:      {{ nb_url | ljust(52) }}║
+          ║  Site:     {{ site_name }}║
+          ║  URL:      {{ nb_url }}║
           ║                                                                  ║
           ║  Devices ({{ nb_devices | length }}):                                                    ║
           {% for dev in nb_devices %}
-          ║    {{ (dev.name | ljust(25) + dev.interfaces[0].ip | ljust(18) + dev.role) | ljust(62) }}║
+          ║    {{ (dev.name + dev.interfaces[0].ip + dev.role) }}║
           {% endfor %}
           ║                                                                  ║
           ║  VLANs ({{ nb_vlans | length }}):                                                     ║
           {% for vlan in nb_vlans %}
-          ║    {{ ('VLAN ' + vlan.vid | string + ' — ' + vlan.name + ' (' + vlan.description + ')') | ljust(62) }}║
+          ║    {{ ('VLAN ' + vlan.vid | string + ' — ' + vlan.name + ' (' + vlan.description + ')') }}║
           {% endfor %}
           ║                                                                  ║
           ║  IP Prefixes ({{ nb_prefixes | length }}):                                                ║
           {% for pfx in nb_prefixes %}
-          ║    {{ (pfx.prefix + ' — ' + pfx.description) | ljust(62) }}║
+          ║    {{ (pfx.prefix + ' — ' + pfx.description) }}║
           {% endfor %}
           ║                                                                  ║
           ║  Services ({{ nb_services | length }}):                                                  ║
           {% for svc in nb_services %}
-          ║    {{ (svc.device | ljust(22) + svc.name) | ljust(62) }}║
+          ║    {{ (svc.device + svc.name) }}║
           {% endfor %}
           ║                                                                  ║
-          ║  Tags:     {{ nb_tags | map(attribute='name') | join(', ') | ljust(52) }}║
+          ║  Tags:     {{ nb_tags | map(attribute='name') | join(', ') }}║
           ║                                                                  ║
           ║  ZTA Architecture Mapping:                                       ║
           ║    PEP:      control.zta.lab (AAP)                               ║

@@ -271,6 +271,7 @@
           server.ssl.enabled: false
           opensearch.hosts: ["http://localhost:9200"]
           opensearch.ssl.verificationMode: none
+          opensearch_security.disabled: true
           uiSettings.overrides.defaultRoute: /app/wazuh
         mode: '0644'
 
@@ -341,17 +342,17 @@
           ║  Indexer API: https://central.zta.lab:9200                   ║
           ║                                                              ║
           ║  Credentials:                                                ║
-          ║    Dashboard:  admin / {{ wazuh_dashboard_password | ljust(38) }}║
-          ║    Manager:    {{ wazuh_api_user }} / {{ wazuh_api_password | ljust(38) }}║
-          ║    Indexer:    admin / {{ wazuh_indexer_password | ljust(38) }}║
+          ║    Dashboard:  admin / {{ wazuh_dashboard_password }}
+          ║    Manager:    {{ wazuh_api_user }} / {{ wazuh_api_password }}
+          ║    Indexer:    admin / {{ wazuh_indexer_password }}
           ║                                                              ║
           ║  Containers:                                                 ║
           {% for line in container_list.stdout_lines %}
-          ║    {{ line | ljust(56) }}║
+          ║    {{ line }}
           {% endfor %}
           ║                                                              ║
-          ║  Data:        {{ wazuh_data_dir | ljust(46) }}║
-          ║  Certs:       {{ (wazuh_data_dir + '/certs/') | ljust(46) }}║
+          ║  Data:        {{ wazuh_data_dir }}
+          ║  Certs:       {{ wazuh_data_dir }}/certs/
           ║                                                              ║
           ║  Agent enrollment (on target hosts):                         ║
           ║    /var/ossec/bin/agent-auth -m central.zta.lab              ║

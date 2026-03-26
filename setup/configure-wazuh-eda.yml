@@ -137,7 +137,7 @@
           ╠════════════════════════════════════════════════════════════════╣
           ║                                                              ║
           ║  Integration:  custom-eda                                    ║
-          ║  Webhook URL:  {{ eda_webhook_url | ljust(42) }}║
+          ║  Webhook URL:  {{ eda_webhook_url }}║
           ║  Rules:        5712, 5763, 5764 (SSH brute force)            ║
           ║                                                              ║
           ║  When Wazuh detects SSH brute force on any monitored host,   ║

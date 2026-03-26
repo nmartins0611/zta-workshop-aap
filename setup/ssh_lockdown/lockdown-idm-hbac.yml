@@ -144,12 +144,12 @@
           ╠════════════════════════════════════════════════════════════════╣
           ║                                                              ║
           ║  AAP Service Account:                                        ║
-          ║    User:   {{ aap_service_user | ljust(48) }}║
+          ║    User:   {{ aap_service_user }}║
           ║    Groups: zta-admins                                        ║
           ║    Access: SSH to all managed hosts                          ║
           ║                                                              ║
           ║  Break-Glass Group:                                          ║
-          ║    Group:  {{ breakglass_group | ljust(48) }}║
+          ║    Group:  {{ breakglass_group }}║
           ║    Users:  ztauser, jsmith, mrodriguez                       ║
           ║    Access: SSH + sudo to all managed hosts                   ║
           ║                                                              ║

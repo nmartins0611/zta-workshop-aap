@@ -168,8 +168,8 @@
           ║      AAP LDAP Authentication Configured                 ║
           ╠══════════════════════════════════════════════════════════╣
           ║                                                         ║
-          ║  LDAP Server:  ldaps://{{ idm_server | ljust(33) }}║
-          ║  Base DN:      {{ idm_ldap_base_dn | ljust(39) }}║
+          ║  LDAP Server:  ldaps://{{ idm_server }}║
+          ║  Base DN:      {{ idm_ldap_base_dn }}║
           ║  User Search:  cn=users,cn=accounts,...                 ║
           ║  Group Search: cn=groups,cn=accounts,...                ║
           ║  Group Type:   GroupOfNamesType                         ║
@@ -183,6 +183,6 @@
           ║    Applications   ← team-applications                   ║
           ║                                                         ║
           ║  LDAP Login Test (ztauser):                             ║
-          ║    {{ ('PASSED' if ldap_login_test.status == 201 else 'FAILED (' + (ldap_login_test.status | string) + ') — user may need password change in IdM first') | ljust(51) }}║
+          ║    {{ ('PASSED' if ldap_login_test.status == 201 else 'FAILED (' + (ldap_login_test.status | string) + ') — user may need password change in IdM first') }}║
           ║                                                         ║
           ╚══════════════════════════════════════════════════════════╝

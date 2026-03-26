@@ -55,18 +55,18 @@
       debug:
         msg: |
           ┌──────────────────────────────────────────────────────────────┐
-          │  {{ inventory_hostname | ljust(20) }} — SSH Firewall Lockdown Active  │
+          │  {{ inventory_hostname }} — SSH Firewall Lockdown Active  │
           ├──────────────────────────────────────────────────────────────┤
           │                                                            │
           │  Allowed sources:                                          │
           {% for src in allowed_ssh_sources %}
-          │    ✓ {{ (src.ip + '/32 — ' + src.label) | ljust(54) }}│
+          │    ✓ {{ (src.ip + '/32 — ' + src.label) }}│
           {% endfor %}
           │                                                            │
           │  All other SSH connections: REFUSED                        │
           │                                                            │
           │  Active rich rules:                                        │
           {% for rule in rich_rules.stdout_lines %}
-          │    {{ rule | ljust(56) }}│
+          │    {{ rule }}│
           {% endfor %}
           └──────────────────────────────────────────────────────────────┘

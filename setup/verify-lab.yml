@@ -324,38 +324,38 @@
           ╠══════════════════════════════════════════════════════════════════╣
           ║                                                                ║
           ║  ── Central Host (VM Services) ──                              ║
-          ║  IdM:              {{ ('OK' if (central.idm_status.rc | default(1)) == 0 else 'SKIPPED' if central.idm_status is not defined else 'FAILED') | ljust(46) }}║
-          ║  Kerberos:         {{ ('OK' if (central.krb_check.rc | default(1)) == 0 else 'SKIPPED' if central.krb_check is not defined else 'FAILED') | ljust(46) }}║
+          ║  IdM:              {{ ('OK' if (central.idm_status.rc | default(1)) == 0 else 'SKIPPED' if central.idm_status is not defined else 'FAILED') }}║
+          ║  Kerberos:         {{ ('OK' if (central.krb_check.rc | default(1)) == 0 else 'SKIPPED' if central.krb_check is not defined else 'FAILED') }}║
           ║                                                                ║
           ║  ── Central Host (Containers) ──                               ║
-          ║  OPA:              {{ ('UP' if cs.opa | default(false) else 'SKIPPED' if not cs else 'DOWN') | ljust(46) }}║
-          ║  Keycloak:         {{ ('UP' if cs.keycloak | default(false) else 'SKIPPED' if not cs else 'DOWN') | ljust(46) }}║
-          ║  Splunk:           {{ ('UP' if cs.splunk | default(false) else 'SKIPPED' if not cs else 'DOWN') | ljust(46) }}║
-          ║  Wazuh Indexer:    {{ ('UP' if cs['wazuh-indexer'] | default(false) else 'SKIPPED' if not cs else 'DOWN') | ljust(46) }}║
-          ║  Wazuh Manager:    {{ ('UP' if cs['wazuh-manager'] | default(false) else 'SKIPPED' if not cs else 'DOWN') | ljust(46) }}║
-          ║  Wazuh Dashboard:  {{ ('UP' if cs['wazuh-dashboard'] | default(false) else 'SKIPPED' if not cs else 'DOWN') | ljust(46) }}║
-          ║  ceos1 (spine):    {{ ('UP' if cs.ceos1 | default(false) else 'SKIPPED' if not cs else 'DOWN') | ljust(46) }}║
-          ║  ceos2 (leaf):     {{ ('UP' if cs.ceos2 | default(false) else 'SKIPPED' if not cs else 'DOWN') | ljust(46) }}║
-          ║  ceos3 (leaf):     {{ ('UP' if cs.ceos3 | default(false) else 'SKIPPED' if not cs else 'DOWN') | ljust(46) }}║
+          ║  OPA:              {{ ('UP' if cs.opa | default(false) else 'SKIPPED' if not cs else 'DOWN') }}║
+          ║  Keycloak:         {{ ('UP' if cs.keycloak | default(false) else 'SKIPPED' if not cs else 'DOWN') }}║
+          ║  Splunk:           {{ ('UP' if cs.splunk | default(false) else 'SKIPPED' if not cs else 'DOWN') }}║
+          ║  Wazuh Indexer:    {{ ('UP' if cs['wazuh-indexer'] | default(false) else 'SKIPPED' if not cs else 'DOWN') }}║
+          ║  Wazuh Manager:    {{ ('UP' if cs['wazuh-manager'] | default(false) else 'SKIPPED' if not cs else 'DOWN') }}║
+          ║  Wazuh Dashboard:  {{ ('UP' if cs['wazuh-dashboard'] | default(false) else 'SKIPPED' if not cs else 'DOWN') }}║
+          ║  ceos1 (spine):    {{ ('UP' if cs.ceos1 | default(false) else 'SKIPPED' if not cs else 'DOWN') }}║
+          ║  ceos2 (leaf):     {{ ('UP' if cs.ceos2 | default(false) else 'SKIPPED' if not cs else 'DOWN') }}║
+          ║  ceos3 (leaf):     {{ ('UP' if cs.ceos3 | default(false) else 'SKIPPED' if not cs else 'DOWN') }}║
           ║                                                                ║
           ║  ── Service Endpoints ──                                       ║
-          ║  OPA API:          {{ ('OK' if (central.opa_status.status | default(0)) == 200 else 'SKIPPED' if central.opa_status is not defined else 'FAILED') | ljust(46) }}║
-          ║  Keycloak UI:      {{ ('OK' if (central.keycloak_status.status | default(0)) in [200,302,303] else 'SKIPPED' if central.keycloak_status is not defined else 'FAILED') | ljust(46) }}║
-          ║  Splunk UI:        {{ ('OK' if (central.splunk_ui_status.status | default(0)) in [200,302,303] else 'SKIPPED' if central.splunk_ui_status is not defined else 'FAILED') | ljust(46) }}║
-          ║  Splunk HEC:       {{ ('OK' if (central.splunk_hec_status.status | default(0)) == 200 else 'SKIPPED' if central.splunk_hec_status is not defined else 'FAILED') | ljust(46) }}║
-          ║  Wazuh Indexer:    {{ ('OK' if (central.wazuh_indexer_status.status | default(0)) == 200 else 'SKIPPED' if central.wazuh_indexer_status is not defined else 'FAILED') | ljust(46) }}║
-          ║  Wazuh Mgr API:    {{ ('OK' if (central.wazuh_manager_status.status | default(0)) in [200,401] else 'SKIPPED' if central.wazuh_manager_status is not defined else 'FAILED') | ljust(46) }}║
-          ║  Wazuh Dashboard:  {{ ('OK' if (central.wazuh_dashboard_status.status | default(0)) in [200,302] else 'SKIPPED' if central.wazuh_dashboard_status is not defined else 'FAILED') | ljust(46) }}║
-          ║  ceos1 SSH:        {{ ('OK' if central.ceos_ssh_status is defined and not (central.ceos_ssh_status.results[0].failed | default(true)) else 'SKIPPED' if central.ceos_ssh_status is not defined else 'FAILED') | ljust(46) }}║
-          ║  ceos2 SSH:        {{ ('OK' if central.ceos_ssh_status is defined and not (central.ceos_ssh_status.results[1].failed | default(true)) else 'SKIPPED' if central.ceos_ssh_status is not defined else 'FAILED') | ljust(46) }}║
-          ║  ceos3 SSH:        {{ ('OK' if central.ceos_ssh_status is defined and not (central.ceos_ssh_status.results[2].failed | default(true)) else 'SKIPPED' if central.ceos_ssh_status is not defined else 'FAILED') | ljust(46) }}║
+          ║  OPA API:          {{ ('OK' if (central.opa_status.status | default(0)) == 200 else 'SKIPPED' if central.opa_status is not defined else 'FAILED') }}║
+          ║  Keycloak UI:      {{ ('OK' if (central.keycloak_status.status | default(0)) in [200,302,303] else 'SKIPPED' if central.keycloak_status is not defined else 'FAILED') }}║
+          ║  Splunk UI:        {{ ('OK' if (central.splunk_ui_status.status | default(0)) in [200,302,303] else 'SKIPPED' if central.splunk_ui_status is not defined else 'FAILED') }}║
+          ║  Splunk HEC:       {{ ('OK' if (central.splunk_hec_status.status | default(0)) == 200 else 'SKIPPED' if central.splunk_hec_status is not defined else 'FAILED') }}║
+          ║  Wazuh Indexer:    {{ ('OK' if (central.wazuh_indexer_status.status | default(0)) == 200 else 'SKIPPED' if central.wazuh_indexer_status is not defined else 'FAILED') }}║
+          ║  Wazuh Mgr API:    {{ ('OK' if (central.wazuh_manager_status.status | default(0)) in [200,401] else 'SKIPPED' if central.wazuh_manager_status is not defined else 'FAILED') }}║
+          ║  Wazuh Dashboard:  {{ ('OK' if (central.wazuh_dashboard_status.status | default(0)) in [200,302] else 'SKIPPED' if central.wazuh_dashboard_status is not defined else 'FAILED') }}║
+          ║  ceos1 SSH:        {{ ('OK' if central.ceos_ssh_status is defined and not (central.ceos_ssh_status.results[0].failed | default(true)) else 'SKIPPED' if central.ceos_ssh_status is not defined else 'FAILED') }}║
+          ║  ceos2 SSH:        {{ ('OK' if central.ceos_ssh_status is defined and not (central.ceos_ssh_status.results[1].failed | default(true)) else 'SKIPPED' if central.ceos_ssh_status is not defined else 'FAILED') }}║
+          ║  ceos3 SSH:        {{ ('OK' if central.ceos_ssh_status is defined and not (central.ceos_ssh_status.results[2].failed | default(true)) else 'SKIPPED' if central.ceos_ssh_status is not defined else 'FAILED') }}║
           ║                                                                ║
           ║  ── Other Hosts ──                                             ║
-          ║  Vault:            {{ ('OK - Unsealed' if not (hostvars['vault']['vault_status']['json']['sealed'] | default(true)) else 'SKIPPED' if hostvars['vault']['vault_status'] is not defined else 'SEALED/DOWN') | ljust(46) }}║
-          ║  Netbox:           {{ ('OK' if (hostvars['netbox']['netbox_status']['status'] | default(0)) == 200 else 'SKIPPED' if hostvars['netbox']['netbox_status'] is not defined else 'FAILED') | ljust(46) }}║
-          ║  PostgreSQL:       {{ ('OK' if (hostvars['db']['db_check']['rc'] | default(1)) == 0 else 'SKIPPED' if hostvars['db']['db_check'] is not defined else 'FAILED') | ljust(46) }}║
-          ║  App Server:       {{ ('OK' if (hostvars['app']['app_http_status']['status'] | default(0)) in [200,302] else 'SKIPPED' if hostvars['app']['app_http_status'] is not defined else 'DOWN/NOT DEPLOYED') | ljust(46) }}║
-          ║  AAP Controller:   {{ ('OK' if (hostvars['control']['aap_status']['status'] | default(0)) == 200 else 'SKIPPED' if hostvars['control']['aap_status'] is not defined else 'FAILED') | ljust(46) }}║
-          ║  Arista cEOS:      {{ ('OK' if central.arista_ssh_check is defined and not (central.arista_ssh_check.results[0].failed | default(true)) else 'SKIPPED' if central.arista_ssh_check is not defined else 'FAILED') | ljust(46) }}║
+          ║  Vault:            {{ ('OK - Unsealed' if not (hostvars['vault']['vault_status']['json']['sealed'] | default(true)) else 'SKIPPED' if hostvars['vault']['vault_status'] is not defined else 'SEALED/DOWN') }}║
+          ║  Netbox:           {{ ('OK' if (hostvars['netbox']['netbox_status']['status'] | default(0)) == 200 else 'SKIPPED' if hostvars['netbox']['netbox_status'] is not defined else 'FAILED') }}║
+          ║  PostgreSQL:       {{ ('OK' if (hostvars['db']['db_check']['rc'] | default(1)) == 0 else 'SKIPPED' if hostvars['db']['db_check'] is not defined else 'FAILED') }}║
+          ║  App Server:       {{ ('OK' if (hostvars['app']['app_http_status']['status'] | default(0)) in [200,302] else 'SKIPPED' if hostvars['app']['app_http_status'] is not defined else 'DOWN/NOT DEPLOYED') }}║
+          ║  AAP Controller:   {{ ('OK' if (hostvars['control']['aap_status']['status'] | default(0)) == 200 else 'SKIPPED' if hostvars['control']['aap_status'] is not defined else 'FAILED') }}║
+          ║  Arista cEOS:      {{ ('OK' if central.arista_ssh_check is defined and not (central.arista_ssh_check.results[0].failed | default(true)) else 'SKIPPED' if central.arista_ssh_check is not defined else 'FAILED') }}║
           ║                                                                ║
           ╚══════════════════════════════════════════════════════════════════╝

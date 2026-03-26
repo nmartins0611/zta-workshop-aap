@@ -326,9 +326,9 @@
           ║                                                              ║
           ║  Credentials:                                                ║
           ║    Username:  admin                                          ║
-          ║    Password:  {{ splunk_password | ljust(46) }}║
+          ║    Password:  {{ splunk_password }}║
           ║                                                              ║
-          ║  HEC Token:  {{ splunk_hec_token | ljust(46) }}║
+          ║  HEC Token:  {{ splunk_hec_token }}║
           ║                                                              ║
           ║  Indexes:                                                    ║
           ║    main          — default events                            ║
@@ -340,9 +340,9 @@
           ║    - Cisco Network Data Add-on                               ║
           ║    - Red Hat EDA Add-on for Splunk                           ║
           ║                                                              ║
-          ║  HEC test:   {{ ('OK' if hec_test.status == 200 else 'FAILED') | ljust(46) }}║
+          ║  HEC test:   {{ ('OK' if hec_test.status == 200 else 'FAILED') }}║
           ║                                                              ║
-          ║  Systemd:    {{ splunk_service_name | ljust(46) }}║
-          ║  Status:     systemctl status {{ splunk_service_name | ljust(31) }}║
-          ║  Logs:       journalctl -u {{ splunk_service_name | ljust(33) }}║
+          ║  Systemd:    {{ splunk_service_name }}║
+          ║  Status:     systemctl status {{ splunk_service_name }}║
+          ║  Logs:       journalctl -u {{ splunk_service_name }}║
           ╚════════════════════════════════════════════════════════════════╝

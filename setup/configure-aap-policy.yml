@@ -167,24 +167,24 @@
           ║       AAP Policy as Code — Configuration Complete        ║
           ╠════════════════════════════════════════════════════════════╣
           ║                                                          ║
-          ║  OPA Endpoint:  {{ opa_url | ljust(40) }}║
+          ║  OPA Endpoint:  {{ opa_url }}║
           ║  Policy Path:   v1/data/aap/gateway/decision             ║
           ║  Status:        ENABLED                                  ║
           ║                                                          ║
           ║  Gateway Policy Tests:                                   ║
           ║                                                          ║
           ║  admin (superuser) → Configure VLAN                      ║
-          ║    {{ ('ALLOW' if test_superuser.json.result.allow else 'DENY') | ljust(54) }}║
+          ║    {{ ('ALLOW' if test_superuser.json.result.allow else 'DENY') }}║
           ║                                                          ║
           ║  netadmin (network-admins) → Configure VLAN              ║
-          ║    {{ ('ALLOW' if test_netadmin.json.result.allow else 'DENY') | ljust(54) }}║
+          ║    {{ ('ALLOW' if test_netadmin.json.result.allow else 'DENY') }}║
           ║                                                          ║
           ║  neteng (no groups) → Configure VLAN                     ║
-          ║    {{ ('ALLOW' if test_neteng.json.result.allow else 'DENY') | ljust(54) }}║
-          ║    {{ test_neteng.json.result.reason | truncate(54) | ljust(54) }}║
+          ║    {{ ('ALLOW' if test_neteng.json.result.allow else 'DENY') }}║
+          ║    {{ test_neteng.json.result.reason | truncate(54) }}║
           ║                                                          ║
           ║  appdev (app-deployers) → Deploy Application             ║
-          ║    {{ ('ALLOW' if test_appdev.json.result.allow else 'DENY') | ljust(54) }}║
+          ║    {{ ('ALLOW' if test_appdev.json.result.allow else 'DENY') }}║
           ║                                                          ║
           ║  Defence in Depth:                                       ║
           ║    OUTER RING: AAP checks gateway policy before launch   ║

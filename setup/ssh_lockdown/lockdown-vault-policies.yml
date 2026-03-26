@@ -186,10 +186,10 @@
           ╠════════════════════════════════════════════════════════════════╣
           ║                                                              ║
           ║  AAP AppRole:                                                ║
-          ║    Role:       {{ approle_name | ljust(46) }}║
-          ║    Role ID:    {{ aap_role_id | ljust(46) }}║
-          ║    Secret ID:  {{ aap_secret_id | ljust(46) }}║
-          ║    Policies:   {{ approle_policies | join(', ') | ljust(46) }}║
+          ║    Role:       {{ approle_name }}║
+          ║    Role ID:    {{ aap_role_id }}║
+          ║    Secret ID:  {{ aap_secret_id }}║
+          ║    Policies:   {{ approle_policies | join(', ') }}║
           ║    Token TTL:  1h (max 4h)                                   ║
           ║                                                              ║
           ║  Human (admin/userpass):                                      ║
@@ -202,7 +202,7 @@
           ║  │                                                        │   ║
           ║  │  AAP → Credentials → HashiCorp Vault                  │   ║
           ║  │    Auth method: AppRole                                │   ║
-          ║  │    Role ID:     {{ aap_role_id | ljust(38) }}│   ║
-          ║  │    Secret ID:   {{ aap_secret_id | ljust(38) }}│   ║
+          ║  │    Role ID:     {{ aap_role_id }}│   ║
+          ║  │    Secret ID:   {{ aap_secret_id }}│   ║
           ║  └────────────────────────────────────────────────────────┘   ║
           ╚════════════════════════════════════════════════════════════════╝

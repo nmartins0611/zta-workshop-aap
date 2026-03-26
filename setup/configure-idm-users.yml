@@ -90,23 +90,23 @@
           ║                                                             ║
           ║  Teams (organisational):                                    ║
           {% for t in idm_teams %}
-          ║    {{ ('● ' + t.name) | ljust(59) }}║
+          ║    {{ ('● ' + t.name) }}║
           {% endfor %}
           ║                                                             ║
           ║  Functional Groups (OPA policy):                            ║
           {% for g in idm_groups %}
-          ║    {{ ('● ' + g.name + ' — ' + g.description) | ljust(59) }}║
+          ║    {{ ('● ' + g.name + ' — ' + g.description) }}║
           {% endfor %}
           ║                                                             ║
           ║  Users ({{ idm_workshop_users | length }} total):                                          ║
           ║                                                             ║
           {% for u in idm_workshop_users %}
-          ║    {{ ('● ' + u.uid) | ljust(16) }}{{ u.first | ljust(10) }}{{ u.last | ljust(12) }}{{ (u.groups | join(', '))[:21] | ljust(21) }}║
+          ║    {{ ('● ' + u.uid) }}{{ u.first }}{{ u.last }}{{ (u.groups | join(', '))[:21] }}║
           {% endfor %}
           ║                                                             ║
           ║  Service Accounts:                                          ║
           ║    ● keycloak-svc (LDAP bind)                               ║
           ║    ● vault-svc    (Vault LDAP auth)                         ║
           ║                                                             ║
-          ║  All user passwords: {{ idm_admin_password | ljust(38) }}║
+          ║  All user passwords: {{ idm_admin_password }}║
           ╚═══════════════════════════════════════════════════════════════╝

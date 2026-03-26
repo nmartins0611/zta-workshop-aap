@@ -350,16 +350,16 @@
           ║       SPIFFE / SPIRE Deployment Complete                 ║
           ╠════════════════════════════════════════════════════════════╣
           ║                                                          ║
-          ║  Trust Domain:  {{ spire_trust_domain | ljust(40) }}║
-          ║  Server:        {{ spire_server_host | ljust(40) }}║
-          ║  Server Port:   {{ (spire_server_bind_port | string) | ljust(40) }}║
+          ║  Trust Domain:  {{ spire_trust_domain }}║
+          ║  Server:        {{ spire_server_host }}║
+          ║  Server Port:   {{ (spire_server_bind_port | string) }}║
           ║                                                          ║
-          ║  Agents Attested:     {{ agent_count.stdout | ljust(35) }}║
-          ║  Workloads Registered: {{ entry_count.stdout | ljust(34) }}║
+          ║  Agents Attested:     {{ agent_count.stdout }}║
+          ║  Workloads Registered: {{ entry_count.stdout }}║
           ║                                                          ║
           ║  Registered Workload Identities:                         ║
           {% for w in spire_workloads %}
-          ║    {{ w.spiffe_id | ljust(54) }}║
+          ║    {{ w.spiffe_id }}║
           {% endfor %}
           ║                                                          ║
           ║  The automation platform and services now have            ║

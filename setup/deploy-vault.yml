@@ -311,11 +311,11 @@
           ║  Policy:          workshop (full secret/ access)             ║
           ║  Test secret:     secret/zta/test                            ║
           ║                                                              ║
-          ║  Health check:    {{ ('OK' if vault_final_health.status == 200 else 'FAILED') | ljust(42) }}║
+          ║  Health check:    {{ ('OK' if vault_final_health.status == 200 else 'FAILED') }}║
           ║                                                              ║
-          ║  Systemd:    {{ vault_service_name | ljust(46) }}║
-          ║  Status:     systemctl status {{ vault_service_name | ljust(31) }}║
-          ║  Logs:       journalctl -u {{ vault_service_name | ljust(33) }}║
+          ║  Systemd:    {{ vault_service_name }}║
+          ║  Status:     systemctl status {{ vault_service_name }}║
+          ║  Logs:       journalctl -u {{ vault_service_name }}║
           ║                                                              ║
           ║  CLI usage:                                                  ║
           ║    export VAULT_ADDR=http://{{ ansible_default_ipv4.address }}:8200{{ ' ' * 15 }}║

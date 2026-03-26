@@ -1,7 +1,9 @@
 ---
 # Deploy Wazuh (Manager + Indexer + Dashboard) as containers on central
 #
-# This replaces the dedicated Wazuh VM with containers running on central.
+# The Wazuh Docker images have built-in opensearch.yml and security init
+# scripts. This playbook generates certs matching the expected subjects
+# and mounts them at the expected paths — no custom opensearch.yml needed.
 #
 # Services exposed:
 #   - Dashboard:         https://central.zta.lab:5601
@@ -11,9 +13,8 @@
 #   - Indexer API:       https://central.zta.lab:9200
 #
 # Credentials:
-#   - Dashboard:  admin / SecretPassword
-#   - API:        wazuh / wazuh
-#   - Indexer:    admin / SecretPassword
+#   - Dashboard/Indexer: admin / SecretPassword
+#   - Manager API:       wazuh / <wazuh_api_password>
 #
 # Usage:
 #   ansible-playbook -i inventory/hosts.ini setup/deploy-wazuh-container.yml
@@ -28,7 +29,6 @@
     wazuh_data_dir: /opt/wazuh-docker
     wazuh_pod_name: wazuh
     wazuh_indexer_password: SecretPassword
-    wazuh_dashboard_password: SecretPassword
     wazuh_api_user: wazuh
     wazuh_api_password: "x8.E0+DZi6zCCz3cG9jvXimSBn5+s4tx"
 
@@ -39,10 +39,10 @@
 
   tasks:
     # ═══════════════════════════════════════════════════════════════════
-    # Phase 1 — Prerequisites and directories
+    # Phase 1 — Prerequisites
     # ═══════════════════════════════════════════════════════════════════
 
-    - name: Ensure podman is installed
+    - name: Ensure podman and openssl are installed
       dnf:
         name:
           - podman
@@ -58,21 +58,17 @@
       loop:
         - "{{ wazuh_data_dir }}"
         - "{{ wazuh_data_dir }}/certs"
-        - "{{ wazuh_data_dir }}/manager/etc"
         - "{{ wazuh_data_dir }}/manager/logs"
         - "{{ wazuh_data_dir }}/manager/queue"
-        - "{{ wazuh_data_dir }}/manager/var"
-        - "{{ wazuh_data_dir }}/manager/integrations"
-        - "{{ wazuh_data_dir }}/manager/active-response"
-        - "{{ wazuh_data_dir }}/manager/wodles"
-        - "{{ wazuh_data_dir }}/manager/agentless"
-        - "{{ wazuh_data_dir }}/filebeat/etc"
-        - "{{ wazuh_data_dir }}/filebeat/var"
         - "{{ wazuh_data_dir }}/indexer/data"
-        - "{{ wazuh_data_dir }}/dashboard"
+        - "{{ wazuh_data_dir }}/dashboard-config"
 
     # ═══════════════════════════════════════════════════════════════════
-    # Phase 2 — Generate self-signed certificates
+    # Phase 2 — Generate certs matching Wazuh image expectations
+    #
+    # The Wazuh indexer image's opensearch.yml expects:
+    #   nodes_dn:  CN=wazuh.indexer,OU=Wazuh,O=Wazuh,L=California,C=US
+    #   admin_dn:  CN=admin,OU=Wazuh,O=Wazuh,L=California,C=US
     # ═══════════════════════════════════════════════════════════════════
 
     - name: Generate CA private key
@@ -87,71 +83,81 @@
         -key {{ wazuh_data_dir }}/certs/root-ca.key
         -out {{ wazuh_data_dir }}/certs/root-ca.pem
         -days 3650
-        -subj "/C=GB/ST=Workshop/L=Lab/O=ZTA/CN=Wazuh Root CA"
+        -subj "/C=US/L=California/O=Wazuh/OU=Wazuh/CN=Wazuh Root CA"
       args:
         creates: "{{ wazuh_data_dir }}/certs/root-ca.pem"
 
-    - name: Generate certificates for each component
+    - name: Generate component certificates
       shell: |
         cd {{ wazuh_data_dir }}/certs
 
-        # {{ item.name }} key + CSR
-        openssl genrsa -out {{ item.name }}.key 2048
+        openssl genrsa -out {{ item.file }}.key 2048
         openssl req -new \
-          -key {{ item.name }}.key \
-          -out {{ item.name }}.csr \
-          -subj "/C=GB/ST=Workshop/L=Lab/O=ZTA/CN={{ item.cn }}"
+          -key {{ item.file }}.key \
+          -out {{ item.file }}.csr \
+          -subj "/C=US/L=California/O=Wazuh/OU=Wazuh/CN={{ item.cn }}"
 
-        # SAN extension
-        cat > {{ item.name }}-ext.cnf <<EXTEOF
+        cat > {{ item.file }}-ext.cnf <<EXTEOF
         subjectAltName = DNS:{{ item.cn }},DNS:localhost,IP:127.0.0.1,IP:{{ ansible_default_ipv4.address }}
         EXTEOF
 
-        # Sign with CA
         openssl x509 -req \
-          -in {{ item.name }}.csr \
+          -in {{ item.file }}.csr \
           -CA root-ca.pem \
           -CAkey root-ca.key \
           -CAcreateserial \
-          -out {{ item.name }}.pem \
+          -out {{ item.file }}.pem \
           -days 3650 \
           -sha256 \
-          -extfile {{ item.name }}-ext.cnf
+          -extfile {{ item.file }}-ext.cnf
       args:
-        creates: "{{ wazuh_data_dir }}/certs/{{ item.name }}.pem"
+        creates: "{{ wazuh_data_dir }}/certs/{{ item.file }}.pem"
       loop:
-        - { name: indexer, cn: wazuh-indexer }
-        - { name: manager, cn: wazuh-manager }
-        - { name: dashboard, cn: wazuh-dashboard }
-        - { name: admin, cn: admin }
+        - { file: indexer,   cn: wazuh.indexer }
+        - { file: dashboard, cn: wazuh.dashboard }
+        - { file: admin,     cn: admin }
 
-    - name: Set ownership to wazuh-indexer UID (1000) for all certs
+    - name: Set cert ownership to UID 1000 (wazuh-indexer)
       file:
         path: "{{ wazuh_data_dir }}/certs"
         recurse: true
         owner: "1000"
         group: "1000"
-        mode: '0644'
 
-    - name: Set private key permissions (readable by wazuh-indexer)
-      file:
-        path: "{{ wazuh_data_dir }}/certs/{{ item }}"
-        owner: "1000"
-        group: "1000"
-        mode: '0640'
-      loop:
-        - root-ca.key
-        - indexer.key
-        - manager.key
-        - dashboard.key
-        - admin.key
+    - name: Set cert file permissions
+      shell: |
+        chmod 644 {{ wazuh_data_dir }}/certs/*.pem
+        chmod 640 {{ wazuh_data_dir }}/certs/*.key
+        chmod 644 {{ wazuh_data_dir }}/certs/*.csr 2>/dev/null || true
 
-    - name: Set SELinux context on Wazuh data directory
-      command: "chcon -R -t container_file_t {{ wazuh_data_dir }}"
+    - name: Apply SELinux context
+      command: chcon -R -t container_file_t {{ wazuh_data_dir }}
       changed_when: true
 
     # ═══════════════════════════════════════════════════════════════════
-    # Phase 3 — Clean up any existing deployment
+    # Phase 3 — Dashboard config (mounted into container)
+    # ═══════════════════════════════════════════════════════════════════
+
+    - name: Write opensearch_dashboards.yml
+      copy:
+        dest: "{{ wazuh_data_dir }}/dashboard-config/opensearch_dashboards.yml"
+        mode: '0644'
+        content: |
+          server.host: 0.0.0.0
+          server.port: 5601
+          opensearch.hosts: https://localhost:9200
+          opensearch.ssl.verificationMode: none
+          opensearch.requestHeadersAllowlist: ["securitytenant","Authorization"]
+          opensearch_security.multitenancy.enabled: false
+          opensearch_security.readonly_mode.roles: ["kibana_read_only"]
+          server.ssl.enabled: true
+          server.ssl.key: "/usr/share/wazuh-dashboard/certs/wazuh-dashboard-key.pem"
+          server.ssl.certificate: "/usr/share/wazuh-dashboard/certs/wazuh-dashboard.pem"
+          opensearch.ssl.certificateAuthorities: ["/usr/share/wazuh-dashboard/certs/root-ca.pem"]
+          uiSettings.overrides.defaultRoute: /app/wz-home
+
+    # ═══════════════════════════════════════════════════════════════════
+    # Phase 4 — Clean up any existing deployment
     # ═══════════════════════════════════════════════════════════════════
 
     - name: Stop and remove existing Wazuh pod
@@ -160,7 +166,7 @@
       changed_when: false
 
     # ═══════════════════════════════════════════════════════════════════
-    # Phase 4 — Pull images
+    # Phase 5 — Pull images
     # ═══════════════════════════════════════════════════════════════════
 
     - name: Pull Wazuh container images
@@ -173,7 +179,7 @@
       changed_when: "'Pulling' in pull_results.stdout or pull_results.rc == 0"
 
     # ═══════════════════════════════════════════════════════════════════
-    # Phase 5 — Create pod and start containers
+    # Phase 6 — Create pod and start containers
     # ═══════════════════════════════════════════════════════════════════
 
     - name: Create Wazuh pod with published ports
@@ -188,45 +194,8 @@
         -p 5601:5601
 
     # ── Wazuh Indexer ──
-    - name: Set cert ownership for indexer (UID 1000)
-      command: chown -R 1000:1000 {{ wazuh_data_dir }}/certs
-      changed_when: true
-
-    - name: Set cert permissions
-      shell: |
-        chmod 644 {{ wazuh_data_dir }}/certs/*.pem
-        chmod 640 {{ wazuh_data_dir }}/certs/*.key
-
-    - name: Apply SELinux context for container access
-      command: chcon -R -t container_file_t {{ wazuh_data_dir }}
-      changed_when: true
-
-    - name: Write opensearch.yml with security enabled
-      copy:
-        dest: "{{ wazuh_data_dir }}/indexer/opensearch.yml"
-        owner: "1000"
-        group: "1000"
-        mode: '0644'
-        content: |
-          cluster.name: wazuh-cluster
-          node.name: node-1
-          network.host: 0.0.0.0
-          discovery.type: single-node
-          compatibility.override_main_response_version: true
-          plugins.security.ssl.transport.pemcert_filepath: /usr/share/wazuh-indexer/certs/indexer.pem
-          plugins.security.ssl.transport.pemkey_filepath: /usr/share/wazuh-indexer/certs/indexer-key.pem
-          plugins.security.ssl.transport.pemtrustedcas_filepath: /usr/share/wazuh-indexer/certs/root-ca.pem
-          plugins.security.ssl.http.enabled: true
-          plugins.security.ssl.http.pemcert_filepath: /usr/share/wazuh-indexer/certs/indexer.pem
-          plugins.security.ssl.http.pemkey_filepath: /usr/share/wazuh-indexer/certs/indexer-key.pem
-          plugins.security.ssl.http.pemtrustedcas_filepath: /usr/share/wazuh-indexer/certs/root-ca.pem
-          plugins.security.authcz.admin_dn:
-            - "CN=admin,O=ZTA,L=Lab,ST=Workshop,C=GB"
-          plugins.security.nodes_dn:
-            - "CN=wazuh-indexer,O=ZTA,L=Lab,ST=Workshop,C=GB"
-          plugins.security.allow_default_init_securityindex: true
-          plugins.security.allow_unsafe_democonfiguration: true
-
+    # No custom opensearch.yml — the image has its own with correct
+    # security config. We just mount certs at the expected paths.
     - name: Start Wazuh Indexer container
       shell: >
         podman run -d
@@ -234,10 +203,9 @@
         --pod {{ wazuh_pod_name }}
         --restart always
         -v {{ wazuh_data_dir }}/indexer/data:/var/lib/wazuh-indexer:z
-        -v {{ wazuh_data_dir }}/indexer/opensearch.yml:/usr/share/wazuh-indexer/opensearch.yml:ro,z
         -v {{ wazuh_data_dir }}/certs/root-ca.pem:/usr/share/wazuh-indexer/certs/root-ca.pem:ro,z
-        -v {{ wazuh_data_dir }}/certs/indexer.pem:/usr/share/wazuh-indexer/certs/indexer.pem:ro,z
-        -v {{ wazuh_data_dir }}/certs/indexer.key:/usr/share/wazuh-indexer/certs/indexer-key.pem:ro,z
+        -v {{ wazuh_data_dir }}/certs/indexer.pem:/usr/share/wazuh-indexer/certs/wazuh.indexer.pem:ro,z
+        -v {{ wazuh_data_dir }}/certs/indexer.key:/usr/share/wazuh-indexer/certs/wazuh.indexer.key:ro,z
         -v {{ wazuh_data_dir }}/certs/admin.pem:/usr/share/wazuh-indexer/certs/admin.pem:ro,z
         -v {{ wazuh_data_dir }}/certs/admin.key:/usr/share/wazuh-indexer/certs/admin-key.pem:ro,z
         -e 'OPENSEARCH_JAVA_OPTS=-Xms1g -Xmx1g'
@@ -255,7 +223,7 @@
         status_code: [200]
       register: indexer_health
       until: indexer_health.status == 200
-      retries: 40
+      retries: 60
       delay: 10
 
     - name: Clear any cluster index-creation blocks
@@ -283,8 +251,8 @@
         -v {{ wazuh_data_dir }}/manager/logs:/var/ossec/logs:z
         -v {{ wazuh_data_dir }}/manager/queue:/var/ossec/queue:z
         -v {{ wazuh_data_dir }}/certs/root-ca.pem:/etc/ssl/root-ca.pem:ro,z
-        -v {{ wazuh_data_dir }}/certs/manager.pem:/etc/ssl/filebeat.pem:ro,z
-        -v {{ wazuh_data_dir }}/certs/manager.key:/etc/ssl/filebeat.key:ro,z
+        -v {{ wazuh_data_dir }}/certs/indexer.pem:/etc/ssl/filebeat.pem:ro,z
+        -v {{ wazuh_data_dir }}/certs/indexer.key:/etc/ssl/filebeat.key:ro,z
         -e INDEXER_URL=https://localhost:9200
         -e INDEXER_USERNAME=admin
         -e INDEXER_PASSWORD={{ wazuh_indexer_password }}
@@ -305,29 +273,21 @@
       delay: 5
 
     # ── Wazuh Dashboard ──
-    - name: Generate self-signed certs for dashboard
-      command: >
-        openssl req -x509 -nodes -days 3650
-        -newkey rsa:2048
-        -keyout {{ wazuh_data_dir }}/certs/dashboard.key
-        -out {{ wazuh_data_dir }}/certs/dashboard.pem
-        -subj "/CN=wazuh-dashboard/O=ZTA/C=GB"
-      args:
-        creates: "{{ wazuh_data_dir }}/certs/dashboard.pem"
-
     - name: Start Wazuh Dashboard container
       shell: >
         podman run -d
         --name wazuh-dashboard
         --pod {{ wazuh_pod_name }}
         --restart always
-        -v {{ wazuh_data_dir }}/certs/dashboard.pem:/etc/wazuh-dashboard/certs/dashboard.pem:ro,z
-        -v {{ wazuh_data_dir }}/certs/dashboard.key:/etc/wazuh-dashboard/certs/dashboard-key.pem:ro,z
-        -v {{ wazuh_data_dir }}/certs/root-ca.pem:/etc/wazuh-dashboard/certs/root-ca.pem:ro,z
-        -e INDEXER_URL=https://localhost:9200
+        -v {{ wazuh_data_dir }}/certs/dashboard.pem:/usr/share/wazuh-dashboard/certs/wazuh-dashboard.pem:ro,z
+        -v {{ wazuh_data_dir }}/certs/dashboard.key:/usr/share/wazuh-dashboard/certs/wazuh-dashboard-key.pem:ro,z
+        -v {{ wazuh_data_dir }}/certs/root-ca.pem:/usr/share/wazuh-dashboard/certs/root-ca.pem:ro,z
+        -v {{ wazuh_data_dir }}/dashboard-config/opensearch_dashboards.yml:/usr/share/wazuh-dashboard/config/opensearch_dashboards.yml:ro,z
         -e INDEXER_USERNAME=admin
         -e INDEXER_PASSWORD={{ wazuh_indexer_password }}
         -e WAZUH_API_URL=https://localhost
+        -e DASHBOARD_USERNAME=kibanaserver
+        -e DASHBOARD_PASSWORD=kibanaserver
         -e API_USERNAME={{ wazuh_api_user }}
         -e 'API_PASSWORD={{ wazuh_api_password }}'
         {{ wazuh_images.dashboard }}
@@ -344,7 +304,7 @@
       delay: 10
 
     # ═══════════════════════════════════════════════════════════════════
-    # Phase 6 — Firewall and verification
+    # Phase 7 — Verification
     # ═══════════════════════════════════════════════════════════════════
 
     # - name: Open Wazuh firewall ports
@@ -360,17 +320,11 @@
     #     - 1515/tcp
     #     - 5601/tcp
 
-    - name: Verify all containers are running
-      command: "podman pod ps --format '{{ '{{' }}.Name{{ '}}' }} {{ '{{' }}.Status{{ '}}' }}'"
-      register: pod_status
-      changed_when: false
-
     - name: List containers in the pod
       command: "podman ps --pod --filter pod={{ wazuh_pod_name }} --format '{{ '{{' }}.Names{{ '}}' }}  {{ '{{' }}.Status{{ '}}' }}'"
       register: container_list
       changed_when: false
 
-    # ── Summary ──
     - name: Display Wazuh deployment summary
       debug:
         msg: |
@@ -378,14 +332,14 @@
           ║        Wazuh Stack — Container Deployment Complete            ║
           ╠════════════════════════════════════════════════════════════════╣
           ║                                                              ║
-          ║  Dashboard:   http://central.zta.lab:5601                    ║
+          ║  Dashboard:   https://central.zta.lab:5601                   ║
           ║  Manager API: https://central.zta.lab:55000                  ║
           ║  Agent Port:  central.zta.lab:1514 (TCP)                     ║
           ║  Enrollment:  central.zta.lab:1515                           ║
           ║  Indexer API: https://central.zta.lab:9200                   ║
           ║                                                              ║
           ║  Credentials:                                                ║
-          ║    Dashboard:  admin / {{ wazuh_dashboard_password }}
+          ║    Dashboard:  admin / {{ wazuh_indexer_password }}
           ║    Manager:    {{ wazuh_api_user }} / {{ wazuh_api_password }}
           ║    Indexer:    admin / {{ wazuh_indexer_password }}
           ║                                                              ║
@@ -397,11 +351,4 @@
           ║  Data:        {{ wazuh_data_dir }}
           ║  Certs:       {{ wazuh_data_dir }}/certs/
           ║                                                              ║
-          ║  Agent enrollment (on target hosts):                         ║
-          ║    /var/ossec/bin/agent-auth -m central.zta.lab              ║
-          ║                                                              ║
-          ║  NOTE: Update inventory/group_vars/all.yml:                  ║
-          ║    wazuh_url: http://central.zta.lab:5601                    ║
-          ║    wazuh_api_url: https://central.zta.lab:55000              ║
-          ║    wazuh_manager_host: central.zta.lab                       ║
           ╚════════════════════════════════════════════════════════════════╝

@@ -240,7 +240,7 @@
         -v {{ wazuh_data_dir }}/certs/indexer.key:/usr/share/wazuh-indexer/certs/indexer-key.pem:ro,z
         -v {{ wazuh_data_dir }}/certs/admin.pem:/usr/share/wazuh-indexer/certs/admin.pem:ro,z
         -v {{ wazuh_data_dir }}/certs/admin.key:/usr/share/wazuh-indexer/certs/admin-key.pem:ro,z
-        -e 'OPENSEARCH_JAVA_OPTS=-Xms512m -Xmx512m'
+        -e 'OPENSEARCH_JAVA_OPTS=-Xms1g -Xmx1g'
         -e 'bootstrap.memory_lock=true'
         {{ wazuh_images.indexer }}
 

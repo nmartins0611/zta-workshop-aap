@@ -114,7 +114,7 @@
       changed_when: false
 
     - name: Start NetBox application containers
-      command: podman-compose up -d netbox netbox-worker netbox-housekeeping
+      command: podman-compose up -d netbox netbox-worker
       args:
         chdir: "{{ netbox_dir }}"
       changed_when: true

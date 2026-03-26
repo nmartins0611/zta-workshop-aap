@@ -78,6 +78,17 @@
     # Phase 3 — Pull images and start containers
     # ═══════════════════════════════════════════════════════════════════
 
+    - name: Kill stale aardvark-dns (conflicts with IdM named on port 53)
+      command: pkill -f aardvark-dns
+      failed_when: false
+      changed_when: false
+
+    - name: Pre-create podman network with DNS disabled
+      command: podman network create --disable-dns netbox-docker_default
+      register: net_create
+      failed_when: false
+      changed_when: "'netbox-docker_default' in net_create.stdout"
+
     - name: Pull NetBox images
       command: podman-compose pull
       args:

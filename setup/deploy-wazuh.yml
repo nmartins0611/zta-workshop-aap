@@ -327,6 +327,17 @@
     # Phase 8 — Verify Wazuh API
     # ═══════════════════════════════════════════════════════════════════
 
+    - name: Wait for Wazuh Manager API after systemd takeover
+      ansible.builtin.uri:
+        url: "https://localhost:55000"
+        method: GET
+        validate_certs: false
+        status_code: [200, 401]
+      register: mgr_ready
+      until: mgr_ready.status in [200, 401]
+      retries: 30
+      delay: 10
+
     - name: Authenticate to Wazuh Manager API
       ansible.builtin.uri:
         url: "https://localhost:55000/security/user/authenticate"

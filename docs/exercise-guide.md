@@ -104,7 +104,8 @@ executing.
 | Vault | `http://vault.zta.lab:8200` | admin / ansible123! |
 | Netbox | `http://netbox.zta.lab:8880` | *token provided* |
 | Gitea | `http://gitea.zta.lab:3000` | *provided by instructor* |
-| Wazuh | `https://wazuh.zta.lab` | *provided by instructor* |
+| Wazuh Dashboard | `http://wazuh.zta.lab:5601` | *provided by instructor* (container on central) |
+| Splunk | `http://splunk.zta.lab:8000` | admin / *configured password* (container on central) |
 | Application | `http://app.zta.lab:8080` | (no auth — dashboard) |
 
 ### Workshop Users in IdM
@@ -710,7 +711,7 @@ SSH login attempts to `app.zta.lab`.
 
 ### Exercise 5.4 — Watch the Automated Response
 
-1. **Wazuh Dashboard** (`https://wazuh.zta.lab`): Alert rule 5712 fires
+1. **Wazuh Dashboard** (`http://wazuh.zta.lab:5601`): Alert rule 5712 fires
 2. **EDA Controller**: Event received, rulebook matched, job triggered
 3. **AAP Jobs**: "Emergency: Revoke App Credentials" appears — triggered by EDA,
    no human clicked Launch
@@ -873,9 +874,9 @@ sudo /opt/spire/bin/spire-agent api fetch x509 -socketPath /run/spire/agent/api.
 ### EDA not receiving Wazuh events
 
 ```bash
-# Check Wazuh integration logs
-ssh rhel@wazuh.zta.lab
-sudo tail -f /var/ossec/logs/integrations.log
+# Check Wazuh integration logs (Wazuh runs as a container on central)
+ssh rhel@central.zta.lab
+sudo podman logs -f wazuh-manager 2>&1 | grep -i integrat
 
 # Check EDA is listening
 curl http://control.zta.lab:5000/endpoint

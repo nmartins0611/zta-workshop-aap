@@ -148,7 +148,7 @@ After the brute-force simulation completes, observe the chain reaction:
 
 ### Check Wazuh Dashboard
 
-Open `https://wazuh.zta.lab` and look for:
+Open `http://wazuh.zta.lab:5601` (resolves to central — Wazuh runs as a container) and look for:
 - Alert rule 5712: "SSHD brute force trying to get access to the system"
 - Agent: `app.zta.lab`
 - Level: 10 (high severity)

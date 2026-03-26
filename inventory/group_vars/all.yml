@@ -19,7 +19,7 @@ vault_addr: "http://vault.zta.lab:8200"
 vault_skip_verify: true
 
 # ── Netbox / CMDB (own VM) ──────────────────────────────────────────
-netbox_url: "http://netbox.zta.lab:8000"
+netbox_url: "http://netbox.zta.lab:8880"
 netbox_token: "{{ lookup('env', 'NETBOX_TOKEN') }}"
 
 # ── Gitea / Git Server (own container) ──────────────────────────────

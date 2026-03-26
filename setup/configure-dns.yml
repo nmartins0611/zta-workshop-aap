@@ -18,7 +18,7 @@
       - hostname: vault
         ip: "{{ hostvars['vault']['ansible_host'] }}"
       - hostname: netbox
-        ip: "{{ hostvars['netbox']['ansible_host'] }}"
+        ip: "{{ central_ip }}"
       - hostname: gitea
         ip: "{{ hostvars['gitea']['ansible_host'] }}"
       - hostname: app

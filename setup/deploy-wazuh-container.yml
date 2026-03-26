@@ -262,19 +262,30 @@
       delay: 5
 
     # ── Wazuh Dashboard ──
+    - name: Generate self-signed certs for dashboard
+      command: >
+        openssl req -x509 -nodes -days 3650
+        -newkey rsa:2048
+        -keyout {{ wazuh_data_dir }}/certs/dashboard.key
+        -out {{ wazuh_data_dir }}/certs/dashboard.pem
+        -subj "/CN=wazuh-dashboard/O=ZTA/C=GB"
+      args:
+        creates: "{{ wazuh_data_dir }}/certs/dashboard.pem"
+
     - name: Start Wazuh Dashboard container
       shell: >
         podman run -d
         --name wazuh-dashboard
         --pod {{ wazuh_pod_name }}
         --restart always
+        -v {{ wazuh_data_dir }}/certs/dashboard.pem:/etc/wazuh-dashboard/certs/dashboard.pem:ro,z
+        -v {{ wazuh_data_dir }}/certs/dashboard.key:/etc/wazuh-dashboard/certs/dashboard-key.pem:ro,z
         -e INDEXER_URL=http://localhost:9200
         -e INDEXER_USERNAME=admin
         -e INDEXER_PASSWORD={{ wazuh_indexer_password }}
         -e WAZUH_API_URL=https://localhost
         -e API_USERNAME={{ wazuh_api_user }}
         -e 'API_PASSWORD={{ wazuh_api_password }}'
-        -e SERVER_SSL_ENABLED=false
         {{ wazuh_images.dashboard }}
 
     - name: Wait for Wazuh Dashboard

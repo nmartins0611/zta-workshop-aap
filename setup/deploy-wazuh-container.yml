@@ -188,17 +188,44 @@
         -p 5601:5601
 
     # ── Wazuh Indexer ──
-    - name: Write custom opensearch.yml (security plugin disabled)
+    - name: Set cert ownership for indexer (UID 1000)
+      command: chown -R 1000:1000 {{ wazuh_data_dir }}/certs
+      changed_when: true
+
+    - name: Set cert permissions
+      shell: |
+        chmod 644 {{ wazuh_data_dir }}/certs/*.pem
+        chmod 640 {{ wazuh_data_dir }}/certs/*.key
+
+    - name: Apply SELinux context for container access
+      command: chcon -R -t container_file_t {{ wazuh_data_dir }}
+      changed_when: true
+
+    - name: Write opensearch.yml with security enabled
       copy:
         dest: "{{ wazuh_data_dir }}/indexer/opensearch.yml"
+        owner: "1000"
+        group: "1000"
+        mode: '0644'
         content: |
           cluster.name: wazuh-cluster
           node.name: node-1
           network.host: 0.0.0.0
           discovery.type: single-node
           compatibility.override_main_response_version: true
-          plugins.security.disabled: true
-        mode: '0644'
+          plugins.security.ssl.transport.pemcert_filepath: /usr/share/wazuh-indexer/certs/indexer.pem
+          plugins.security.ssl.transport.pemkey_filepath: /usr/share/wazuh-indexer/certs/indexer-key.pem
+          plugins.security.ssl.transport.pemtrustedcas_filepath: /usr/share/wazuh-indexer/certs/root-ca.pem
+          plugins.security.ssl.http.enabled: true
+          plugins.security.ssl.http.pemcert_filepath: /usr/share/wazuh-indexer/certs/indexer.pem
+          plugins.security.ssl.http.pemkey_filepath: /usr/share/wazuh-indexer/certs/indexer-key.pem
+          plugins.security.ssl.http.pemtrustedcas_filepath: /usr/share/wazuh-indexer/certs/root-ca.pem
+          plugins.security.authcz.admin_dn:
+            - "CN=admin,O=ZTA,L=Lab,ST=Workshop,C=GB"
+          plugins.security.nodes_dn:
+            - "CN=wazuh-indexer,O=ZTA,L=Lab,ST=Workshop,C=GB"
+          plugins.security.allow_default_init_securityindex: true
+          plugins.security.allow_unsafe_democonfiguration: true
 
     - name: Start Wazuh Indexer container
       shell: >
@@ -208,14 +235,23 @@
         --restart always
         -v {{ wazuh_data_dir }}/indexer/data:/var/lib/wazuh-indexer:z
         -v {{ wazuh_data_dir }}/indexer/opensearch.yml:/usr/share/wazuh-indexer/opensearch.yml:ro,z
+        -v {{ wazuh_data_dir }}/certs/root-ca.pem:/usr/share/wazuh-indexer/certs/root-ca.pem:ro,z
+        -v {{ wazuh_data_dir }}/certs/indexer.pem:/usr/share/wazuh-indexer/certs/indexer.pem:ro,z
+        -v {{ wazuh_data_dir }}/certs/indexer.key:/usr/share/wazuh-indexer/certs/indexer-key.pem:ro,z
+        -v {{ wazuh_data_dir }}/certs/admin.pem:/usr/share/wazuh-indexer/certs/admin.pem:ro,z
+        -v {{ wazuh_data_dir }}/certs/admin.key:/usr/share/wazuh-indexer/certs/admin-key.pem:ro,z
         -e 'OPENSEARCH_JAVA_OPTS=-Xms512m -Xmx512m'
         -e 'bootstrap.memory_lock=true'
         {{ wazuh_images.indexer }}
 
     - name: Wait for Wazuh Indexer to be ready
       uri:
-        url: "http://localhost:9200"
+        url: "https://localhost:9200"
         method: GET
+        user: admin
+        password: "{{ wazuh_indexer_password }}"
+        force_basic_auth: true
+        validate_certs: false
         status_code: [200]
       register: indexer_health
       until: indexer_health.status == 200
@@ -224,8 +260,12 @@
 
     - name: Clear any cluster index-creation blocks
       uri:
-        url: "http://localhost:9200/_cluster/settings"
+        url: "https://localhost:9200/_cluster/settings"
         method: PUT
+        user: admin
+        password: "{{ wazuh_indexer_password }}"
+        force_basic_auth: true
+        validate_certs: false
         body_format: json
         body:
           persistent:
@@ -242,7 +282,10 @@
         --restart always
         -v {{ wazuh_data_dir }}/manager/logs:/var/ossec/logs:z
         -v {{ wazuh_data_dir }}/manager/queue:/var/ossec/queue:z
-        -e INDEXER_URL=http://localhost:9200
+        -v {{ wazuh_data_dir }}/certs/root-ca.pem:/etc/ssl/root-ca.pem:ro,z
+        -v {{ wazuh_data_dir }}/certs/manager.pem:/etc/ssl/filebeat.pem:ro,z
+        -v {{ wazuh_data_dir }}/certs/manager.key:/etc/ssl/filebeat.key:ro,z
+        -e INDEXER_URL=https://localhost:9200
         -e INDEXER_USERNAME=admin
         -e INDEXER_PASSWORD={{ wazuh_indexer_password }}
         -e 'FILEBEAT_SSL_VERIFICATION_MODE=none'
@@ -281,7 +324,7 @@
         -v {{ wazuh_data_dir }}/certs/dashboard.pem:/etc/wazuh-dashboard/certs/dashboard.pem:ro,z
         -v {{ wazuh_data_dir }}/certs/dashboard.key:/etc/wazuh-dashboard/certs/dashboard-key.pem:ro,z
         -v {{ wazuh_data_dir }}/certs/root-ca.pem:/etc/wazuh-dashboard/certs/root-ca.pem:ro,z
-        -e INDEXER_URL=http://localhost:9200
+        -e INDEXER_URL=https://localhost:9200
         -e INDEXER_USERNAME=admin
         -e INDEXER_PASSWORD={{ wazuh_indexer_password }}
         -e WAZUH_API_URL=https://localhost

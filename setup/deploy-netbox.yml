@@ -83,15 +83,27 @@
     # Phase 3 — Pull images and start containers
     # ═══════════════════════════════════════════════════════════════════
 
+    - name: Find podman-compose path
+      command: which podman-compose
+      register: podman_compose_path
+      changed_when: false
+      failed_when: false
+      environment:
+        PATH: "/usr/local/bin:/usr/bin:/bin:{{ ansible_env.PATH }}"
+
+    - name: Set podman-compose binary
+      set_fact:
+        podman_compose: "{{ podman_compose_path.stdout | default('/usr/local/bin/podman-compose') }}"
+
     - name: Pull NetBox images
-      command: podman-compose pull
+      command: "{{ podman_compose }} pull"
       args:
         chdir: "{{ netbox_dir }}"
       register: pull_result
       changed_when: true
 
     - name: Start NetBox stack
-      command: podman-compose up -d
+      command: "{{ podman_compose }} up -d"
       args:
         chdir: "{{ netbox_dir }}"
       register: start_result

@@ -134,12 +134,14 @@
     # Phase 4 — Create networks
     # ═══════════════════════════════════════════════════════════════════
 
-    - name: Create podman networks (management, net1, loop — no explicit subnet)
+    - name: Create podman networks (management, loop — no explicit subnet)
       command: "podman network create --disable-dns {{ item }}"
       loop:
         - management
-        - net1
         - loop
+
+    - name: Create spine-leaf interconnect (net1 — 10.10.0.0/24)
+      command: "podman network create --disable-dns --subnet 10.10.0.0/24 --gateway 10.10.0.1 net1"
 
     - name: Create data-tier network (net2 — 10.30.0.0/24)
       command: "podman network create --disable-dns --subnet 10.30.0.0/24 --gateway 10.30.0.1 net2"
@@ -210,12 +212,16 @@
       shell: |
         podman exec ceos2 Cli -p 15 -c "
         configure
+        interface ethernet2
+          no switchport
+          ip address 10.10.0.2/24
+          no shutdown
         interface ethernet3
           no switchport
           ip address 10.30.0.1/24
           no shutdown
-        ip route 10.20.0.0/24 10.30.0.1
         ip routing
+        ip route 10.20.0.0/24 10.10.0.1
         end
         write memory
         "
@@ -229,8 +235,8 @@
           no switchport
           ip address 10.20.0.1/24
           no shutdown
-        ip route 10.30.0.0/24 10.20.0.1
         ip routing
+        ip route 10.30.0.0/24 10.20.0.254
         end
         write memory
         "
@@ -240,9 +246,16 @@
       shell: |
         podman exec ceos1 Cli -p 15 -c "
         configure
+        interface ethernet2
+          no switchport
+          ip address 10.10.0.1/24
+          no shutdown
+        interface ethernet3
+          no switchport
+          ip address 10.20.0.254/24
+          no shutdown
         ip routing
-        ip route 10.30.0.0/24 10.30.0.1
-        ip route 10.20.0.0/24 10.20.0.1
+        ip route 10.30.0.0/24 10.10.0.2
         end
         write memory
         "

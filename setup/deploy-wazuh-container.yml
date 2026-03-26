@@ -290,8 +290,9 @@
 
     - name: Wait for Wazuh Dashboard
       uri:
-        url: "http://localhost:5601"
+        url: "https://localhost:5601"
         method: GET
+        validate_certs: false
         status_code: [200, 302]
       register: dashboard_health
       until: dashboard_health.status in [200, 302]

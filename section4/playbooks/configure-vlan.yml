@@ -1,10 +1,10 @@
 ---
-# Section 4: SPIFFE-verified, OPA-gated VLAN creation on Cisco Catalyst 8000v
+# Section 4: SPIFFE-verified, OPA-gated VLAN creation on Arista cEOS switches
 #
 # Flow:
 #   1. Fetch X.509 SVID from SPIRE Agent → proves automation workload identity
 #   2. Query OPA with user context + SPIFFE ID → policy decision
-#   3. Configure VLAN on Cisco switch
+#   3. Configure VLAN on Arista cEOS switches
 #   4. Update Netbox CMDB
 
 
@@ -31,9 +31,9 @@
           ║       SPIFFE Workload Identity Verification              ║
           ╠════════════════════════════════════════════════════════════╣
           ║                                                          ║
-          ║  SPIFFE ID: {{ workload_spiffe_id | ljust(42) }}║
-          ║  Host:      {{ inventory_hostname | ljust(42) }}║
-          ║  Status:    VERIFIED ✓                                   ║
+          ║  SPIFFE ID: {{ workload_spiffe_id }}
+          ║  Host:      {{ inventory_hostname }}
+          ║  Status:    VERIFIED                                     ║
           ║                                                          ║
           ║  The automation platform has proven its identity via      ║
           ║  a cryptographic X.509 SVID issued by the SPIRE Server.  ║
@@ -76,20 +76,20 @@
           ║       OPA Network Policy Decision                       ║
           ╠════════════════════════════════════════════════════════════╣
           ║                                                          ║
-          ║  User:      {{ network_user | ljust(44) }}║
+          ║  User:      {{ network_user }}
           ║  Action:    create_vlan                                  ║
-          ║  VLAN ID:   {{ (new_vlan_id | string) | ljust(44) }}║
-          ║  Name:      {{ new_vlan_name | ljust(44) }}║
-          ║  SPIFFE ID: {{ workload_spiffe_id | ljust(44) }}║
-          ║  Result:    {{ ('ALLOWED' if opa_decision.json.result.allow else 'DENIED') | ljust(44) }}║
+          ║  VLAN ID:   {{ new_vlan_id }}
+          ║  Name:      {{ new_vlan_name }}
+          ║  SPIFFE ID: {{ workload_spiffe_id }}
+          ║  Result:    {{ 'ALLOWED' if opa_decision.json.result.allow else 'DENIED' }}
           ║                                                          ║
           ║  Conditions:                                             ║
-          ║    Workload verified:   {{ ('PASS' if opa_decision.json.result.conditions.workload_verified else 'FAIL') | ljust(34) }}║
-          ║    User in network-admins: {{ ('PASS' if opa_decision.json.result.conditions.user_authorized else 'FAIL') | ljust(30) }}║
-          ║    Valid VLAN ID:          {{ ('PASS' if opa_decision.json.result.conditions.valid_vlan else 'FAIL') | ljust(30) }}║
-          ║    Action permitted:       {{ ('PASS' if opa_decision.json.result.conditions.action_permitted else 'FAIL') | ljust(30) }}║
+          ║    Workload verified:      {{ 'PASS' if opa_decision.json.result.conditions.workload_verified else 'FAIL' }}
+          ║    User in network-admins: {{ 'PASS' if opa_decision.json.result.conditions.user_authorized else 'FAIL' }}
+          ║    Valid VLAN ID:          {{ 'PASS' if opa_decision.json.result.conditions.valid_vlan else 'FAIL' }}
+          ║    Action permitted:       {{ 'PASS' if opa_decision.json.result.conditions.action_permitted else 'FAIL' }}
           ║                                                          ║
-          ║  {{ opa_decision.json.result.reason | ljust(56) }}║
+          ║  {{ opa_decision.json.result.reason }}
           ╚════════════════════════════════════════════════════════════╝
 
     - name: Enforce OPA decision
@@ -119,7 +119,7 @@
       delegate_facts: true
 
 
-- name: Configure VLAN on Cisco Catalyst 8000v
+- name: Configure VLAN on Arista cEOS Switches
   hosts: network
   gather_facts: false
   when: hostvars['localhost']['opa_approved'] | default(false)
@@ -129,18 +129,17 @@
     new_vlan_name: "{{ new_vlan_name | default('NEW-VLAN') }}"
 
   tasks:
-    - name: Create VLAN on switch
-      cisco.ios.ios_vlans:
+    - name: Create VLAN on all cEOS switches
+      arista.eos.eos_vlans:
         config:
           - vlan_id: "{{ new_vlan_id | int }}"
             name: "{{ new_vlan_name }}"
             state: active
-            shutdown: disabled
         state: merged
       register: vlan_result
 
     - name: Verify VLAN creation
-      cisco.ios.ios_command:
+      arista.eos.eos_command:
         commands:
           - "show vlan id {{ new_vlan_id }}"
       register: vlan_verify
@@ -197,11 +196,11 @@
           ║       VLAN Configuration Complete                       ║
           ╠════════════════════════════════════════════════════════════╣
           ║                                                          ║
-          ║  VLAN {{ (new_vlan_id | string + ' (' + new_vlan_name + ')') | ljust(50) }}║
-          ║  Switch:     {{ cisco_switch_host | ljust(43) }}║
-          ║  Netbox:     {{ ('Created' if netbox_vlan_check.json.count == 0 else 'Already exists') | ljust(43) }}║
-          ║  User:       {{ network_user | ljust(43) }}║
-          ║  Workload:   {{ workload_spiffe_id | ljust(43) }}║
+          ║  VLAN {{ new_vlan_id }} ({{ new_vlan_name }})
+          ║  Switches:   ceos1, ceos2, ceos3 (Arista cEOS fabric)    ║
+          ║  Netbox:     {{ 'Created' if netbox_vlan_check.json.count == 0 else 'Already exists' }}
+          ║  User:       {{ network_user }}
+          ║  Workload:   {{ workload_spiffe_id }}
           ║                                                          ║
           ║  Both user identity (IdM) and workload identity          ║
           ║  (SPIFFE) were verified before this change was allowed.   ║

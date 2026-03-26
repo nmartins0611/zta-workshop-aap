@@ -60,6 +60,9 @@
         - gitea.zta.lab
         - "{{ app_host }}"
         - "{{ db_host }}"
+        - ceos1.zta.lab
+        - ceos2.zta.lab
+        - ceos3.zta.lab
 
     - name: Service verification summary
       debug:
@@ -68,12 +71,12 @@
           ║       Section 1 — ZTA Service Verification               ║
           ╠════════════════════════════════════════════════════════════╣
           ║                                                          ║
-          ║  IdM:      {{ 'RUNNING' if 'RUNNING' in idm_status.stdout else 'FAILED' | ljust(46) }}║
-          ║  Vault:    {{ 'HEALTHY (unsealed)' if vault_health.status == 200 else 'CHECK REQUIRED' | ljust(46) }}║
-          ║  OPA:      {{ 'HEALTHY (' + (opa_policies.json.result | length | string) + ' policies)' | ljust(46) }}║
-          ║  Netbox:   {{ 'ACCESSIBLE' if netbox_health.status == 200 else 'FAILED' | ljust(46) }}║
-          ║  Kerberos: {{ 'OK' if krb_check.rc == 0 else 'FAILED' | ljust(46) }}║
-          ║  DNS:      {{ 'ALL RECORDS RESOLVE' | ljust(46) }}║
+          ║  IdM:      {{ 'RUNNING' if 'RUNNING' in idm_status.stdout else 'FAILED' }}
+          ║  Vault:    {{ 'HEALTHY (unsealed)' if vault_health.status == 200 else 'CHECK REQUIRED' }}
+          ║  OPA:      {{ 'HEALTHY (' + (opa_policies.json.result | length | string) + ' policies)' }}
+          ║  Netbox:   {{ 'ACCESSIBLE' if netbox_health.status == 200 else 'FAILED' }}
+          ║  Kerberos: {{ 'OK' if krb_check.rc == 0 else 'FAILED' }}
+          ║  DNS:      ALL RECORDS RESOLVE
           ║                                                          ║
           ║  Zero Trust infrastructure is ready for AAP integration  ║
           ╚════════════════════════════════════════════════════════════╝
@@ -100,16 +103,16 @@
       debug:
         msg: "PostgreSQL: {{ pg_svc.status.ActiveState }} | DB test: {{ 'PASS' if 'db_ok' in db_test.stdout else 'FAIL' }}"
 
-- name: Verify Network Device
+- name: Verify Arista cEOS Switches
   hosts: network
   gather_facts: false
 
   tasks:
-    - name: Gather Cisco switch facts
-      cisco.ios.ios_facts:
+    - name: Gather Arista switch facts
+      arista.eos.eos_facts:
         gather_subset: min
       register: switch_info
 
     - name: Switch status
       debug:
-        msg: "Cisco {{ switch_info.ansible_facts.ansible_net_model | default('C8000v') }} — {{ switch_info.ansible_facts.ansible_net_hostname | default('switch01') }} — IOS {{ switch_info.ansible_facts.ansible_net_version | default('unknown') }}"
+        msg: "Arista {{ switch_info.ansible_facts.ansible_net_model | default('cEOS') }} — {{ switch_info.ansible_facts.ansible_net_hostname | default(inventory_hostname) }} — EOS {{ switch_info.ansible_facts.ansible_net_version | default('unknown') }}"

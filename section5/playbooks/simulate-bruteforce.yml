@@ -16,6 +16,7 @@
 
   vars:
     target_ip: "{{ hostvars['app']['ansible_host'] }}"
+    target_port: "{{ hostvars['app']['ansible_port'] | default(22) }}"
     target_hostname: app.zta.lab
     attack_user: vault-ssh
     attempt_count: 10
@@ -25,7 +26,7 @@
     - name: Verify app server is reachable
       wait_for:
         host: "{{ target_ip }}"
-        port: 22
+        port: "{{ target_port }}"
         timeout: 10
 
     - name: Display attack simulation warning
@@ -56,6 +57,7 @@
               -o UserKnownHostsFile=/dev/null \
               -o NumberOfPasswordPrompts=1 \
               -o ConnectTimeout=3 \
+              -p {{ target_port }} \
               {{ attack_user }}@{{ target_ip }} \
               'echo should-not-reach' 2>&1 || true
         sleep {{ attempt_delay }}

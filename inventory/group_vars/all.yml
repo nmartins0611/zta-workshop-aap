@@ -47,20 +47,40 @@ keycloak_url: "https://keycloak.zta.lab:8543"
 aap_controller_url: "https://aap.zta.lab"
 aap_validate_certs: false
 
-# ── Cisco Catalyst 8000v (own VM) ───────────────────────────────────
-cisco_switch_host: switch01.zta.lab
+# ── Arista cEOS Switches (containers on central) ──────────────────
+# Replaced Cisco Catalyst 8000v with 3 containerized Arista cEOS switches.
+# Management access is via published ports on central's 192.168.1.x address.
+arista_switches:
+  ceos1:
+    role: spine
+    ssh_port: 2001
+    eapi_port: 6031
+  ceos2:
+    role: leaf-data-tier
+    ssh_port: 2002
+    eapi_port: 6032
+  ceos3:
+    role: leaf-app-tier
+    ssh_port: 2003
+    eapi_port: 6033
 
-# ── Database / PostgreSQL (own VM) ──────────────────────────────────
+# ── Database / PostgreSQL (container on central) ───────────────────
+# Management plane: accessible via central.zta.lab:5432 / SSH port 2022
+# Data plane: 10.30.0.10 on net2 (routed through ceos2)
 db_host: db.zta.lab
 db_port: 5432
 db_name: ztaapp
 db_admin_user: postgres
 db_admin_password: "{{ lookup('env', 'DB_ADMIN_PASSWORD') | default('postgres123!', true) }}"
+db_data_ip: "10.30.0.10"
 
-# ── Application Server (own VM) ─────────────────────────────────────
+# ── Application Server (container on central) ─────────────────────
+# Management plane: accessible via central.zta.lab:8080 / SSH port 2023
+# Data plane: 10.20.0.10 on net3 (routed through ceos3)
 app_host: app.zta.lab
 app_port: 8080
 app_deploy_dir: /opt/ztaapp
+app_data_ip: "10.20.0.10"
 
 # ── IdM Teams (organisational units) ────────────────────────────────
 idm_teams:

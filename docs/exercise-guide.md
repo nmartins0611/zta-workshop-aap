@@ -87,7 +87,7 @@ executing.
 | **Source Control** | Gitea | GitOps trigger, automation code repository |
 | **SIEM** | Wazuh | Security event monitoring, brute-force detection |
 | **Event-Driven Automation** | EDA Controller | Automated incident response triggered by Wazuh |
-| **Resources** | RHEL servers, Cisco switch, PostgreSQL | Managed infrastructure |
+| **Resources** | RHEL containers, Arista switches, PostgreSQL | Managed infrastructure |
 
 ---
 
@@ -101,8 +101,8 @@ executing.
 | EDA Controller | `https://aap.zta.lab` (EDA tab) | *provided by instructor* |
 | IdM (FreeIPA) | `https://central.zta.lab` | admin / ansible123! |
 | OPA | `http://central.zta.lab:8181` | (no auth) |
-| Vault | `https://vault.zta.lab:8200` | admin / ansible123! |
-| Netbox | `http://netbox.zta.lab:8000` | *token provided* |
+| Vault | `http://vault.zta.lab:8200` | admin / ansible123! |
+| Netbox | `http://netbox.zta.lab:8880` | *token provided* |
 | Gitea | `http://gitea.zta.lab:3000` | *provided by instructor* |
 | Wazuh | `https://wazuh.zta.lab` | *provided by instructor* |
 | Application | `http://app.zta.lab:8080` | (no auth — dashboard) |
@@ -262,7 +262,7 @@ Result: `"allow": true`. Now try with `neteng` (no groups): `"allow": false`.
 **Step 3: Check Vault**
 
 ```bash
-export VAULT_ADDR=https://vault.zta.lab:8200
+export VAULT_ADDR=http://vault.zta.lab:8200
 export VAULT_SKIP_VERIFY=true
 vault login -method=userpass username=admin password=ansible123!
 vault status
@@ -278,8 +278,8 @@ Log into AAP Controller at `https://aap.zta.lab` and create:
 | Credential | Type | Key Details |
 |------------|------|-------------|
 | ZTA Machine Credential | Machine | Username: `rhel`, sudo |
-| ZTA Vault Credential | HashiCorp Vault | URL: `https://vault.zta.lab:8200`, admin / ansible123! |
-| ZTA Cisco Credential | Network | Username: `admin` |
+| ZTA Vault Credential | HashiCorp Vault | URL: `http://vault.zta.lab:8200`, admin / ansible123! |
+| ZTA Arista Credential | Network | Username: `admin`, Password: `admin` |
 | ZTA Gitea Credential | Source Control | Gitea username + password |
 
 > **ZTA Concept**: Each credential is scoped to a specific purpose — this is
@@ -292,7 +292,7 @@ Log into AAP Controller at `https://aap.zta.lab` and create:
 **Inventory from Netbox:**
 
 1. Create `ZTA Lab Inventory`
-2. Add source: Netbox → `http://netbox.zta.lab:8000`
+2. Add source: Netbox → `http://netbox.zta.lab:8880`
 3. Sync and verify all hosts appear
 
 **Project from Gitea:**
@@ -319,7 +319,7 @@ All use: `ZTA Lab Inventory` + `ZTA Machine Credential`
 ### Exercise 1.5 — Run Verification
 
 **Verify ZTA Services** — Confirm IdM, Vault, OPA, Netbox, DNS, PostgreSQL,
-and the Cisco switch are all healthy.
+and the Arista cEOS switches are all healthy.
 
 **Test Vault Integration** — Watch Vault generate a dynamic PostgreSQL user
 with a 5-minute TTL. Run it twice — the usernames will be different.
@@ -364,7 +364,7 @@ approve the deployment request.
 |----------|----------|-------------------|
 | Check DB Access Policy | `section2/playbooks/check-db-policy.yml` | — |
 | Create DB Credential | `section2/playbooks/create-db-credential.yml` | — |
-| Configure DB Access List | `section2/playbooks/configure-db-access.yml` | ZTA Cisco Credential |
+| Configure DB Access List | `section2/playbooks/configure-db-access.yml` | ZTA Arista Credential |
 | Deploy Application | `section2/playbooks/deploy-application.yml` | — |
 | Rotate DB Credentials | `section2/playbooks/rotate-credentials.yml` | — |
 
@@ -424,7 +424,7 @@ The `zta.db_access` policy checks:
 3. All four steps complete:
    - OPA: **ALLOWED**
    - Vault: dynamic PostgreSQL user created (5-minute TTL)
-   - Cisco ACL: only `app.zta.lab` can reach `db.zta.lab:5432`
+   - Arista ACL: only `10.20.0.10` (app) can reach `10.30.0.10:5432` (db)
    - Application deployed with dynamic credentials
 
 4. Open `http://app.zta.lab:8080` — the **Global Telemetry Platform** dashboard is live
@@ -451,7 +451,7 @@ credentials are ephemeral.
 |-----------|---------------------|
 | Policy verification | OPA check is the first workflow step — wrong user blocked |
 | Least privilege | Vault credentials grant only SELECT/INSERT/UPDATE |
-| Micro-segmentation | Cisco ACL restricts DB access to app server only |
+| Micro-segmentation | Arista ACL restricts DB access to app server only |
 | Short-lived credentials | 5-minute TTL, automatically revoked by Vault |
 
 ---
@@ -592,7 +592,7 @@ sudo sshd -T | grep -E 'permitrootlogin|maxauthtries'
 
 ### The Scenario
 
-A VLAN needs to be created on the Cisco switch. Two defence rings protect
+A VLAN needs to be created on the Arista cEOS switches. Two defence rings protect
 this operation:
 
 1. **Outer ring** (AAP Policy as Code): Can this user launch this template?
@@ -605,7 +605,7 @@ this operation:
 
 | Template | Playbook | Extra Credentials |
 |----------|----------|-------------------|
-| Configure VLAN | `section4/playbooks/configure-vlan.yml` | ZTA Cisco Credential |
+| Configure VLAN | `section4/playbooks/configure-vlan.yml` | ZTA Arista Credential |
 
 Survey: `new_vlan_id` (integer, default: `200`), `new_vlan_name` (text, default: `DMZ`)
 
@@ -630,7 +630,7 @@ OPA: DENIED — user 'neteng' is not a member of network-admins group
 1. Log in as `netadmin` → Launch **Configure VLAN** (VLAN 200, DMZ)
 2. SPIFFE: VERIFIED ✓
 3. OPA: ALLOWED ✓
-4. VLAN 200 created on Cisco switch
+4. VLAN 200 created on Arista cEOS switches
 5. Netbox CMDB updated with VLAN + SPIFFE audit trail
 
 Verify: `show vlan brief` on the switch. Check Netbox IPAM → VLANs.
@@ -651,7 +651,7 @@ Verify: `show vlan brief` on the switch. Check Netbox IPAM → VLANs.
 User launches job
   → OUTER RING (AAP Policy as Code): Can this user launch VLAN templates? 
   → INNER RING (in-playbook OPA): SPIFFE ID + user group + VLAN range?
-  → Cisco switch configured + Netbox CMDB updated
+  → Arista switches configured + Netbox CMDB updated
 ```
 
 ---
@@ -791,7 +791,7 @@ curl http://app.zta.lab:8080/health     # healthy again
 | **Platform enforcement** | AAP Policy as Code blocks unauthorised launches (S3) |
 | **Workload identity** | SPIFFE/SPIRE proves the automation platform is legitimate (S4) |
 | **Defence in depth** | Two OPA rings — platform gate + runtime check (S4) |
-| **Micro-segmentation** | Cisco ACL limits DB access to app server (S2) |
+| **Micro-segmentation** | Arista ACL limits DB access to app server (S2) |
 | **CMDB as source of truth** | Netbox state drives decisions, updated after changes (S2, S4) |
 | **Continuous monitoring** | Wazuh watches every authentication attempt (S5) |
 | **Assume breach** | EDA automatically revokes credentials on attack (S5) |
@@ -891,12 +891,14 @@ ansible-playbook section5/playbooks/restore-app-credentials.yml
 ### Netbox inventory sync fails
 
 ```bash
-curl -H "Authorization: Token <your-token>" http://netbox.zta.lab:8000/api/status/
+curl -H "Authorization: Token <your-token>" http://netbox.zta.lab:8880/api/status/
 ```
 
-### Cisco switch unreachable
+### Arista cEOS switches unreachable
 
 ```bash
-ssh admin@switch01.zta.lab
-# Check cisco.ios collection is in the AAP execution environment
+ssh -p 2001 admin@central.zta.lab     # ceos1
+ssh -p 2002 admin@central.zta.lab     # ceos2
+ssh -p 2003 admin@central.zta.lab     # ceos3
+# Check arista.eos collection is in the AAP execution environment
 ```

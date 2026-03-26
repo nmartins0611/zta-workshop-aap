@@ -2,7 +2,7 @@
 # enroll-idm-clients.yml — Enroll RHEL servers and AAP as IdM clients
 #
 # Uses the redhat.rhel_idm.ipaclient role to install ipa-client on every
-# Linux host (except the IdM server itself and the Cisco switch), trust
+# Linux host (except the IdM server itself and the Arista switches), trust
 # the IdM CA, and enable SSSD so that IdM users can log in over SSH and
 # sudo rules from IdM are enforced.
 #

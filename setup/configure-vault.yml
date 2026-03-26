@@ -20,12 +20,12 @@
       changed_when: kv_enable.rc == 0
       failed_when: kv_enable.rc != 0 and 'already in use' not in kv_enable.stderr
 
-    - name: Store network device credentials
+    - name: Store network device credentials (Arista cEOS)
       command: >
-        vault kv put {{ vault_kv_secrets_path }}/network/switch01
+        vault kv put {{ vault_kv_secrets_path }}/network/arista
         username=admin
-        password=cisco123!
-        enable_secret=cisco123!
+        password=admin
+        transport=eapi
       environment: "{{ vault_env }}"
 
     - name: Store database admin credentials
@@ -160,7 +160,7 @@
             Vault Configuration Complete
           ═══════════════════════════════════════════
           KV Secrets:
-            - {{ vault_kv_secrets_path }}/network/switch01
+            - {{ vault_kv_secrets_path }}/network/arista
             - {{ vault_kv_secrets_path }}/db/admin
             - {{ vault_kv_secrets_path }}/idm/admin
 

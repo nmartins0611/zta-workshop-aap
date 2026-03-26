@@ -336,8 +336,8 @@
           ║    zta_audit     — AAP job audit trail                       ║
           ║                                                              ║
           ║  Installed Apps:                                             ║
-          ║    - Cisco Network Data App                                  ║
-          ║    - Cisco Network Data Add-on                               ║
+          ║    - Network Data App (Cisco/general syslog)                 ║
+          ║    - Network Data Add-on                                     ║
           ║    - Red Hat EDA Add-on for Splunk                           ║
           ║                                                              ║
           ║  HEC test:   {{ ('OK' if hec_test.status == 200 else 'FAILED') }}║

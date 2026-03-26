@@ -154,7 +154,7 @@ Security Patch Applied
 SSH into the patched server and confirm:
 
 ```bash
-ssh rhel@app.zta.lab
+ssh -p 2023 rhel@central.zta.lab
 ```
 
 You should see the new login banner immediately. Then check:

@@ -15,7 +15,7 @@ the group membership), and successfully deploy.
 | **Least privilege** | Vault DB credentials grant only SELECT/INSERT/UPDATE |
 | **Short-lived credentials** | Dynamic DB user expires after 5-minute TTL |
 | **Just-in-time access** | Credentials only created when the deployment runs |
-| **Micro-segmentation** | Cisco ACL restricts database access to the app server only |
+| **Micro-segmentation** | Arista ACL restricts database access to the app server only |
 
 ## Architecture
 
@@ -32,8 +32,8 @@ the group membership), and successfully deploy.
   │    └─ TTL: 5 minutes, auto-revoked                 │
   │                                                    │
   │  Step 3: Configure ACL (app → db only)             │
-  │    └─ Cisco ACL: PERMIT app → db:5432              │
-  │    └─           DENY   * → db:5432                 │
+  │    └─ Arista ACL: PERMIT app → db:5432             │
+  │    └─            DENY   * → db:5432                │
   │                                                    │
   │  Step 4: Deploy Application with Credentials       │
   │    └─ Push creds to app, restart GTP service       │
@@ -51,7 +51,7 @@ All templates use **Inventory:** `ZTA Lab Inventory` and **Credentials:** `ZTA M
 |---------------|----------|-------------------|
 | Check DB Access Policy | `section2/playbooks/check-db-policy.yml` | — |
 | Create DB Credential | `section2/playbooks/create-db-credential.yml` | — |
-| Configure DB Access List | `section2/playbooks/configure-db-access.yml` | `ZTA Cisco Credential` |
+| Configure DB Access List | `section2/playbooks/configure-db-access.yml` | `ZTA Arista Credential` |
 | Deploy Application | `section2/playbooks/deploy-application.yml` | — |
 | Rotate DB Credentials | `section2/playbooks/rotate-credentials.yml` | — |
 
@@ -139,10 +139,10 @@ Dynamic database credentials created:
 
 **Step 3 — Network ACL:**
 ```
-Network micro-segmentation applied:
+Network micro-segmentation applied on ceos2:
   ACL: ZTA-APP-TO-DB
-  PERMIT: app.zta.lab → db.zta.lab:5432
-  DENY:   any → db.zta.lab:5432
+  PERMIT: 10.20.0.10 → 10.30.0.10:5432
+  DENY:   any → 10.30.0.10:5432
 ```
 
 **Step 4 — Application Deployed:**
@@ -160,9 +160,9 @@ Application deployed successfully:
 
 ## Exercise 2.6 — Observe Credential Expiry
 
-1. SSH into the database server and list PostgreSQL users:
+1. SSH into the database container and list PostgreSQL users:
    ```bash
-   ssh rhel@db.zta.lab
+   ssh -p 2022 rhel@central.zta.lab
    sudo -u postgres psql -c "\du"
    ```
    You should see the Vault-generated user (e.g. `v-root-ztaapp-s-...`)
@@ -211,7 +211,7 @@ restarts the application — keeping it healthy continuously.
 - What happened when `neteng` tried to deploy? Did they ever see credentials?
 - Why does OPA check happen **before** Vault, not after?
 - What happens to the application when credentials expire?
-- Why is the Cisco ACL important if credentials are already short-lived?
+- Why is the Arista ACL important if credentials are already short-lived?
 - If you added `neteng` to `app-deployers` in IdM, what changes?
 
 ---
@@ -221,7 +221,7 @@ restarts the application — keeping it healthy continuously.
 - [ ] Wrong user (`neteng`) is denied by OPA — workflow stops at step 1
 - [ ] Correct user (`appdev`) passes OPA — full workflow completes
 - [ ] Vault generates dynamic PostgreSQL credentials with unique username
-- [ ] Cisco ACL permits only `app.zta.lab` → `db.zta.lab:5432`
+- [ ] Arista ACL on ceos2 permits only `10.20.0.10` → `10.30.0.10:5432`
 - [ ] Application dashboard loads at `http://app.zta.lab:8080`
 - [ ] Credentials disappear from PostgreSQL after TTL expires
 - [ ] Application loses DB access when credentials expire

@@ -9,7 +9,7 @@
 #   - ZTA-role tags for architecture documentation
 #
 # Prerequisites:
-#   - Netbox is running on netbox.zta.lab:8000
+#   - Netbox is running on netbox.zta.lab:8880
 #   - NETBOX_TOKEN environment variable is set (or default used)
 #
 # Usage:
@@ -71,8 +71,8 @@
     nb_manufacturers:
       - name: Red Hat
         slug: red-hat
-      - name: Cisco
-        slug: cisco
+      - name: Arista
+        slug: arista
       - name: HashiCorp
         slug: hashicorp
       - name: Wazuh
@@ -85,9 +85,9 @@
       - name: RHEL 9
         slug: rhel-9
         manufacturer: Red Hat
-      - name: Cisco IOS-XE
-        slug: cisco-ios-xe
-        manufacturer: Cisco
+      - name: Arista EOS
+        slug: arista-eos
+        manufacturer: Arista
 
     # ── Device Roles ──
     nb_device_roles:
@@ -119,10 +119,10 @@
         slug: rhel9-vm
         manufacturer: Red Hat
         part_number: RHEL-9-VM
-      - model: Catalyst 8000v
-        slug: catalyst-8000v
-        manufacturer: Cisco
-        part_number: C8000V
+      - model: Arista cEOS-lab
+        slug: arista-ceos-lab
+        manufacturer: Arista
+        part_number: cEOS-LAB
 
     # ── Devices ──
     nb_devices:
@@ -170,16 +170,27 @@
             type: virtual
             ip: 192.168.1.13/24
 
-      - name: node01.zta.lab
+      - name: db.zta.lab
         role: Application Server
         device_type: RHEL 9 Virtual Machine
         platform: RHEL 9
         tags: [workload, zero-trust]
-        description: "Application + Database server — Global Telemetry Platform + PostgreSQL"
+        description: "Database container (RHEL UBI9) — PostgreSQL, data-plane 10.30.0.10"
         interfaces:
           - name: eth0
             type: virtual
-            ip: 192.168.1.14/24
+            ip: 192.168.1.11/24
+
+      - name: app.zta.lab
+        role: Application Server
+        device_type: RHEL 9 Virtual Machine
+        platform: RHEL 9
+        tags: [workload, zero-trust]
+        description: "App container (RHEL UBI9) — Global Telemetry Platform, data-plane 10.20.0.10"
+        interfaces:
+          - name: eth0
+            type: virtual
+            ip: 192.168.1.11/24
 
       - name: netbox.zta.lab
         role: CMDB Server
@@ -192,16 +203,38 @@
             type: virtual
             ip: 192.168.1.15/24
 
-      - name: switch01.zta.lab
+      - name: ceos1.zta.lab
         role: Network Switch
-        device_type: Catalyst 8000v
-        platform: Cisco IOS-XE
+        device_type: Arista cEOS-lab
+        platform: Arista EOS
         tags: [network-infra, zero-trust]
-        description: "Cisco Catalyst 8000v — virtual switch for VLAN / network segmentation demos"
+        description: "Arista cEOS spine — inter-tier routing (container on central)"
         interfaces:
-          - name: GigabitEthernet1
-            type: 1000base-t
-            ip: 192.168.1.16/24
+          - name: Management0
+            type: virtual
+            ip: 192.168.1.11/24
+
+      - name: ceos2.zta.lab
+        role: Network Switch
+        device_type: Arista cEOS-lab
+        platform: Arista EOS
+        tags: [network-infra, zero-trust]
+        description: "Arista cEOS leaf — data-tier gateway 10.30.0.1 (container on central)"
+        interfaces:
+          - name: Management0
+            type: virtual
+            ip: 192.168.1.11/24
+
+      - name: ceos3.zta.lab
+        role: Network Switch
+        device_type: Arista cEOS-lab
+        platform: Arista EOS
+        tags: [network-infra, zero-trust]
+        description: "Arista cEOS leaf — app-tier gateway 10.20.0.1 (container on central)"
+        interfaces:
+          - name: Management0
+            type: virtual
+            ip: 192.168.1.11/24
 
     # ── IP Prefixes ──
     nb_prefixes:
@@ -284,19 +317,29 @@
         ports: [443]
         protocol: tcp
         description: "Wazuh web dashboard"
-      - device: node01.zta.lab
+      - device: app.zta.lab
         name: Global Telemetry Platform
         ports: [8080]
         protocol: tcp
-        description: "Flask application — workshop demo app"
-      - device: node01.zta.lab
+        description: "Flask application — workshop demo app (container on central)"
+      - device: db.zta.lab
         name: PostgreSQL
         ports: [5432]
         protocol: tcp
-        description: "Database — dynamic credentials via Vault"
+        description: "Database — dynamic credentials via Vault (container on central)"
+      - device: central.zta.lab
+        name: Splunk
+        ports: [8000, 8088]
+        protocol: tcp
+        description: "Splunk Enterprise — log aggregation (container)"
+      - device: central.zta.lab
+        name: Wazuh
+        ports: [5601, 9200, 55000]
+        protocol: tcp
+        description: "Wazuh SIEM — indexer, manager, dashboard (containers)"
       - device: netbox.zta.lab
         name: Netbox
-        ports: [8000]
+        ports: [8880]
         protocol: tcp
         description: "CMDB — infrastructure source of truth"
 

@@ -12,7 +12,7 @@
 #
 # Available tags:
 #   idm, kerberos, containers, opa, keycloak, splunk, netbox,
-#   wazuh, vault, db, app, aap, arista, ceos, summary
+#   wazuh, vault, db, app, aap, arista, ceos, dataplane, summary
 
 - name: Verify Central Services (VMs + Containers)
   hosts: zta_services
@@ -62,6 +62,8 @@
         - ceos1
         - ceos2
         - ceos3
+        - db
+        - app
       tags: [containers, central]
 
     - name: Check NetBox containers are running
@@ -142,6 +144,47 @@
       register: netbox_status
       failed_when: false
       tags: [netbox, central]
+
+    - name: Check DB container SSH port (2022)
+      ansible.builtin.wait_for:
+        host: localhost
+        port: 2022
+        timeout: 5
+      register: db_ssh_status
+      failed_when: false
+      tags: [db, containers, central]
+
+    - name: Check App container SSH port (2023)
+      ansible.builtin.wait_for:
+        host: localhost
+        port: 2023
+        timeout: 5
+      register: app_ssh_status
+      failed_when: false
+      tags: [app, containers, central]
+
+    - name: Test data-plane connectivity (app→db via switch fabric)
+      command: >
+        podman exec app
+        bash -c 'timeout 3 bash -c "echo > /dev/tcp/10.30.0.10/5432" 2>/dev/null && echo CONNECTED || echo UNREACHABLE'
+      register: dataplane_check
+      changed_when: false
+      failed_when: false
+      tags: [dataplane, central]
+
+    - name: Check IdM enrollment for DB container
+      command: podman exec db bash -c 'test -f /etc/ipa/default.conf && echo ENROLLED || echo NOT_ENROLLED'
+      register: db_idm_status
+      changed_when: false
+      failed_when: false
+      tags: [idm, containers, central]
+
+    - name: Check IdM enrollment for App container
+      command: podman exec app bash -c 'test -f /etc/ipa/default.conf && echo ENROLLED || echo NOT_ENROLLED'
+      register: app_idm_status
+      changed_when: false
+      failed_when: false
+      tags: [idm, containers, central]
 
     - name: Verify cEOS SSH reachability
       ansible.builtin.wait_for:
@@ -282,12 +325,26 @@
         ok: "{{ cs['wazuh-dashboard'] | default(false) }}"
       - name: NetBox containers
         ok: "{{ c.netbox_containers_up | default(false) }}"
+      - name: DB container
+        ok: "{{ cs.db | default(false) }}"
+      - name: App container
+        ok: "{{ cs.app | default(false) }}"
       - name: ceos1 container
         ok: "{{ cs.ceos1 | default(false) }}"
       - name: ceos2 container
         ok: "{{ cs.ceos2 | default(false) }}"
       - name: ceos3 container
         ok: "{{ cs.ceos3 | default(false) }}"
+      - name: DB SSH (2022)
+        ok: "{{ (c.db_ssh_status.state | default('')) == 'started' }}"
+      - name: App SSH (2023)
+        ok: "{{ (c.app_ssh_status.state | default('')) == 'started' }}"
+      - name: Data-plane (app→db:5432)
+        ok: "{{ 'CONNECTED' in (c.dataplane_check.stdout | default('')) }}"
+      - name: DB IdM enrollment
+        ok: "{{ 'ENROLLED' in (c.db_idm_status.stdout | default('')) }}"
+      - name: App IdM enrollment
+        ok: "{{ 'ENROLLED' in (c.app_idm_status.stdout | default('')) }}"
       - name: OPA API (8181)
         ok: "{{ (c.opa_status.status | default(0)) == 200 }}"
       - name: Keycloak UI (8543)

@@ -13,7 +13,7 @@
 
   tasks:
     - name: Read a KV secret (network credentials)
-      command: vault kv get -format=json {{ vault_kv_secrets_path }}/network/switch01
+      command: vault kv get -format=json {{ vault_kv_secrets_path }}/network/arista
       environment: "{{ vault_env }}"
       register: vault_kv_test
       changed_when: false
@@ -23,7 +23,7 @@
       assert:
         that:
           - vault_kv_test.rc == 0
-        success_msg: "KV secret retrieved successfully from {{ vault_kv_secrets_path }}/network/switch01"
+        success_msg: "KV secret retrieved successfully from {{ vault_kv_secrets_path }}/network/arista"
         fail_msg: "Failed to read KV secret — check Vault configuration"
 
     - name: Generate dynamic database credentials

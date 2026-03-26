@@ -27,7 +27,7 @@ integrations.
   │  Credentials:                                 │
   │    - Machine (SSH key / password)             │
   │    - HashiCorp Vault                          │
-  │    - Cisco IOS (network device)               │
+  │    - Arista EOS (network device)               │
   │    - Gitea source control                     │
   │                                               │
   │  Inventory:                                   │
@@ -75,10 +75,10 @@ integrations.
 ### Network Credential
 
 1. Navigate to **Resources → Credentials → Add**
-2. Name: `ZTA Cisco Credential`
+2. Name: `ZTA Arista Credential`
 3. Credential Type: `Network`
 4. Username: `admin`
-5. Password: retrieve from Vault (`secret/network/switch01`)
+5. Password: `admin` (or retrieve from Vault: `secret/network/arista`)
 
 ### Source Control Credential (Gitea)
 
@@ -97,7 +97,7 @@ integrations.
 1. Navigate to **Resources → Inventories → Add**
 2. Name: `ZTA Lab Inventory`
 3. Add a **Source**: Netbox
-4. Source URL: `http://netbox.zta.lab:8000`
+4. Source URL: `http://netbox.zta.lab:8880`
 5. Token: your Netbox API token
 6. Sync the inventory — verify all hosts appear
 
@@ -134,7 +134,7 @@ Launch **Verify ZTA Services** and confirm every component is healthy:
 - Kerberos: TGT obtainable
 - DNS: all `*.zta.lab` names resolve
 - PostgreSQL: running and accepts queries
-- Cisco switch: responds with IOS facts
+- Arista cEOS switches: respond with EOS facts
 
 ---
 
@@ -144,7 +144,7 @@ Launch **Test Vault Integration**.
 
 **What to observe:**
 
-- A KV secret is read from Vault (`secret/network/switch01`)
+- A KV secret is read from Vault (`secret/network/arista`)
 - A dynamic PostgreSQL user is generated with a 5-minute TTL
 - The username is randomised (e.g. `v-root-ztaapp-s-...`)
 - The credentials are immediately revoked at the end
@@ -170,13 +170,13 @@ only way to log in is via a Vault-issued one-time password.
 ### Manual Demo
 
 ```bash
-export VAULT_ADDR=https://vault.zta.lab:8200
+export VAULT_ADDR=http://vault.zta.lab:8200
 export VAULT_SKIP_VERIFY=true
 vault login -method=userpass username=admin password=ansible123!
 
-vault write ssh/creds/rhel-otp ip=192.168.1.14    # get an OTP
-ssh vault-ssh@192.168.1.14                          # works once
-ssh vault-ssh@192.168.1.14                          # denied
+vault write ssh/creds/rhel-otp ip=192.168.1.11     # get an OTP for central (containers)
+ssh -p 2023 vault-ssh@192.168.1.11                  # works once (app container)
+ssh -p 2023 vault-ssh@192.168.1.11                  # denied
 ```
 
 ---

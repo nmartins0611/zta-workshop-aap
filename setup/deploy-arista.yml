@@ -2,13 +2,18 @@
 # Deploy Arista cEOS Lab switches as containers on central
 #
 # Topology:
-#   ceos1 (spine) ── net1 ── ceos2 (leaf-1)
+#   ceos1 (spine) ── net1 ── ceos2 (leaf — data-tier)
 #     │                        │
-#     │── net3 ── ceos3 ───── net2 ──┘
-#     │            (leaf-2)
+#     │── net3 ── ceos3 ──── net2 ──┘
+#     │       (leaf — app-tier)
 #     └── loop (loopback network)
 #
-# Management access:
+# Data-plane networks:
+#   net2 = 10.30.0.0/24  (data-tier) — DB container at 10.30.0.10
+#   net3 = 10.20.0.0/24  (app-tier)  — App container at 10.20.0.10
+#   Traffic between app↔db routes through cEOS spine (ceos1)
+#
+# Management access (published on 192.168.1.x):
 #   ceos1:  SSH central.zta.lab:2001  |  eAPI central.zta.lab:6031
 #   ceos2:  SSH central.zta.lab:2002  |  eAPI central.zta.lab:6032
 #   ceos3:  SSH central.zta.lab:2003  |  eAPI central.zta.lab:6033
@@ -129,9 +134,18 @@
     # Phase 4 — Create networks
     # ═══════════════════════════════════════════════════════════════════
 
-    - name: Create podman networks
+    - name: Create podman networks (management, net1, loop — no explicit subnet)
       command: "podman network create --disable-dns {{ item }}"
-      loop: "{{ podman_networks }}"
+      loop:
+        - management
+        - net1
+        - loop
+
+    - name: Create data-tier network (net2 — 10.30.0.0/24)
+      command: "podman network create --disable-dns --subnet 10.30.0.0/24 --gateway 10.30.0.1 net2"
+
+    - name: Create app-tier network (net3 — 10.20.0.0/24)
+      command: "podman network create --disable-dns --subnet 10.20.0.0/24 --gateway 10.20.0.1 net3"
 
     # ═══════════════════════════════════════════════════════════════════
     # Phase 5 — Launch cEOS containers
@@ -189,7 +203,69 @@
         label: "{{ item.name }} (port {{ item.ssh_port }})"
 
     # ═══════════════════════════════════════════════════════════════════
-    # Phase 8 — Gather management IPs
+    # Phase 8 — Configure data-plane routing on switches
+    # ═══════════════════════════════════════════════════════════════════
+
+    - name: Configure ceos2 (leaf — data-tier gateway 10.30.0.1)
+      shell: |
+        podman exec ceos2 Cli -p 15 -c "
+        configure
+        interface ethernet3
+          no switchport
+          ip address 10.30.0.1/24
+          no shutdown
+        ip route 10.20.0.0/24 10.30.0.1
+        ip routing
+        end
+        write memory
+        "
+      changed_when: true
+
+    - name: Configure ceos3 (leaf — app-tier gateway 10.20.0.1)
+      shell: |
+        podman exec ceos3 Cli -p 15 -c "
+        configure
+        interface ethernet3
+          no switchport
+          ip address 10.20.0.1/24
+          no shutdown
+        ip route 10.30.0.0/24 10.20.0.1
+        ip routing
+        end
+        write memory
+        "
+      changed_when: true
+
+    - name: Configure ceos1 (spine — inter-tier routing)
+      shell: |
+        podman exec ceos1 Cli -p 15 -c "
+        configure
+        ip routing
+        ip route 10.30.0.0/24 10.30.0.1
+        ip route 10.20.0.0/24 10.20.0.1
+        end
+        write memory
+        "
+      changed_when: true
+
+    - name: Configure default ACL on ceos2 (permit app→db:5432, deny rest)
+      shell: |
+        podman exec ceos2 Cli -p 15 -c "
+        configure
+        ip access-list ZTA-DATA-TIER
+          10 permit tcp 10.20.0.0/24 10.30.0.0/24 eq 5432
+          20 permit tcp 10.30.0.0/24 eq 5432 10.20.0.0/24 established
+          100 deny ip any 10.30.0.0/24
+          200 permit ip any any
+        interface ethernet3
+          ip access-group ZTA-DATA-TIER in
+        end
+        write memory
+        "
+      changed_when: true
+
+    # ═══════════════════════════════════════════════════════════════════
+    # Phase 9 — Gather management IPs
     # ═══════════════════════════════════════════════════════════════════
 
     - name: Get management IP for each switch
@@ -221,11 +297,19 @@
           ╠════════════════════════════════════════════════════════════════╣
           ║                                                              ║
           ║  Topology:                                                   ║
-          ║    ceos1 (spine) ── net1 ── ceos2 (leaf-1)                   ║
+          ║    ceos1 (spine) ── net1 ── ceos2 (leaf/data-tier)           ║
           ║      │                        │                              ║
-          ║      └── net3 ── ceos3 (leaf-2) ── net2 ──┘                  ║
+          ║      └── net3 ── ceos3 (leaf/app-tier) ── net2 ──┘           ║
           ║                                                              ║
-          ║  Switch Access:                                              ║
+          ║  Data-Plane Networks:                                        ║
+          ║    net2 = 10.30.0.0/24  (data-tier)  gw 10.30.0.1 (ceos2)   ║
+          ║    net3 = 10.20.0.0/24  (app-tier)   gw 10.20.0.1 (ceos3)   ║
+          ║                                                              ║
+          ║  ACL: ZTA-DATA-TIER on ceos2                                 ║
+          ║    PERMIT  10.20.0.0/24 → 10.30.0.0/24:5432                 ║
+          ║    DENY    any → 10.30.0.0/24                                ║
+          ║                                                              ║
+          ║  Switch Access (via 192.168.1.x):                            ║
           ║    ceos1:  ssh -p 2001 admin@central.zta.lab                 ║
           ║    ceos2:  ssh -p 2002 admin@central.zta.lab                 ║
           ║    ceos3:  ssh -p 2003 admin@central.zta.lab                 ║
@@ -240,15 +324,6 @@
           ║    ceos2:  {{ ceos_addresses.ceos2 | default('unknown') }}
           ║    ceos3:  {{ ceos_addresses.ceos3 | default('unknown') }}
           ║                                                              ║
-          ║  Networks:                                                   ║
-          ║    management — mgmt plane (all switches)                    ║
-          ║    net1       — ceos1 ↔ ceos2                                ║
-          ║    net2       — ceos2 ↔ ceos3                                ║
-          ║    net3       — ceos1 ↔ ceos3                                ║
-          ║    loop       — loopback (all switches)                      ║
-          ║                                                              ║
-          ║  Ansible:                                                    ║
-          ║    Collection:  arista.eos                                   ║
-          ║    Connection:  ansible.netcommon.httpapi (eAPI)              ║
-          ║    or:          ansible.netcommon.network_cli (SSH)           ║
+          ║  Next: deploy-rhel-containers.yml connects                   ║
+          ║        db→net2 (10.30.0.10) and app→net3 (10.20.0.10)       ║
           ╚════════════════════════════════════════════════════════════════╝

@@ -1,65 +1,64 @@
 ---
-# Section 2, Step 3: Configure Cisco ACL to allow app server → database only
+# Section 2, Step 3: Configure Arista ACL to allow app server → database only
+#
+# Uses the data-plane IPs (10.20.0.10 and 10.30.0.10) that route
+# through the cEOS switch fabric. The ACL is applied on ceos2
+# (the data-tier leaf switch).
 - name: Configure Network Access for App to Database
   hosts: network
   gather_facts: false
 
   vars:
     acl_name: ZTA-APP-TO-DB
-    app_server_ip: "{{ hostvars['app']['ansible_host'] | default('10.20.0.10') }}"
-    db_server_ip: "{{ hostvars['db']['ansible_host'] | default('10.30.0.10') }}"
+    app_data_ip: "{{ hostvars['app']['ansible_host'] | default(app_data_ip) | default('10.20.0.10') }}"
+    db_data_ip: "{{ hostvars['db']['ansible_host'] | default(db_data_ip) | default('10.30.0.10') }}"
+    target_switch: ceos2
 
   tasks:
-    - name: Configure ACL permitting app server to database
-      cisco.ios.ios_acls:
-        config:
-          - afi: ipv4
-            acls:
-              - name: "{{ acl_name }}"
-                aces:
-                  - sequence: 10
-                    grant: permit
-                    protocol: tcp
-                    source:
-                      host: "{{ app_server_ip }}"
-                    destination:
-                      host: "{{ db_server_ip }}"
-                      port_protocol:
-                        eq: "{{ db_port }}"
-                  - sequence: 20
-                    grant: permit
-                    protocol: tcp
-                    source:
-                      host: "{{ db_server_ip }}"
-                      port_protocol:
-                        eq: "{{ db_port }}"
-                    destination:
-                      host: "{{ app_server_ip }}"
-                    option:
-                      established: true
-                  - sequence: 100
-                    grant: deny
-                    protocol: ip
-                    source:
-                      any: true
-                    destination:
-                      host: "{{ db_server_ip }}"
-                      port_protocol:
-                        eq: "{{ db_port }}"
-        state: replaced
+    - name: Configure ACL on data-tier leaf switch (ceos2)
+      when: inventory_hostname == target_switch
+      block:
+        - name: Configure ACL permitting app server to database
+          arista.eos.eos_acls:
+            config:
+              - afi: ipv4
+                acls:
+                  - name: "{{ acl_name }}"
+                    aces:
+                      - sequence: 10
+                        grant: permit
+                        protocol: tcp
+                        source:
+                          host: "{{ app_data_ip }}"
+                        destination:
+                          host: "{{ db_data_ip }}"
+                          port_protocol:
+                            eq: "{{ db_port }}"
+                      - sequence: 20
+                        grant: permit
+                        protocol: tcp
+                        source:
+                          host: "{{ db_data_ip }}"
+                          port_protocol:
+                            eq: "{{ db_port }}"
+                        destination:
+                          host: "{{ app_data_ip }}"
+                      - sequence: 100
+                        grant: deny
+                        protocol: ip
+                        source:
+                          any: true
+                        destination:
+                          host: "{{ db_data_ip }}"
+            state: replaced
 
-    - name: Apply ACL to the data tier interface
-      cisco.ios.ios_config:
-        lines:
-          - "ip access-group {{ acl_name }} in"
-        parents: "interface GigabitEthernet2"
+        - name: Display ACL configuration
+          debug:
+            msg: |
+              Network micro-segmentation applied on {{ target_switch }}:
+                ACL: {{ acl_name }}
+                PERMIT: {{ app_data_ip }} → {{ db_data_ip }}:{{ db_port }}
+                DENY:   any → {{ db_data_ip }}:{{ db_port }}
 
-    - name: Display ACL configuration
-      debug:
-        msg: |
-          Network micro-segmentation applied:
-            ACL: {{ acl_name }}
-            PERMIT: {{ app_server_ip }} → {{ db_server_ip }}:{{ db_port }}
-            DENY:   any → {{ db_server_ip }}:{{ db_port }}
-
-          Only {{ app_server_ip }} (app.zta.lab) can reach the database.
+              Only the app container ({{ app_data_ip }}) can reach the
+              database via the Arista cEOS switch fabric.

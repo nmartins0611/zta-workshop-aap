@@ -5,7 +5,7 @@
 Demonstrate **defence in depth** for network automation: a VLAN change must be
 authorised by **both** a verified workload identity (SPIFFE) and an authorised
 user identity (IdM). Two OPA policy rings evaluate both layers before the
-Cisco switch is touched and the CMDB updated.
+Arista switches are touched and the CMDB updated.
 
 ## Zero Trust Principles
 
@@ -16,7 +16,7 @@ Cisco switch is touched and the CMDB updated.
 | **User identity** | IdM group membership determines who can request network changes |
 | **Deny by default** | No VLAN change without explicit allow from both rings |
 | **Audit trail** | Netbox CMDB records both the user and the workload SPIFFE ID |
-| **Micro-segmentation** | VLAN isolation enforced on Cisco infrastructure |
+| **Micro-segmentation** | VLAN isolation enforced on Arista cEOS switch fabric |
 
 ## Zero Trust Layers
 
@@ -26,7 +26,7 @@ Cisco switch is touched and the CMDB updated.
 | **Workload identity** | SPIFFE / SPIRE | The automation platform itself is cryptographically attested — not a rogue script |
 | **User identity** | IdM (FreeIPA) | The human requesting the change is in the `network-admins` group |
 | **Runtime policy** | OPA (in-playbook) | SPIFFE ID + user + VLAN + action are validated with runtime context (inner ring) |
-| **Enforcement** | AAP + Cisco | The job only proceeds if both rings return `allow: true` |
+| **Enforcement** | AAP + Arista | The job only proceeds if both rings return `allow: true` |
 | **Audit trail** | Netbox CMDB | The VLAN record includes both the user and the workload SPIFFE ID |
 
 ## Defence in Depth — Two OPA Policy Rings
@@ -58,7 +58,7 @@ Cisco switch is touched and the CMDB updated.
   └──────────────────────┬──────────────────────────┘
                          │ (only if inner ring allows)
                          ▼
-                  Cisco + Netbox
+                  Arista + Netbox
 ```
 
 The **outer ring** cannot be bypassed — AAP enforces it before the playbook
@@ -95,7 +95,7 @@ The `zta.network` policy checks **four conditions** — all must pass:
 
 | Template Name | Playbook | Inventory | Credentials |
 |---------------|----------|-----------|-------------|
-| Configure VLAN | `section4/playbooks/configure-vlan.yml` | ZTA Lab Inventory | ZTA Machine Credential, ZTA Cisco Credential |
+| Configure VLAN | `section4/playbooks/configure-vlan.yml` | ZTA Lab Inventory | ZTA Machine Credential, ZTA Arista Credential |
 
 ### Survey Variables
 
@@ -137,7 +137,7 @@ OPA Network Policy Decision
 ```
 
 The SPIFFE check passes (the platform is legitimate) but the **user** is not
-authorised. The Cisco switch is never touched.
+authorised. The Arista switches are never touched.
 
 ---
 
@@ -159,18 +159,18 @@ OPA Network Policy Decision
   Result:    ALLOWED
   All conditions: PASS
 
-VLAN 200 (DMZ) created on switch01.zta.lab
+VLAN 200 (DMZ) created on ceos1, ceos2, ceos3
 
 VLAN Configuration Complete
 
   VLAN 200 (DMZ)
-  Switch:     switch01.zta.lab
+  Switches:   ceos1, ceos2, ceos3 (Arista cEOS fabric)
   Netbox:     Created
   User:       netadmin
   Workload:   spiffe://zta.lab/workload/network-automation
 ```
 
-5. Verify on the Cisco switch: `show vlan brief` — VLAN 200 should appear
+5. Verify on the Arista switches: `show vlan brief` — VLAN 200 should appear
 6. Verify in Netbox: the VLAN record includes the SPIFFE workload ID in the description
 
 ---
@@ -241,11 +241,11 @@ VLAN Configuration Complete
        └─ ALLOW or DENY
        │
        ▼ (only if ALLOWED)
-  Play 3 — Cisco VLAN Configuration
-  ─────────────────────────────────
-  Runs on: network (switch01)
+  Play 3 — Arista VLAN Configuration
+  ──────────────────────────────────
+  Runs on: network (ceos1, ceos2, ceos3)
        │
-       └─ cisco.ios.ios_vlans creates the VLAN
+       └─ arista.eos.eos_vlans creates the VLAN
        │
        ▼
   Play 4 — Netbox CMDB Update
@@ -294,9 +294,9 @@ spiffe://zta.lab/workload/network-automation
 
 - [ ] SPIRE Agent on `control` can fetch an SVID with the correct SPIFFE ID
 - [ ] `neteng` is denied when attempting VLAN creation (workload passes, user fails)
-- [ ] `netadmin` is allowed and the VLAN is created on the Cisco switch
+- [ ] `netadmin` is allowed and the VLAN is created on the Arista cEOS switches
 - [ ] Netbox is updated with the new VLAN, including the SPIFFE workload ID
 - [ ] VLAN IDs outside range 100–999 are rejected by OPA
-- [ ] The Cisco switch shows the new VLAN in `show vlan brief`
+- [ ] The Arista switches show the new VLAN in `show vlan brief`
 - [ ] If SPIRE Agent is stopped, the job fails at the SPIFFE verification step
 - [ ] Adding `neteng` to `network-admins` in IdM allows the next attempt to succeed

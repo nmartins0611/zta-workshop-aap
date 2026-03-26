@@ -82,6 +82,7 @@ def api_metrics():
 
 
 @app.route("/api/health")
+@app.route("/health")
 def api_health():
     db = check_db_health()
     status = "healthy" if db else "degraded"

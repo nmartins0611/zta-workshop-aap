@@ -23,8 +23,10 @@
     ssh_test_targets:
       - name: app
         ip: "{{ hostvars['app']['ansible_host'] }}"
+        port: "{{ hostvars['app']['ansible_port'] | default(22) }}"
       - name: db
         ip: "{{ hostvars['db']['ansible_host'] }}"
+        port: "{{ hostvars['db']['ansible_port'] | default(22) }}"
 
   tasks:
     # ── Phase 1: Verify SSH engine is configured ──
@@ -81,6 +83,7 @@
           ssh -o StrictHostKeyChecking=no \
               -o UserKnownHostsFile=/dev/null \
               -o NumberOfPasswordPrompts=1 \
+              -p {{ item.port }} \
               {{ item.username }}@{{ item.ip }} \
               'echo "OTP_LOGIN_OK hostname=$(hostname) user=$(whoami) date=$(date -Iseconds)"'
       register: ssh_test_results
@@ -98,6 +101,7 @@
               -o UserKnownHostsFile=/dev/null \
               -o NumberOfPasswordPrompts=1 \
               -o ConnectTimeout=5 \
+              -p {{ item.port }} \
               {{ item.username }}@{{ item.ip }} \
               'echo "REUSE_SHOULD_NOT_WORK"'
       register: otp_reuse_results

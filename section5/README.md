@@ -116,7 +116,7 @@ Before the attack, confirm everything is working:
 curl -s http://app.zta.lab:8080/health
 
 # Check the database credentials are active
-ssh rhel@db.zta.lab
+ssh -p 2022 rhel@central.zta.lab
 sudo -u postgres psql -d ztaapp -c "\du" | grep v-root
 ```
 
@@ -173,7 +173,7 @@ Navigate to **Jobs** — you should see:
 curl -s http://app.zta.lab:8080/health
 # Expected: connection refused or unhealthy — the app is stopped
 
-ssh rhel@db.zta.lab
+ssh -p 2022 rhel@central.zta.lab
 sudo -u postgres psql -d ztaapp -c "\du" | grep v-root
 # Expected: no Vault-generated users — credentials are revoked
 ```

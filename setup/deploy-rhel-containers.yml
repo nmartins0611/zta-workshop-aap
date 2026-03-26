@@ -6,17 +6,19 @@
 #   - Have SSH enabled (so AAP can manage them like real hosts)
 #   - Support dnf patching (for workshop Section 3 exercises)
 #   - Persist data across restarts
+#   - Are connected to the Arista cEOS switch fabric for data-plane routing
+#   - Are enrolled as IdM clients (DNS, Kerberos, HBAC)
 #
-# After this playbook, run setup/deploy-db-app.yml as normal —
-# it will SSH into these containers and set up PostgreSQL / the app.
+# Prerequisites:
+#   - setup/deploy-arista.yml must be run first (creates net2/net3 with subnets)
 #
-# Exposed ports on central:
-#   DB container:
-#     - SSH:        2022 → 22
-#     - PostgreSQL: 5432 → 5432
-#   App container:
-#     - SSH:        2023 → 22
-#     - App HTTP:   8080 → 8080
+# Network architecture:
+#   Management plane (192.168.1.x via port forwarding):
+#     DB:  SSH :2022, PostgreSQL :5432
+#     App: SSH :2023, HTTP :8080
+#   Data plane (routed through cEOS switches):
+#     DB:  10.30.0.10 on net2 (data-tier, via ceos2)
+#     App: 10.20.0.10 on net3 (app-tier, via ceos3)
 #
 # Usage:
 #   ansible-playbook -i inventory/hosts.ini setup/deploy-rhel-containers.yml
@@ -30,6 +32,7 @@
     rhel_image: registry.access.redhat.com/ubi9/ubi-init:latest
     container_user: rhel
     container_password: "{{ idm_admin_password }}"
+    central_ip: "{{ ansible_default_ipv4.address | default('192.168.1.11') }}"
     containers:
       - name: db
         hostname: db.zta.lab
@@ -42,6 +45,10 @@
           - python3-psycopg2
           - python3
         data_volume: db-data
+        data_network: net2
+        data_ip: "10.30.0.10"
+        data_gateway: "10.30.0.1"
+        peer_network: "10.20.0.0/24"
       - name: app
         hostname: app.zta.lab
         ssh_port: 2023
@@ -51,6 +58,10 @@
           - python3
           - python3-pip
         data_volume: app-data
+        data_network: net3
+        data_ip: "10.20.0.10"
+        data_gateway: "10.20.0.1"
+        peer_network: "10.30.0.0/24"
 
   tasks:
     # ═══════════════════════════════════════════════════════════════════
@@ -87,7 +98,7 @@
           FROM {{ rhel_image }}
 
           RUN dnf -y install openssh-server openssh-clients sudo passwd procps-ng \
-              iproute iputils dnf-utils && \
+              iproute iputils dnf-utils ipa-client bind-utils && \
               dnf clean all && \
               ssh-keygen -A && \
               sed -i 's/^#PermitRootLogin.*/PermitRootLogin yes/' /etc/ssh/sshd_config && \
@@ -196,6 +207,85 @@
       failed_when: false
       changed_when: false
 
+    # ═══════════════════════════════════════════════════════════════════
+    # Phase 7 — Connect containers to Arista switch fabric
+    # ═══════════════════════════════════════════════════════════════════
+
+    - name: Connect containers to data-plane networks
+      command: "podman network connect {{ item.data_network }} {{ item.name }} --ip {{ item.data_ip }}"
+      loop: "{{ containers }}"
+      loop_control:
+        label: "{{ item.name }} → {{ item.data_network }} ({{ item.data_ip }})"
+      register: net_connect
+      failed_when: net_connect.rc != 0 and 'already' not in (net_connect.stderr | default(''))
+
+    - name: Add route to peer data-plane network inside containers
+      command: >
+        podman exec {{ item.name }}
+        ip route add {{ item.peer_network }} via {{ item.data_gateway }}
+      loop: "{{ containers }}"
+      loop_control:
+        label: "{{ item.name }}: {{ item.peer_network }} via {{ item.data_gateway }}"
+      failed_when: false
+
+    # ═══════════════════════════════════════════════════════════════════
+    # Phase 8 — Configure DNS (point to IdM on central)
+    # ═══════════════════════════════════════════════════════════════════
+
+    - name: Configure DNS resolver to use IdM
+      shell: |
+        podman exec {{ item.name }} bash -c '
+        cat > /etc/resolv.conf <<DNSEOF
+        search zta.lab
+        nameserver {{ central_ip }}
+        DNSEOF
+        '
+      loop: "{{ containers }}"
+      loop_control:
+        label: "{{ item.name }}"
+      changed_when: true
+
+    - name: Verify DNS resolution from containers
+      command: >
+        podman exec {{ item.name }}
+        dig +short central.zta.lab @{{ central_ip }}
+      loop: "{{ containers }}"
+      loop_control:
+        label: "{{ item.name }}"
+      register: dns_verify
+      changed_when: false
+      failed_when: false
+
+    # ═══════════════════════════════════════════════════════════════════
+    # Phase 9 — IdM client enrollment
+    # ═══════════════════════════════════════════════════════════════════
+
+    - name: Enroll containers as IdM clients
+      shell: |
+        podman exec {{ item.name }} bash -c '
+        if [ -f /etc/ipa/default.conf ]; then
+          echo "Already enrolled"
+          exit 0
+        fi
+        ipa-client-install \
+          --hostname={{ item.hostname }} \
+          --server=central.zta.lab \
+          --domain=zta.lab \
+          --realm=ZTA.LAB \
+          --principal=admin \
+          --password={{ idm_admin_password }} \
+          --mkhomedir \
+          --force-join \
+          --unattended \
+          --no-ntp
+        '
+      loop: "{{ containers }}"
+      loop_control:
+        label: "{{ item.name }} → {{ item.hostname }}"
+      register: idm_enroll
+      changed_when: "'Already enrolled' not in (idm_enroll.stdout | default(''))"
+      failed_when: false
+
     - name: Display deployment summary
       debug:
         msg: |
@@ -207,19 +297,23 @@
           ║    SSH:        ssh {{ container_user }}@central.zta.lab -p 2022
           ║    PostgreSQL: central.zta.lab:5432                          ║
           ║    Hostname:   db.zta.lab                                    ║
+          ║    Data IP:    10.30.0.10 (net2 / data-tier via ceos2)       ║
           ║                                                              ║
           ║  App Container:                                              ║
           ║    SSH:        ssh {{ container_user }}@central.zta.lab -p 2023
           ║    HTTP:       http://central.zta.lab:8080                   ║
           ║    Hostname:   app.zta.lab                                   ║
+          ║    Data IP:    10.20.0.10 (net3 / app-tier via ceos3)        ║
           ║                                                              ║
           ║  Credentials:  {{ container_user }} / {{ container_password }}
           ║  Privilege:    sudo (NOPASSWD)                               ║
           ║  Patching:     dnf update works in both containers           ║
+          ║  DNS:          Resolves via IdM ({{ central_ip }})
+          ║  IdM enrolled: {{ 'Yes' if idm_enroll is defined else 'Skipped' }}
           ║                                                              ║
-          ║  Next steps:                                                 ║
-          ║    1. Update inventory (hosts.yml) to point db/app           ║
-          ║       to central.zta.lab with custom SSH ports               ║
-          ║    2. Run setup/deploy-db-app.yml to set up                  ║
-          ║       PostgreSQL and the Flask application                   ║
+          ║  Data-Plane (via Arista cEOS switches):                      ║
+          ║    App (10.20.0.10) ↔ ceos3 ↔ ceos1 ↔ ceos2 ↔ DB (10.30.0.10)
+          ║    ACL: app→db:5432 PERMIT, all other cross-tier DENY        ║
+          ║                                                              ║
+          ║  Next: run setup/deploy-db-app.yml                           ║
           ╚════════════════════════════════════════════════════════════════╝

@@ -30,7 +30,7 @@
     wazuh_indexer_password: SecretPassword
     wazuh_dashboard_password: SecretPassword
     wazuh_api_user: wazuh
-    wazuh_api_password: wazuh
+    wazuh_api_password: "x8.E0+DZi6zCCz3cG9jvXimSBn5+s4tx"
 
     wazuh_images:
       manager: "docker.io/wazuh/wazuh-manager:{{ wazuh_version }}"
@@ -223,72 +223,12 @@
       delay: 10
 
     # ── Wazuh Manager ──
-    - name: Deploy Wazuh Manager ossec.conf
-      copy:
-        dest: "{{ wazuh_data_dir }}/manager/etc/ossec.conf"
-        content: |
-          <ossec_config>
-            <global>
-              <jsonout_output>yes</jsonout_output>
-              <alerts_log>yes</alerts_log>
-              <logall>no</logall>
-              <logall_json>no</logall_json>
-            </global>
-
-            <alerts>
-              <log_alert_level>3</log_alert_level>
-              <email_alert_level>12</email_alert_level>
-            </alerts>
-
-            <remote>
-              <connection>secure</connection>
-              <port>1514</port>
-              <protocol>tcp</protocol>
-              <queue_size>131072</queue_size>
-            </remote>
-
-            <auth>
-              <disabled>no</disabled>
-              <port>1515</port>
-            </auth>
-
-            <ruleset>
-              <decoder_dir>ruleset/decoders</decoder_dir>
-              <rule_dir>ruleset/rules</rule_dir>
-              <list>etc/lists/audit-keys</list>
-              <list>etc/lists/amazon/aws-eventnames</list>
-              <list>etc/lists/security-eventchannel</list>
-            </ruleset>
-
-            <rule_test>
-              <enabled>yes</enabled>
-              <threads>1</threads>
-              <max_sessions>64</max_sessions>
-              <session_timeout>15m</session_timeout>
-            </rule_test>
-
-            <vulnerability-detection>
-              <enabled>yes</enabled>
-              <index-status>yes</index-status>
-              <feed-update-interval>60m</feed-update-interval>
-            </vulnerability-detection>
-
-            <indexer>
-              <enabled>yes</enabled>
-              <hosts>
-                <host>http://localhost:9200</host>
-              </hosts>
-            </indexer>
-          </ossec_config>
-        mode: '0660'
-
     - name: Start Wazuh Manager container
       shell: >
         podman run -d
         --name wazuh-manager
         --pod {{ wazuh_pod_name }}
         --restart always
-        -v {{ wazuh_data_dir }}/manager/etc/ossec.conf:/var/ossec/etc/ossec.conf:z
         -v {{ wazuh_data_dir }}/manager/logs:/var/ossec/logs:z
         -v {{ wazuh_data_dir }}/manager/queue:/var/ossec/queue:z
         -e INDEXER_URL=http://localhost:9200
@@ -296,7 +236,7 @@
         -e INDEXER_PASSWORD={{ wazuh_indexer_password }}
         -e 'FILEBEAT_SSL_VERIFICATION_MODE=none'
         -e API_USERNAME={{ wazuh_api_user }}
-        -e API_PASSWORD={{ wazuh_api_password }}
+        -e 'API_PASSWORD={{ wazuh_api_password }}'
         {{ wazuh_images.manager }}
 
     - name: Wait for Wazuh Manager API

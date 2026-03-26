@@ -176,16 +176,16 @@
     # Phase 5 — Create pod and start containers
     # ═══════════════════════════════════════════════════════════════════
 
-    # - name: Create Wazuh pod with published ports
-    #   command: >
-    #     podman pod create
-    #     --name {{ wazuh_pod_name }}
-    #     --hostname wazuh.zta.lab
-    #     -p 9200:9200
-    #     -p 55000:55000
-    #     -p 1514:1514
-    #     -p 1515:1515
-    #     -p 5601:5601
+    - name: Create Wazuh pod with published ports
+      command: >
+        podman pod create
+        --name {{ wazuh_pod_name }}
+        --hostname wazuh.zta.lab
+        -p 9200:9200
+        -p 55000:55000
+        -p 1514:1514
+        -p 1515:1515
+        -p 5601:5601
 
     # ── Wazuh Indexer ──
     - name: Write custom opensearch.yml (security plugin disabled)

@@ -37,7 +37,6 @@
     wazuh_version: "4.9.2"
     wazuh_data_dir: /opt/wazuh-data
     wazuh_config_dir: /opt/wazuh-config
-    wazuh_network_name: wazuh-net
     wazuh_indexer_container: wazuh-indexer
     wazuh_manager_container: wazuh-manager
     wazuh_dashboard_container: wazuh-dashboard
@@ -103,11 +102,6 @@
         group: '1000'
         recurse: true
 
-    - name: Create Podman network for Wazuh inter-container communication
-      containers.podman.podman_network:
-        name: "{{ wazuh_network_name }}"
-        state: present
-
     # ═══════════════════════════════════════════════════════════════════
     # Phase 2 — Configuration files
     # ═══════════════════════════════════════════════════════════════════
@@ -144,7 +138,7 @@
 
           output.elasticsearch:
             hosts:
-              - http://wazuh-indexer:9200
+              - http://localhost:9200
 
     - name: Deploy Wazuh Dashboard configuration (TLS disabled for lab)
       ansible.builtin.copy:
@@ -154,7 +148,7 @@
           server.host: 0.0.0.0
           server.port: 5601
           opensearch.hosts:
-            - http://wazuh-indexer:9200
+            - http://localhost:9200
           opensearch_security.multitenancy.enabled: false
           opensearch_security.readonly_mode.roles:
             - kibana_read_only
@@ -179,11 +173,7 @@
         name: "{{ wazuh_indexer_container }}"
         image: "{{ wazuh_indexer_image }}"
         state: started
-        hostname: wazuh-indexer
-        network:
-          - "{{ wazuh_network_name }}"
-        ports:
-          - "9200:9200"
+        network_mode: host
         env:
           OPENSEARCH_JAVA_OPTS: "{{ wazuh_indexer_java_opts }}"
           bootstrap.memory_lock: "true"
@@ -215,16 +205,9 @@
         name: "{{ wazuh_manager_container }}"
         image: "{{ wazuh_manager_image }}"
         state: started
-        hostname: wazuh-manager
-        network:
-          - "{{ wazuh_network_name }}"
-        ports:
-          - "1514:1514"
-          - "1515:1515"
-          - "514:514/udp"
-          - "55000:55000"
+        network_mode: host
         env:
-          INDEXER_URL: "http://wazuh-indexer:9200"
+          INDEXER_URL: "http://localhost:9200"
           INDEXER_USERNAME: ""
           INDEXER_PASSWORD: ""
           FILEBEAT_SSL_VERIFICATION_MODE: "none"
@@ -262,16 +245,12 @@
         name: "{{ wazuh_dashboard_container }}"
         image: "{{ wazuh_dashboard_image }}"
         state: started
-        hostname: wazuh-dashboard
-        network:
-          - "{{ wazuh_network_name }}"
-        ports:
-          - "5601:5601"
+        network_mode: host
         env:
-          INDEXER_URL: "http://wazuh-indexer:9200"
+          INDEXER_URL: "http://localhost:9200"
           INDEXER_USERNAME: ""
           INDEXER_PASSWORD: ""
-          WAZUH_API_URL: "https://wazuh-manager:55000"
+          WAZUH_API_URL: "https://localhost:55000"
           API_USERNAME: "{{ wazuh_api_user }}"
           API_PASSWORD: "{{ wazuh_api_password }}"
           SERVER_SSL_ENABLED: "false"

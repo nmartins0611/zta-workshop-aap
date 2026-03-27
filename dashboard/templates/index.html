@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ZTA Workshop — Live Topology</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0d1117; --card:#161b22; --border:#30363d;
+  --text:#e6edf3; --muted:#8b949e; --accent:#58a6ff;
+  --green:#3fb950; --yellow:#d29922; --red:#f85149; --gray:#484f58;
+  --font:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;
+}
+html{font-size:14px}
+body{background:var(--bg);color:var(--text);font-family:var(--font);
+     min-height:100vh;padding:1rem 2rem 4rem}
+
+header{text-align:center;margin-bottom:2rem}
+header h1{font-size:1.6rem;font-weight:600;color:var(--accent)}
+header .subtitle{color:var(--muted);font-size:.85rem;margin-top:.3rem}
+#last-update{color:var(--muted);font-size:.75rem;margin-top:.4rem}
+.legend{display:flex;gap:1.4rem;justify-content:center;margin-top:.6rem;font-size:.75rem}
+.legend span{display:flex;align-items:center;gap:.3rem}
+.dot{width:10px;height:10px;border-radius:50%;display:inline-block}
+.dot.healthy{background:var(--green)}.dot.degraded{background:var(--yellow)}
+.dot.down{background:var(--red)}.dot.unknown{background:var(--gray)}
+
+.section-title{font-size:.9rem;font-weight:600;color:var(--muted);
+  text-transform:uppercase;letter-spacing:.08em;margin:1.5rem 0 .7rem;
+  padding-bottom:.3rem;border-bottom:1px solid var(--border);text-align:center}
+
+.grid{display:flex;flex-wrap:wrap;gap:.8rem;justify-content:center}
+
+.card{
+  background:var(--card);border:1px solid var(--border);border-radius:10px;
+  padding:.9rem 1.1rem;min-width:185px;max-width:230px;flex:0 0 auto;
+  position:relative;transition:border-color .3s,box-shadow .3s;cursor:default;
+}
+.card:hover{border-color:var(--accent);box-shadow:0 0 12px rgba(88,166,255,.15)}
+.card .status-ring{
+  position:absolute;top:.7rem;right:.7rem;width:12px;height:12px;border-radius:50%;
+  transition:background .4s;
+}
+.card .status-ring.healthy{background:var(--green);box-shadow:0 0 6px var(--green)}
+.card .status-ring.degraded{background:var(--yellow);box-shadow:0 0 6px var(--yellow)}
+.card .status-ring.down{background:var(--red);box-shadow:0 0 6px var(--red)}
+.card .status-ring.unknown{background:var(--gray)}
+.card .name{font-weight:600;font-size:.9rem;padding-right:1.2rem}
+.card .ip{font-size:.72rem;color:var(--muted);margin-top:.15rem}
+.card .details{font-size:.72rem;color:var(--muted);margin-top:.1rem}
+.card .checks{margin-top:.5rem;display:flex;flex-wrap:wrap;gap:.35rem}
+.check-pill{
+  font-size:.65rem;padding:.15rem .45rem;border-radius:4px;
+  display:inline-flex;align-items:center;gap:.25rem;
+  border:1px solid var(--border);background:rgba(255,255,255,.03);
+}
+.check-pill .indicator{width:7px;height:7px;border-radius:50%}
+.check-pill .indicator.ok{background:var(--green)}
+.check-pill .indicator.fail{background:var(--red)}
+
+.net-label{font-size:.65rem;color:var(--muted);text-align:center;margin:.3rem 0;
+  font-style:italic}
+
+.workload-row{display:flex;justify-content:center;gap:4rem;margin-top:.3rem}
+
+.switch-spine{margin-bottom:.8rem;display:flex;justify-content:center}
+.switch-leaves{display:flex;justify-content:center;gap:6rem}
+
+.acl-badge{
+  font-size:.62rem;color:var(--yellow);border:1px solid var(--yellow);
+  border-radius:4px;padding:.1rem .35rem;display:inline-block;margin-top:.3rem;
+}
+
+.fabric-box{
+  border:1px dashed var(--border);border-radius:12px;padding:1.2rem 2rem;
+  margin:0 auto;max-width:650px;position:relative;
+}
+.fabric-box .fabric-title{
+  position:absolute;top:-0.7rem;left:50%;transform:translateX(-50%);
+  background:var(--bg);padding:0 .6rem;font-size:.72rem;color:var(--muted);
+  white-space:nowrap;
+}
+
+.net-summary{
+  max-width:650px;margin:2rem auto 0;border:1px solid var(--border);
+  border-radius:10px;padding:1rem 1.4rem;background:var(--card);font-size:.75rem;
+}
+.net-summary h3{font-size:.85rem;margin-bottom:.5rem;color:var(--accent)}
+.net-summary table{width:100%;border-collapse:collapse}
+.net-summary td{padding:.2rem .4rem;color:var(--muted)}
+.net-summary td:first-child{color:var(--text);font-weight:500;white-space:nowrap}
+
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}
+.card .status-ring.down{animation:pulse 2s ease-in-out infinite}
+
+@media(max-width:700px){
+  .grid{gap:.5rem}
+  .card{min-width:150px;max-width:170px;padding:.7rem .8rem}
+  .switch-leaves{gap:2rem}
+  .workload-row{gap:1.5rem}
+}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Zero Trust Architecture &mdash; Live Topology</h1>
+  <p class="subtitle">ZTA Workshop Lab &middot; Real-time component health</p>
+  <div id="last-update">Connecting&hellip;</div>
+  <div class="legend">
+    <span><span class="dot healthy"></span> Healthy</span>
+    <span><span class="dot degraded"></span> Degraded</span>
+    <span><span class="dot down"></span> Down</span>
+    <span><span class="dot unknown"></span> Unknown</span>
+  </div>
+</header>
+
+<div class="section-title">Management Plane &mdash; 192.168.1.0/24</div>
+<div class="grid" id="mgmt-grid"></div>
+
+<div class="section-title">Services on Central</div>
+<div class="grid" id="services-grid"></div>
+
+<div class="section-title">Arista cEOS Switch Fabric (Podman on 192.168.1.11)</div>
+<div class="fabric-box">
+  <span class="fabric-title">Micro-segmentation Fabric</span>
+  <div class="switch-spine" id="spine-row"></div>
+  <div class="net-label">net1 &middot; 10.10.0.0/24 (Spine &#8596; Leaf interconnect)</div>
+  <div class="switch-leaves" id="leaf-row"></div>
+</div>
+
+<div class="section-title">Workload Containers</div>
+<div class="workload-row" id="workload-grid"></div>
+
+<div style="text-align:center;margin-top:.5rem">
+  <span class="acl-badge">ACL: PERMIT tcp 10.20.0.0/24 &rarr; 10.30.0.0/24 eq 5432 &bull; DENY all else</span>
+</div>
+
+<div class="net-summary">
+  <h3>Network Summary</h3>
+  <table>
+    <tr><td>Management</td><td>192.168.1.0/24 &mdash; Control plane services</td></tr>
+    <tr><td>net1</td><td>10.10.0.0/24 &mdash; Spine &#8596; Leaf interconnect</td></tr>
+    <tr><td>net2</td><td>10.30.0.0/24 &mdash; Data tier (VLAN 30) with ACL protection</td></tr>
+    <tr><td>net3</td><td>10.20.0.0/24 &mdash; App tier (VLAN 20)</td></tr>
+  </table>
+</div>
+
+<div style="text-align:center;margin-top:1.5rem">
+  <span style="font-size:.72rem;color:var(--muted);border:1px solid var(--border);
+    border-radius:6px;padding:.35rem .7rem;display:inline-block;background:var(--card)">
+    Wazuh alert &rarr; EDA webhook &rarr; AAP auto-remediation (&lt; 30s)
+  </span>
+</div>
+
+<script>
+(function() {
+  "use strict";
+
+  function createEl(tag, className) {
+    var el = document.createElement(tag);
+    if (className) el.className = className;
+    return el;
+  }
+
+  function buildCard(comp) {
+    var card = createEl('div', 'card');
+    card.id = 'card-' + comp.id;
+
+    var ring = createEl('span', 'status-ring ' + (comp.status || 'unknown'));
+    card.appendChild(ring);
+
+    var nameEl = createEl('div', 'name');
+    nameEl.textContent = comp.name;
+    card.appendChild(nameEl);
+
+    if (comp.ip) {
+      var ipEl = createEl('div', 'ip');
+      ipEl.textContent = comp.ip;
+      card.appendChild(ipEl);
+    }
+
+    if (comp.details) {
+      var detEl = createEl('div', 'details');
+      detEl.textContent = comp.details;
+      card.appendChild(detEl);
+    }
+
+    if (comp.checks && comp.checks.length) {
+      var checksDiv = createEl('div', 'checks');
+      comp.checks.forEach(function(ch) {
+        var pill = createEl('span', 'check-pill');
+        var ind = createEl('span', 'indicator ' + (ch.ok ? 'ok' : 'fail'));
+        pill.appendChild(ind);
+        var lbl = document.createTextNode(' ' + ch.label);
+        pill.appendChild(lbl);
+        checksDiv.appendChild(pill);
+      });
+      card.appendChild(checksDiv);
+    }
+
+    return card;
+  }
+
+  function updateCard(comp) {
+    var card = document.getElementById('card-' + comp.id);
+    if (!card) return;
+
+    var ring = card.querySelector('.status-ring');
+    if (ring) ring.className = 'status-ring ' + (comp.status || 'unknown');
+
+    var indicators = card.querySelectorAll('.check-pill .indicator');
+    if (comp.checks && indicators.length === comp.checks.length) {
+      comp.checks.forEach(function(ch, i) {
+        indicators[i].className = 'indicator ' + (ch.ok ? 'ok' : 'fail');
+      });
+    }
+  }
+
+  var mgmtGrid     = document.getElementById('mgmt-grid');
+  var servicesGrid  = document.getElementById('services-grid');
+  var spineRow      = document.getElementById('spine-row');
+  var leafRow       = document.getElementById('leaf-row');
+  var workloadGrid  = document.getElementById('workload-grid');
+
+  var initialized = false;
+
+  var ORDER = [
+    'aap','central','vault','netbox',
+    'idm','opa','keycloak','wazuh','splunk','gitea',
+    'ceos1','ceos2','ceos3',
+    'db','app'
+  ];
+
+  function buildAll(data) {
+    mgmtGrid.textContent = '';
+    servicesGrid.textContent = '';
+    spineRow.textContent = '';
+    leafRow.textContent = '';
+    workloadGrid.textContent = '';
+
+    ORDER.forEach(function(key) {
+      var comp = data[key];
+      if (!comp) return;
+      var card = buildCard(comp);
+
+      if (comp.group === 'mgmt')       mgmtGrid.appendChild(card);
+      else if (comp.group === 'services') servicesGrid.appendChild(card);
+      else if (comp.group === 'switches') {
+        if (comp.id === 'ceos1') spineRow.appendChild(card);
+        else                     leafRow.appendChild(card);
+      }
+      else if (comp.group === 'workloads') workloadGrid.appendChild(card);
+    });
+  }
+
+  function updateAll(data) {
+    ORDER.forEach(function(key) {
+      var comp = data[key];
+      if (comp) updateCard(comp);
+    });
+  }
+
+  function poll() {
+    fetch('/api/status')
+      .then(function(resp) { return resp.json(); })
+      .then(function(data) {
+        var ts = data._ts;
+        if (ts) {
+          var d = new Date(ts * 1000);
+          document.getElementById('last-update').textContent =
+            'Last check: ' + d.toLocaleTimeString();
+        }
+        if (!initialized) {
+          buildAll(data);
+          initialized = true;
+        } else {
+          updateAll(data);
+        }
+      })
+      .catch(function() {
+        document.getElementById('last-update').textContent =
+          'Connection lost \u2014 retrying\u2026';
+      });
+  }
+
+  poll();
+  setInterval(poll, 10000);
+})();
+</script>
+
+</body>
+</html>

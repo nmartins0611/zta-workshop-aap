@@ -204,7 +204,30 @@
         label: "{{ item.name }} (port {{ item.ssh_port }})"
 
     # ═══════════════════════════════════════════════════════════════════
-    # Phase 8 — Gather management IPs
+    # Phase 8 — Enable auto-start on boot
+    # ═══════════════════════════════════════════════════════════════════
+
+    - name: Generate systemd service for cEOS containers
+      containers.podman.podman_generate_systemd:
+        name: "{{ item.name }}"
+        dest: /etc/systemd/system/
+        restart_policy: always
+        new: false
+      loop: "{{ switches }}"
+      loop_control:
+        label: "{{ item.name }}"
+
+    - name: Enable cEOS systemd services
+      systemd:
+        name: "container-{{ item.name }}"
+        enabled: true
+        daemon_reload: true
+      loop: "{{ switches }}"
+      loop_control:
+        label: "{{ item.name }}"
+
+    # ═══════════════════════════════════════════════════════════════════
+    # Phase 9 — Gather management IPs
     # ═══════════════════════════════════════════════════════════════════
 
     - name: Get management IP for each switch

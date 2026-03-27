@@ -208,7 +208,30 @@
       changed_when: false
 
     # ═══════════════════════════════════════════════════════════════════
-    # Phase 7 — Connect containers to Arista switch fabric
+    # Phase 7 — Enable auto-start on boot
+    # ═══════════════════════════════════════════════════════════════════
+
+    - name: Generate systemd service for RHEL containers
+      containers.podman.podman_generate_systemd:
+        name: "{{ item.name }}"
+        dest: /etc/systemd/system/
+        restart_policy: always
+        new: false
+      loop: "{{ containers }}"
+      loop_control:
+        label: "{{ item.name }}"
+
+    - name: Enable RHEL container systemd services
+      systemd:
+        name: "container-{{ item.name }}"
+        enabled: true
+        daemon_reload: true
+      loop: "{{ containers }}"
+      loop_control:
+        label: "{{ item.name }}"
+
+    # ═══════════════════════════════════════════════════════════════════
+    # Phase 8 — Connect containers to Arista switch fabric
     # ═══════════════════════════════════════════════════════════════════
 
     - name: Connect containers to data-plane networks
@@ -229,7 +252,7 @@
       failed_when: false
 
     # ═══════════════════════════════════════════════════════════════════
-    # Phase 8 — Configure DNS (point to IdM on central)
+    # Phase 9 — Configure DNS (point to IdM on central)
     # ═══════════════════════════════════════════════════════════════════
 
     - name: Configure DNS resolver to use IdM
@@ -257,7 +280,7 @@
       failed_when: false
 
     # ═══════════════════════════════════════════════════════════════════
-    # Phase 9 — IdM client enrollment
+    # Phase 10 — IdM client enrollment
     # ═══════════════════════════════════════════════════════════════════
 
     - name: Enroll containers as IdM clients

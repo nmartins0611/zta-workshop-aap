@@ -30,11 +30,14 @@
         line: "listen_addresses = '*'"
       notify: Restart PostgreSQL
 
-    - name: Allow password auth from app and central subnets
+    - name: Allow password auth from data-plane and management subnets
       blockinfile:
         path: /var/lib/pgsql/data/pg_hba.conf
         block: |
-          # ZTA Workshop - allow connections from lab network
+          # ZTA Workshop — data-plane (app↔db via switch fabric)
+          host    all    all    10.20.0.0/24     md5
+          host    all    all    10.30.0.0/24     md5
+          # Management plane (central + external VMs)
           host    all    all    10.0.0.0/8       md5
           host    all    all    192.168.0.0/16   md5
         marker: "# {mark} ZTA WORKSHOP"
@@ -181,7 +184,7 @@
           Restart=always
           RestartSec=5
           EnvironmentFile=-{{ app_deploy_dir }}/env
-          Environment=DB_HOST={{ db_host }}
+          Environment=DB_HOST={{ db_data_ip }}
           Environment=DB_PORT={{ db_port }}
           Environment=DB_NAME={{ db_name }}
           Environment=DB_USER=placeholder

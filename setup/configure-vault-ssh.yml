@@ -18,6 +18,15 @@
   become: true
   gather_facts: true
 
+  pre_tasks:
+    - name: Download vault-ssh-helper to controller
+      get_url:
+        url: "{{ vault_ssh_helper_url }}"
+        dest: /tmp/vault-ssh-helper.zip
+        mode: '0644'
+      delegate_to: localhost
+      run_once: true
+
   tasks:
     # ── 1. Create the dedicated SSH OTP user ──
     - name: Create vault-ssh local user
@@ -43,9 +52,9 @@
         state: directory
         mode: '0755'
 
-    - name: Download vault-ssh-helper
-      get_url:
-        url: "{{ vault_ssh_helper_url }}"
+    - name: Copy vault-ssh-helper from controller
+      copy:
+        src: /tmp/vault-ssh-helper.zip
         dest: /tmp/vault-ssh-helper.zip
         mode: '0644'
 

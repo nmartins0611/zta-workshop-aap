@@ -185,11 +185,17 @@ def _check_tcp(host: str, port: int) -> bool:
         return False
 
 
+def _make_ssl_ctx():
+    ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+    ctx.check_hostname = False
+    ctx.verify_mode = ssl.CERT_NONE
+    return ctx
+
+
 def _check_http(url: str) -> bool:
-    ctx = ssl.create_unverified_context()
     try:
         req = Request(url, method="GET")
-        with urlopen(req, timeout=TIMEOUT, context=ctx) as r:
+        with urlopen(req, timeout=TIMEOUT, context=_make_ssl_ctx()) as r:
             return r.status < 500
     except Exception:
         return False

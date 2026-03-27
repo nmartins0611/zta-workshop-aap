@@ -78,9 +78,7 @@
 
     - name: Load application schema and seed data
       become_user: postgres
-      community.postgresql.postgresql_query:
-        login_db: "{{ db_name }}"
-        query: "{{ lookup('file', '/tmp/gtp-schema.sql') }}"
+      command: psql -d {{ db_name }} -f /tmp/gtp-schema.sql
 
     - name: Verify seed data loaded
       become_user: postgres

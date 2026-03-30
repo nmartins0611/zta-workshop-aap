@@ -13,13 +13,59 @@
 #   - DNS resolves wazuh.zta.lab (run setup/configure-dns.yml first)
 
 - name: Deploy Wazuh agents
-  hosts: app_servers,db_servers,vault_servers,netbox_servers,gitea_servers,automation
+  hosts: app_servers,db_servers,vault_servers,netbox_servers,automation
   become: true
   gather_facts: true
 
   vars:
     wazuh_manager: "{{ wazuh_manager_host | default('wazuh.zta.lab') }}"
     wazuh_agent_version: "4.9"
+
+  pre_tasks:
+    # ── Pre-download on controller for disconnected targets ────────
+    - name: Check if Wazuh GPG key already on controller
+      stat:
+        path: /tmp/wazuh/GPG-KEY-WAZUH
+      delegate_to: localhost
+      run_once: true
+      register: gpg_key_local
+
+    - name: Create staging directory on controller
+      file:
+        path: /tmp/wazuh
+        state: directory
+        mode: '0755'
+      delegate_to: localhost
+      run_once: true
+      when: not gpg_key_local.stat.exists
+
+    - name: Download Wazuh GPG key to controller
+      get_url:
+        url: https://packages.wazuh.com/key/GPG-KEY-WAZUH
+        dest: /tmp/wazuh/GPG-KEY-WAZUH
+        mode: '0644'
+      delegate_to: localhost
+      run_once: true
+      when: not gpg_key_local.stat.exists
+
+    - name: Check if Wazuh agent RPM already on controller
+      find:
+        paths: /tmp/wazuh
+        patterns: "wazuh-agent-*.rpm"
+      delegate_to: localhost
+      run_once: true
+      register: rpm_local
+
+    - name: Download Wazuh agent RPM to controller
+      get_url:
+        url: "https://packages.wazuh.com/{{ wazuh_agent_version }}/yum/wazuh-agent-{{ wazuh_agent_version }}.2-1.x86_64.rpm"
+        dest: /tmp/wazuh/
+        mode: '0644'
+      delegate_to: localhost
+      run_once: true
+      when: rpm_local.files | length == 0
+      failed_when: false
+      register: rpm_download
 
   tasks:
 
@@ -37,31 +83,71 @@
       failed_when: false
       when: wazuh_installed.stat.exists
 
-    # ── Install Wazuh agent ──────────────────────────────────────────
+    # ── Install Wazuh agent (offline-first, fallback to repo) ──────
 
-    - name: Import Wazuh GPG key
+    - name: Find Wazuh agent RPM on controller
+      find:
+        paths: /tmp/wazuh
+        patterns: "wazuh-agent-*.rpm"
+      delegate_to: localhost
+      run_once: true
+      register: rpm_files
+
+    - name: Copy GPG key to target
+      copy:
+        src: /tmp/wazuh/GPG-KEY-WAZUH
+        dest: /tmp/GPG-KEY-WAZUH
+        mode: '0644'
+      when:
+        - not wazuh_installed.stat.exists
+        - gpg_key_local.stat.exists or not (gpg_key_local.stat.exists | default(false))
+
+    - name: Import Wazuh GPG key from local copy
       rpm_key:
-        key: https://packages.wazuh.com/key/GPG-KEY-WAZUH
+        key: /tmp/GPG-KEY-WAZUH
         state: present
       when: not wazuh_installed.stat.exists
 
-    - name: Add Wazuh repository
-      yum_repository:
-        name: wazuh
-        description: Wazuh repository
-        baseurl: "https://packages.wazuh.com/{{ wazuh_agent_version }}/yum/"
-        gpgkey: https://packages.wazuh.com/key/GPG-KEY-WAZUH
-        gpgcheck: true
-        enabled: true
-      when: not wazuh_installed.stat.exists
+    - name: Copy Wazuh agent RPM to target
+      copy:
+        src: "{{ rpm_files.files[0].path }}"
+        dest: "/tmp/{{ rpm_files.files[0].path | basename }}"
+        mode: '0644'
+      when:
+        - not wazuh_installed.stat.exists
+        - rpm_files.files | length > 0
 
-    - name: Install Wazuh agent
+    - name: Install Wazuh agent from local RPM
       dnf:
-        name: wazuh-agent
+        name: "/tmp/{{ rpm_files.files[0].path | basename }}"
         state: present
+        disable_gpg_check: true
       environment:
         WAZUH_MANAGER: "{{ wazuh_manager }}"
-      when: not wazuh_installed.stat.exists
+      when:
+        - not wazuh_installed.stat.exists
+        - rpm_files.files | length > 0
+
+    - name: Install Wazuh agent from repo (fallback if no local RPM)
+      block:
+        - name: Add Wazuh repository
+          yum_repository:
+            name: wazuh
+            description: Wazuh repository
+            baseurl: "https://packages.wazuh.com/{{ wazuh_agent_version }}/yum/"
+            gpgkey: https://packages.wazuh.com/key/GPG-KEY-WAZUH
+            gpgcheck: true
+            enabled: true
+
+        - name: Install Wazuh agent from repo
+          dnf:
+            name: wazuh-agent
+            state: present
+          environment:
+            WAZUH_MANAGER: "{{ wazuh_manager }}"
+      when:
+        - not wazuh_installed.stat.exists
+        - rpm_files.files | length == 0
 
     # ── Configure agent ──────────────────────────────────────────────
 

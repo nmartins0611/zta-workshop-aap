@@ -25,7 +25,7 @@
     # ── Pre-download on controller for disconnected targets ────────
     - name: Check if Wazuh GPG key already on controller
       stat:
-        path: /tmp/wazuh/GPG-KEY-WAZUH
+        path: /tmp/wazuh/GPG-KEY-WAZUH 
       delegate_to: localhost
       run_once: true
       register: gpg_key_local
@@ -118,12 +118,15 @@
         - rpm_files.files | length > 0
 
     - name: Install Wazuh agent from local RPM
-      dnf:
-        name: "/tmp/{{ rpm_files.files[0].path | basename }}"
-        state: present
-        disable_gpg_check: true
+      command: >
+        rpm -ivh --nodeps /tmp/{{ rpm_files.files[0].path | basename }}
       environment:
         WAZUH_MANAGER: "{{ wazuh_manager }}"
+      register: rpm_install
+      changed_when: rpm_install.rc == 0
+      failed_when:
+        - rpm_install.rc != 0
+        - "'already installed' not in rpm_install.stderr"
       when:
         - not wazuh_installed.stat.exists
         - rpm_files.files | length > 0

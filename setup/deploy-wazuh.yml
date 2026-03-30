@@ -7,12 +7,14 @@
 #   - Wazuh Dashboard (OpenSearch Dashboards): web UI
 #
 # Services exposed:
-#   - Dashboard:          http://central.zta.lab:5601
+#   - Dashboard:          https://central.zta.lab:5601
 #   - Manager API:        https://central.zta.lab:55000
-#   - Indexer API:        http://central.zta.lab:9200
+#   - Indexer API:        https://central.zta.lab:9200
 #   - Agent connection:   central.zta.lab:1514 (TCP)
 #   - Agent enrollment:   central.zta.lab:1515 (TCP)
 #   - Syslog collection:  central.zta.lab:514  (UDP)
+#
+# Dashboard login:  admin / SecretPassword
 #
 # Credentials:
 #   - Wazuh API:  wazuh_api_user / wazuh_api_password  (from group_vars/all.yml)
@@ -106,18 +108,6 @@
     # Phase 2 — Configuration files
     # ═══════════════════════════════════════════════════════════════════
 
-    - name: Deploy Wazuh Indexer configuration (security disabled for lab)
-      ansible.builtin.copy:
-        dest: "{{ wazuh_config_dir }}/opensearch.yml"
-        mode: '0644'
-        content: |
-          network.host: 0.0.0.0
-          node.name: wazuh-indexer
-          cluster.name: wazuh-cluster
-          discovery.type: single-node
-          compatibility.override_main_response_version: true
-          plugins.security.disabled: true
-
     - name: Deploy Filebeat configuration for Wazuh Manager
       ansible.builtin.copy:
         dest: "{{ wazuh_config_dir }}/filebeat.yml"
@@ -138,18 +128,10 @@
 
           output.elasticsearch:
             hosts:
-              - http://localhost:9200
-
-    - name: Deploy Wazuh Dashboard configuration (TLS disabled for lab)
-      ansible.builtin.copy:
-        dest: "{{ wazuh_config_dir }}/opensearch_dashboards.yml"
-        mode: '0644'
-        content: |
-          server.host: 0.0.0.0
-          server.port: 5601
-          opensearch.hosts:
-            - http://localhost:9200
-          server.ssl.enabled: false
+              - https://localhost:9200
+            username: admin
+            password: SecretPassword
+            ssl.verification_mode: none
 
     # ═══════════════════════════════════════════════════════════════════
     # Phase 3 — Deploy Wazuh Indexer
@@ -176,7 +158,6 @@
           bootstrap.memory_lock: "true"
         volume:
           - "{{ wazuh_data_dir }}/indexer-data:/var/lib/wazuh-indexer:z"
-          - "{{ wazuh_config_dir }}/opensearch.yml:/usr/share/wazuh-indexer/opensearch.yml:ro,z"
         ulimit:
           - "memlock=-1:-1"
           - "nofile=65536:65536"
@@ -185,8 +166,12 @@
 
     - name: Wait for Wazuh Indexer to be ready
       ansible.builtin.uri:
-        url: "http://localhost:9200"
+        url: "https://localhost:9200"
         method: GET
+        validate_certs: false
+        url_username: admin
+        url_password: SecretPassword
+        force_basic_auth: true
         status_code: [200]
       register: indexer_health
       until: indexer_health.status == 200
@@ -204,9 +189,9 @@
         state: started
         network_mode: host
         env:
-          INDEXER_URL: "http://localhost:9200"
-          INDEXER_USERNAME: ""
-          INDEXER_PASSWORD: ""
+          INDEXER_URL: "https://localhost:9200"
+          INDEXER_USERNAME: "admin"
+          INDEXER_PASSWORD: "SecretPassword"
           FILEBEAT_SSL_VERIFICATION_MODE: "none"
           API_USERNAME: "{{ wazuh_api_user }}"
           API_PASSWORD: "{{ wazuh_api_password }}"
@@ -244,16 +229,13 @@
         state: started
         network_mode: host
         env:
-          INDEXER_URL: "http://localhost:9200"
-          INDEXER_USERNAME: ""
-          INDEXER_PASSWORD: ""
+          INDEXER_URL: "https://localhost:9200"
+          INDEXER_USERNAME: "admin"
+          INDEXER_PASSWORD: "SecretPassword"
           WAZUH_API_URL: "https://localhost:55000"
           API_USERNAME: "{{ wazuh_api_user }}"
           API_PASSWORD: "{{ wazuh_api_password }}"
           SERVER_SSL_ENABLED: "false"
-          DISABLE_SECURITY_DASHBOARDS_PLUGIN: "true"
-        volume:
-          - "{{ wazuh_config_dir }}/opensearch_dashboards.yml:/usr/share/wazuh-dashboard/config/opensearch_dashboards.yml:ro,z"
         detach: true
       register: dashboard_container
 
@@ -346,6 +328,9 @@
         validate_certs: false
         status_code: [200]
       register: wazuh_auth
+      until: wazuh_auth.status == 200
+      retries: 6
+      delay: 10
 
     - name: Get Wazuh Manager info
       ansible.builtin.uri:
@@ -371,7 +356,11 @@
           ║                                                              ║
           ║  Dashboard:    http://{{ ansible_default_ipv4.address }}:5601{{ ' ' * (23 - ansible_default_ipv4.address | length) }}║
           ║  Manager API:  https://{{ ansible_default_ipv4.address }}:55000{{ ' ' * (21 - ansible_default_ipv4.address | length) }}║
-          ║  Indexer API:  http://{{ ansible_default_ipv4.address }}:9200{{ ' ' * (23 - ansible_default_ipv4.address | length) }}║
+          ║  Indexer API:  https://{{ ansible_default_ipv4.address }}:9200{{ ' ' * (22 - ansible_default_ipv4.address | length) }}║
+          ║                                                              ║
+          ║  Dashboard login:                                            ║
+          ║    Username:     admin                                       ║
+          ║    Password:     SecretPassword                              ║
           ║                                                              ║
           ║  Agent ports:                                                ║
           ║    Connection:   {{ ansible_default_ipv4.address }}:1514 (TCP){{ ' ' * (22 - ansible_default_ipv4.address | length) }}║

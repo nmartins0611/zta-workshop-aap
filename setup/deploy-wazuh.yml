@@ -106,7 +106,7 @@
     # Phase 2 — Configuration files
     # ═══════════════════════════════════════════════════════════════════
 
-    - name: Deploy Wazuh Indexer configuration
+    - name: Deploy Wazuh Indexer configuration (security disabled for lab)
       ansible.builtin.copy:
         dest: "{{ wazuh_config_dir }}/opensearch.yml"
         mode: '0644'
@@ -116,6 +116,7 @@
           cluster.name: wazuh-cluster
           discovery.type: single-node
           compatibility.override_main_response_version: true
+          plugins.security.disabled: true
 
     - name: Deploy Filebeat configuration for Wazuh Manager
       ansible.builtin.copy:
@@ -137,10 +138,7 @@
 
           output.elasticsearch:
             hosts:
-              - https://localhost:9200
-            username: admin
-            password: admin
-            ssl.verification_mode: none
+              - http://localhost:9200
 
     - name: Deploy Wazuh Dashboard configuration (TLS disabled for lab)
       ansible.builtin.copy:
@@ -150,13 +148,7 @@
           server.host: 0.0.0.0
           server.port: 5601
           opensearch.hosts:
-            - https://localhost:9200
-          opensearch.ssl.verificationMode: none
-          opensearch.username: admin
-          opensearch.password: admin
-          opensearch_security.multitenancy.enabled: false
-          opensearch_security.readonly_mode.roles:
-            - kibana_read_only
+            - http://localhost:9200
           server.ssl.enabled: false
 
     # ═══════════════════════════════════════════════════════════════════
@@ -193,12 +185,8 @@
 
     - name: Wait for Wazuh Indexer to be ready
       ansible.builtin.uri:
-        url: "https://localhost:9200"
+        url: "http://localhost:9200"
         method: GET
-        validate_certs: false
-        url_username: admin
-        url_password: admin
-        force_basic_auth: true
         status_code: [200]
       register: indexer_health
       until: indexer_health.status == 200
@@ -216,9 +204,9 @@
         state: started
         network_mode: host
         env:
-          INDEXER_URL: "https://localhost:9200"
-          INDEXER_USERNAME: "admin"
-          INDEXER_PASSWORD: "admin"
+          INDEXER_URL: "http://localhost:9200"
+          INDEXER_USERNAME: ""
+          INDEXER_PASSWORD: ""
           FILEBEAT_SSL_VERIFICATION_MODE: "none"
           API_USERNAME: "{{ wazuh_api_user }}"
           API_PASSWORD: "{{ wazuh_api_password }}"
@@ -256,13 +244,14 @@
         state: started
         network_mode: host
         env:
-          INDEXER_URL: "https://localhost:9200"
-          INDEXER_USERNAME: "admin"
-          INDEXER_PASSWORD: "admin"
+          INDEXER_URL: "http://localhost:9200"
+          INDEXER_USERNAME: ""
+          INDEXER_PASSWORD: ""
           WAZUH_API_URL: "https://localhost:55000"
           API_USERNAME: "{{ wazuh_api_user }}"
           API_PASSWORD: "{{ wazuh_api_password }}"
           SERVER_SSL_ENABLED: "false"
+          DISABLE_SECURITY_DASHBOARDS_PLUGIN: "true"
         volume:
           - "{{ wazuh_config_dir }}/opensearch_dashboards.yml:/usr/share/wazuh-dashboard/config/opensearch_dashboards.yml:ro,z"
         detach: true

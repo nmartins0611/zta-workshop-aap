@@ -35,6 +35,13 @@
       run_once: true
       when: not helper_zip.stat.exists
 
+    - name: Extract vault-ssh-helper binary on controller
+      command: unzip -o -d /tmp/vault-ssh-helper-bin /tmp/vault-ssh-helper.zip
+      args:
+        creates: /tmp/vault-ssh-helper-bin/vault-ssh-helper
+      delegate_to: localhost
+      run_once: true
+
   tasks:
     # ── 1. Create the dedicated SSH OTP user ──
     - name: Create vault-ssh local user
@@ -60,22 +67,10 @@
         state: directory
         mode: '0755'
 
-    - name: Copy vault-ssh-helper from controller
+    - name: Copy vault-ssh-helper binary from controller
       copy:
-        src: /tmp/vault-ssh-helper.zip
-        dest: /tmp/vault-ssh-helper.zip
-        mode: '0644'
-
-    - name: Install unzip
-      dnf:
-        name: unzip
-        state: present
-
-    - name: Extract vault-ssh-helper
-      unarchive:
-        src: /tmp/vault-ssh-helper.zip
-        dest: /usr/local/bin/
-        remote_src: true
+        src: /tmp/vault-ssh-helper-bin/vault-ssh-helper
+        dest: /usr/local/bin/vault-ssh-helper
         mode: '0755'
       notify: Restart sshd
 

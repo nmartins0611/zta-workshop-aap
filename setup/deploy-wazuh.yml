@@ -149,9 +149,7 @@
           server.port: 5601
           opensearch.hosts:
             - http://localhost:9200
-          opensearch_security.multitenancy.enabled: false
-          opensearch_security.readonly_mode.roles:
-            - kibana_read_only
+          opensearch_security.disabled: true
           server.ssl.enabled: false
 
     # ═══════════════════════════════════════════════════════════════════

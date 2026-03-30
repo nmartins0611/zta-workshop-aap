@@ -242,7 +242,7 @@ spire_server_bind_port: 8081
 spire_install_dir: /opt/spire
 spire_agent_socket: /run/spire/agent/api.sock
 spire_download_base: "https://github.com/spiffe/spire/releases/download"
-spire_arch: linux-amd64-glibc
+spire_arch: linux-amd64-musl
 
 spire_workloads:
   - spiffe_id: "spiffe://{{ spire_trust_domain }}/workload/network-automation"

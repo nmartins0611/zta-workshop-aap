@@ -18,6 +18,23 @@
     spire_tarball: "spire-{{ spire_version }}-{{ spire_arch }}.tar.gz"
     spire_url: "{{ spire_download_base }}/v{{ spire_version }}/{{ spire_tarball }}"
 
+  pre_tasks:
+    - name: Check if SPIRE tarball already on controller
+      stat:
+        path: "/tmp/{{ spire_tarball }}"
+      delegate_to: localhost
+      run_once: true
+      register: spire_local
+
+    - name: Download SPIRE release to controller
+      get_url:
+        url: "{{ spire_url }}"
+        dest: "/tmp/{{ spire_tarball }}"
+        mode: '0644'
+      delegate_to: localhost
+      run_once: true
+      when: not spire_local.stat.exists
+
   tasks:
     - name: Create SPIRE directory structure
       file:
@@ -32,9 +49,9 @@
         - "{{ spire_install_dir }}/data/server"
         - "{{ spire_install_dir }}/data/agent"
 
-    - name: Download SPIRE release
-      get_url:
-        url: "{{ spire_url }}"
+    - name: Copy SPIRE tarball from controller to target
+      copy:
+        src: "/tmp/{{ spire_tarball }}"
         dest: "/tmp/{{ spire_tarball }}"
         mode: '0644'
 

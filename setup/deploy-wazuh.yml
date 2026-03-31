@@ -14,7 +14,7 @@
 #   - Agent enrollment:   central.zta.lab:1515 (TCP)
 #   - Syslog collection:  central.zta.lab:514  (UDP)
 #
-# Dashboard login:  admin / SecretPassword
+# Dashboard login:  admin / admin
 #
 # Credentials:
 #   - Wazuh API:  wazuh_api_user / wazuh_api_password  (from group_vars/all.yml)
@@ -237,7 +237,7 @@
             hosts:
               - https://localhost:9200
             username: admin
-            password: SecretPassword
+            password: admin
             ssl.verification_mode: none
 
     - name: Deploy Wazuh Dashboard configuration
@@ -300,7 +300,7 @@
         method: GET
         validate_certs: false
         url_username: admin
-        url_password: SecretPassword
+        url_password: admin
         force_basic_auth: true
         status_code: [200]
       register: indexer_health
@@ -321,7 +321,7 @@
         env:
           INDEXER_URL: "https://localhost:9200"
           INDEXER_USERNAME: "admin"
-          INDEXER_PASSWORD: "SecretPassword"
+          INDEXER_PASSWORD: "admin"
           FILEBEAT_SSL_VERIFICATION_MODE: "none"
           API_USERNAME: "{{ wazuh_api_user }}"
           API_PASSWORD: "{{ wazuh_api_password }}"
@@ -361,7 +361,7 @@
         env:
           INDEXER_URL: "https://localhost:9200"
           INDEXER_USERNAME: "admin"
-          INDEXER_PASSWORD: "SecretPassword"
+          INDEXER_PASSWORD: "admin"
           WAZUH_API_URL: "https://localhost:55000"
           API_USERNAME: "{{ wazuh_api_user }}"
           API_PASSWORD: "{{ wazuh_api_password }}"
@@ -492,7 +492,7 @@
           ║                                                              ║
           ║  Dashboard login:                                            ║
           ║    Username:     admin                                       ║
-          ║    Password:     SecretPassword                              ║
+          ║    Password:     admin                              ║
           ║                                                              ║
           ║  Agent ports:                                                ║
           ║    Connection:   {{ ansible_default_ipv4.address }}:1514 (TCP){{ ' ' * (22 - ansible_default_ipv4.address | length) }}║

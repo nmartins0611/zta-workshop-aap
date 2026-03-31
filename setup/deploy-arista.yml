@@ -166,7 +166,7 @@
         -e CEOS=1
         -e EOS_PLATFORM=ceoslab
         -e container=podman
-        -p {{ item.eapi_port }}:6030
+        -p {{ item.eapi_port }}:80
         -p {{ item.ssh_port }}:22/tcp
         {{ ceos_image }}
         {{ ceos_systemd_args }}

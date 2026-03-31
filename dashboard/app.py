@@ -40,7 +40,7 @@ COMPONENTS = [
         "ip": "192.168.1.11",
         "details": "IdM \u2022 OPA \u2022 SPIRE",
         "checks": [
-            {"type": "tcp", "host": "192.168.1.11", "port": 22, "label": "SSH"},
+            {"type": "tcp", "host": "localhost", "port": 22, "label": "SSH"},
         ],
     },
     {
@@ -70,8 +70,8 @@ COMPONENTS = [
         "group": "services",
         "details": "LDAP \u2022 DNS",
         "checks": [
-            {"type": "https", "url": "https://192.168.1.11/ipa/ui/", "label": "Web UI"},
-            {"type": "tcp", "host": "192.168.1.11", "port": 389, "label": "LDAP"},
+            {"type": "https", "url": "https://localhost/ipa/ui/", "label": "Web UI"},
+            {"type": "tcp", "host": "localhost", "port": 389, "label": "LDAP"},
         ],
     },
     {
@@ -80,7 +80,7 @@ COMPONENTS = [
         "group": "services",
         "details": "Policies :8181",
         "checks": [
-            {"type": "http", "url": "http://192.168.1.11:8181/health", "label": "Health"},
+            {"type": "http", "url": "http://localhost:8181/health", "label": "Health"},
         ],
     },
     {
@@ -89,7 +89,7 @@ COMPONENTS = [
         "group": "services",
         "details": "SSO :8443",
         "checks": [
-            {"type": "https", "url": "https://192.168.1.11:8543", "label": "Web UI"},
+            {"type": "https", "url": "https://localhost:8543", "label": "Web UI"},
         ],
     },
     {
@@ -98,7 +98,7 @@ COMPONENTS = [
         "group": "services",
         "details": "SIEM",
         "checks": [
-            {"type": "https", "url": "https://192.168.1.11:5601", "label": "Dashboard"},
+            {"type": "http", "url": "http://localhost:5601", "label": "Dashboard"},
         ],
     },
     {
@@ -107,7 +107,7 @@ COMPONENTS = [
         "group": "services",
         "details": "Log Analytics :8000",
         "checks": [
-            {"type": "http", "url": "http://192.168.1.11:8000", "label": "Web UI"},
+            {"type": "http", "url": "http://localhost:8000", "label": "Web UI"},
         ],
     },
     {
@@ -116,7 +116,7 @@ COMPONENTS = [
         "group": "services",
         "details": "Git :3000",
         "checks": [
-            {"type": "http", "url": "http://192.168.1.11:3000", "label": "Web UI"},
+            {"type": "http", "url": "http://localhost:3000", "label": "Web UI"},
         ],
     },
     # ── Arista cEOS Switches ──────────────────────────────────────────────
@@ -126,8 +126,8 @@ COMPONENTS = [
         "group": "switches",
         "details": "10.10.0.1 \u2022 10.20.0.254",
         "checks": [
-            {"type": "tcp", "host": "192.168.1.11", "port": 2001, "label": "SSH"},
-            {"type": "http", "url": "http://192.168.1.11:6031", "label": "eAPI"},
+            {"type": "tcp", "host": "localhost", "port": 2001, "label": "SSH"},
+            {"type": "http", "url": "http://localhost:6031", "label": "eAPI"},
         ],
     },
     {
@@ -136,8 +136,8 @@ COMPONENTS = [
         "group": "switches",
         "details": "10.10.0.2 \u2022 10.30.0.1",
         "checks": [
-            {"type": "tcp", "host": "192.168.1.11", "port": 2002, "label": "SSH"},
-            {"type": "http", "url": "http://192.168.1.11:6032", "label": "eAPI"},
+            {"type": "tcp", "host": "localhost", "port": 2002, "label": "SSH"},
+            {"type": "http", "url": "http://localhost:6032", "label": "eAPI"},
         ],
     },
     {
@@ -146,8 +146,8 @@ COMPONENTS = [
         "group": "switches",
         "details": "10.20.0.1",
         "checks": [
-            {"type": "tcp", "host": "192.168.1.11", "port": 2003, "label": "SSH"},
-            {"type": "http", "url": "http://192.168.1.11:6033", "label": "eAPI"},
+            {"type": "tcp", "host": "localhost", "port": 2003, "label": "SSH"},
+            {"type": "http", "url": "http://localhost:6033", "label": "eAPI"},
         ],
     },
     # ── Workload Containers ───────────────────────────────────────────────
@@ -157,8 +157,8 @@ COMPONENTS = [
         "group": "workloads",
         "details": "db.zta.lab \u2022 10.30.0.10:5432",
         "checks": [
-            {"type": "tcp", "host": "192.168.1.11", "port": 5432, "label": "PostgreSQL"},
-            {"type": "tcp", "host": "192.168.1.11", "port": 2022, "label": "SSH"},
+            {"type": "tcp", "host": "localhost", "port": 5432, "label": "PostgreSQL"},
+            {"type": "tcp", "host": "localhost", "port": 2022, "label": "SSH"},
         ],
     },
     {
@@ -167,8 +167,8 @@ COMPONENTS = [
         "group": "workloads",
         "details": "app.zta.lab \u2022 10.20.0.10:8081",
         "checks": [
-            {"type": "http", "url": "http://192.168.1.11:8081/health", "label": "Health"},
-            {"type": "tcp", "host": "192.168.1.11", "port": 2023, "label": "SSH"},
+            {"type": "http", "url": "http://localhost:8081/health", "label": "Health"},
+            {"type": "tcp", "host": "localhost", "port": 2023, "label": "SSH"},
         ],
     },
 ]

@@ -22,10 +22,7 @@
 # Persistent data:
 #   - /opt/wazuh-data/      — indexer data, manager config/logs/queue/integrations
 #   - /opt/wazuh-config/    — mounted configuration files
-#
-# Note: configure-wazuh-eda.yml writes to /var/ossec/ paths. For the
-#   containerized deployment, those files live under /opt/wazuh-data/manager-*
-#   on the host, or use:  podman exec -it wazuh-manager /bin/bash
+#   - /opt/wazuh-certs/     — generated TLS certificates
 #
 # Usage:
 #   ansible-playbook -i inventory/hosts.ini setup/deploy-wazuh.yml
@@ -39,6 +36,7 @@
     wazuh_version: "4.9.2"
     wazuh_data_dir: /opt/wazuh-data
     wazuh_config_dir: /opt/wazuh-config
+    wazuh_certs_dir: /opt/wazuh-certs
     wazuh_indexer_container: wazuh-indexer
     wazuh_manager_container: wazuh-manager
     wazuh_dashboard_container: wazuh-dashboard
@@ -89,6 +87,7 @@
         - "{{ wazuh_data_dir }}/manager-integrations"
         - "{{ wazuh_data_dir }}/filebeat-lib"
         - "{{ wazuh_config_dir }}"
+        - "{{ wazuh_certs_dir }}"
 
     - name: Set SELinux context on Wazuh data directories
       ansible.builtin.command: "chcon -R -t container_file_t {{ item }}"
@@ -96,6 +95,7 @@
       loop:
         - "{{ wazuh_data_dir }}"
         - "{{ wazuh_config_dir }}"
+        - "{{ wazuh_certs_dir }}"
 
     - name: Set ownership of indexer data directory (UID 1000 = opensearch)
       ansible.builtin.file:
@@ -105,8 +105,115 @@
         recurse: true
 
     # ═══════════════════════════════════════════════════════════════════
-    # Phase 2 — Configuration files
+    # Phase 2 — Generate TLS certificates
     # ═══════════════════════════════════════════════════════════════════
+
+    - name: Check if root CA already exists
+      ansible.builtin.stat:
+        path: "{{ wazuh_certs_dir }}/root-ca.pem"
+      register: root_ca_stat
+
+    - name: Generate root CA key
+      ansible.builtin.command:
+        cmd: >-
+          openssl genrsa -out {{ wazuh_certs_dir }}/root-ca-key.pem 2048
+      when: not root_ca_stat.stat.exists
+
+    - name: Generate root CA certificate
+      ansible.builtin.command:
+        cmd: >-
+          openssl req -new -x509 -sha256
+          -key {{ wazuh_certs_dir }}/root-ca-key.pem
+          -out {{ wazuh_certs_dir }}/root-ca.pem
+          -days 3650
+          -subj "/C=US/L=California/O=Wazuh/OU=Wazuh/CN=root-ca"
+      when: not root_ca_stat.stat.exists
+
+    - name: Generate admin key
+      ansible.builtin.command:
+        cmd: >-
+          openssl genrsa -out {{ wazuh_certs_dir }}/admin-key.pem 2048
+      when: not root_ca_stat.stat.exists
+
+    - name: Generate admin CSR and certificate
+      ansible.builtin.shell:
+        cmd: |
+          openssl req -new -sha256 \
+            -key {{ wazuh_certs_dir }}/admin-key.pem \
+            -out {{ wazuh_certs_dir }}/admin.csr \
+            -subj "/C=US/L=California/O=Wazuh/OU=Wazuh/CN=admin"
+          openssl x509 -req -sha256 \
+            -in {{ wazuh_certs_dir }}/admin.csr \
+            -CA {{ wazuh_certs_dir }}/root-ca.pem \
+            -CAkey {{ wazuh_certs_dir }}/root-ca-key.pem \
+            -CAcreateserial \
+            -out {{ wazuh_certs_dir }}/admin.pem \
+            -days 3650
+      when: not root_ca_stat.stat.exists
+
+    - name: Generate indexer node key
+      ansible.builtin.command:
+        cmd: >-
+          openssl genrsa -out {{ wazuh_certs_dir }}/wazuh.indexer-key.pem 2048
+      when: not root_ca_stat.stat.exists
+
+    - name: Generate indexer node CSR and certificate
+      ansible.builtin.shell:
+        cmd: |
+          openssl req -new -sha256 \
+            -key {{ wazuh_certs_dir }}/wazuh.indexer-key.pem \
+            -out {{ wazuh_certs_dir }}/wazuh.indexer.csr \
+            -subj "/C=US/L=California/O=Wazuh/OU=Wazuh/CN=wazuh.indexer"
+          openssl x509 -req -sha256 \
+            -in {{ wazuh_certs_dir }}/wazuh.indexer.csr \
+            -CA {{ wazuh_certs_dir }}/root-ca.pem \
+            -CAkey {{ wazuh_certs_dir }}/root-ca-key.pem \
+            -CAcreateserial \
+            -out {{ wazuh_certs_dir }}/wazuh.indexer.pem \
+            -days 3650
+      when: not root_ca_stat.stat.exists
+
+    - name: Set cert permissions for opensearch user (UID 1000)
+      ansible.builtin.shell:
+        cmd: |
+          chmod 640 {{ wazuh_certs_dir }}/*.pem
+          chown 1000:1000 {{ wazuh_certs_dir }}/*.pem
+
+    # ═══════════════════════════════════════════════════════════════════
+    # Phase 3 — Configuration files
+    # ═══════════════════════════════════════════════════════════════════
+
+    - name: Deploy Wazuh Indexer configuration
+      ansible.builtin.copy:
+        dest: "{{ wazuh_config_dir }}/opensearch.yml"
+        owner: '1000'
+        group: '1000'
+        mode: '0644'
+        content: |
+          network.host: 0.0.0.0
+          node.name: wazuh-indexer
+          cluster.name: wazuh-cluster
+          discovery.type: single-node
+          compatibility.override_main_response_version: true
+
+          plugins.security.ssl.transport.pemcert_filepath: /usr/share/wazuh-indexer/certs/wazuh.indexer.pem
+          plugins.security.ssl.transport.pemkey_filepath: /usr/share/wazuh-indexer/certs/wazuh.indexer-key.pem
+          plugins.security.ssl.transport.pemtrustedcas_filepath: /usr/share/wazuh-indexer/certs/root-ca.pem
+
+          plugins.security.ssl.http.enabled: true
+          plugins.security.ssl.http.pemcert_filepath: /usr/share/wazuh-indexer/certs/wazuh.indexer.pem
+          plugins.security.ssl.http.pemkey_filepath: /usr/share/wazuh-indexer/certs/wazuh.indexer-key.pem
+          plugins.security.ssl.http.pemtrustedcas_filepath: /usr/share/wazuh-indexer/certs/root-ca.pem
+
+          plugins.security.ssl.transport.enforce_hostname_verification: false
+          plugins.security.allow_default_init_securityindex: true
+          plugins.security.authcz.admin_dn:
+            - "CN=admin,OU=Wazuh,O=Wazuh,L=California,C=US"
+          plugins.security.nodes_dn:
+            - "CN=wazuh.indexer,OU=Wazuh,O=Wazuh,L=California,C=US"
+          plugins.security.restapi.roles_enabled:
+            - "all_access"
+            - "security_rest_api_access"
 
     - name: Deploy Filebeat configuration for Wazuh Manager
       ansible.builtin.copy:
@@ -133,8 +240,25 @@
             password: SecretPassword
             ssl.verification_mode: none
 
+    - name: Deploy Wazuh Dashboard configuration
+      ansible.builtin.copy:
+        dest: "{{ wazuh_config_dir }}/opensearch_dashboards.yml"
+        mode: '0644'
+        content: |
+          server.host: 0.0.0.0
+          server.port: 5601
+          opensearch.hosts:
+            - https://localhost:9200
+          opensearch.ssl.verificationMode: none
+          opensearch.username: kibanaserver
+          opensearch.password: kibanaserver
+          opensearch_security.multitenancy.enabled: false
+          opensearch_security.readonly_mode.roles:
+            - kibana_read_only
+          server.ssl.enabled: false
+
     # ═══════════════════════════════════════════════════════════════════
-    # Phase 3 — Deploy Wazuh Indexer
+    # Phase 4 — Deploy Wazuh Indexer
     # ═══════════════════════════════════════════════════════════════════
 
     - name: Stop any existing Wazuh containers
@@ -158,6 +282,12 @@
           bootstrap.memory_lock: "true"
         volume:
           - "{{ wazuh_data_dir }}/indexer-data:/var/lib/wazuh-indexer:z"
+          - "{{ wazuh_config_dir }}/opensearch.yml:/usr/share/wazuh-indexer/opensearch.yml:ro,z"
+          - "{{ wazuh_certs_dir }}/root-ca.pem:/usr/share/wazuh-indexer/certs/root-ca.pem:ro,z"
+          - "{{ wazuh_certs_dir }}/wazuh.indexer.pem:/usr/share/wazuh-indexer/certs/wazuh.indexer.pem:ro,z"
+          - "{{ wazuh_certs_dir }}/wazuh.indexer-key.pem:/usr/share/wazuh-indexer/certs/wazuh.indexer-key.pem:ro,z"
+          - "{{ wazuh_certs_dir }}/admin.pem:/usr/share/wazuh-indexer/certs/admin.pem:ro,z"
+          - "{{ wazuh_certs_dir }}/admin-key.pem:/usr/share/wazuh-indexer/certs/admin-key.pem:ro,z"
         ulimit:
           - "memlock=-1:-1"
           - "nofile=65536:65536"
@@ -179,7 +309,7 @@
       delay: 10
 
     # ═══════════════════════════════════════════════════════════════════
-    # Phase 4 — Deploy Wazuh Manager
+    # Phase 5 — Deploy Wazuh Manager
     # ═══════════════════════════════════════════════════════════════════
 
     - name: Run Wazuh Manager container
@@ -219,7 +349,7 @@
       delay: 10
 
     # ═══════════════════════════════════════════════════════════════════
-    # Phase 5 — Deploy Wazuh Dashboard
+    # Phase 6 — Deploy Wazuh Dashboard
     # ═══════════════════════════════════════════════════════════════════
 
     - name: Run Wazuh Dashboard container
@@ -236,6 +366,8 @@
           API_USERNAME: "{{ wazuh_api_user }}"
           API_PASSWORD: "{{ wazuh_api_password }}"
           SERVER_SSL_ENABLED: "false"
+        volume:
+          - "{{ wazuh_config_dir }}/opensearch_dashboards.yml:/usr/share/wazuh-dashboard/config/opensearch_dashboards.yml:ro,z"
         detach: true
       register: dashboard_container
 
@@ -250,7 +382,7 @@
       delay: 10
 
     # ═══════════════════════════════════════════════════════════════════
-    # Phase 6 — Firewall
+    # Phase 7 — Firewall
     # ═══════════════════════════════════════════════════════════════════
 
     # - name: Open Wazuh firewall ports
@@ -268,7 +400,7 @@
     #     - 514/udp
 
     # ═══════════════════════════════════════════════════════════════════
-    # Phase 7 — Systemd services for reboot persistence
+    # Phase 8 — Systemd services for reboot persistence
     # ═══════════════════════════════════════════════════════════════════
 
     - name: Generate systemd service for Wazuh Indexer
@@ -304,7 +436,7 @@
         - "{{ wazuh_dashboard_container }}"
 
     # ═══════════════════════════════════════════════════════════════════
-    # Phase 8 — Verify Wazuh API
+    # Phase 9 — Verify Wazuh API
     # ═══════════════════════════════════════════════════════════════════
 
     - name: Wait for Wazuh Manager API after systemd takeover

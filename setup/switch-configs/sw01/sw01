@@ -24,6 +24,7 @@ interface Ethernet3
 ip route 10.30.0.0/24 10.10.0.2
 !
 management api http-commands
+   protocol http
    no shutdown
 !
 management ssh

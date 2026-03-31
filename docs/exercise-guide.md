@@ -752,6 +752,60 @@ curl http://app.zta.lab:8081/health     # healthy again
 
 ---
 
+## Section 6 — SSH Lockdown & Break-Glass Recovery (Optional — Advanced)
+
+### Learning Objectives
+
+- Apply defence-in-depth SSH lockdown across four layers
+- Diagnose and recover from a misconfiguration that locks AAP out
+- Use the break-glass procedure with IdM HBAC
+- Understand Vault AppRole vs. userpass for machine-to-machine auth
+
+### Duration: ~40 minutes
+
+### Prerequisites
+
+- Sections 1–5 completed
+- Console or out-of-band access available
+
+See `section6/README.md` for the full exercise guide.
+
+### Key Exercises
+
+| Exercise | What Happens |
+|----------|-------------|
+| 6.1 — Firewall lockdown | SSH from workstation is refused |
+| 6.2 — HBAC lockdown | IdM users denied at login (except aap-service, breakglass) |
+| 6.3 — Simulate lockout | HBAC misconfiguration locks AAP out of all hosts |
+| 6.4 — Break-glass recovery | Participants fix HBAC via break-glass path |
+| 6.5 — Vault lockdown | Humans can browse Vault but cannot generate credentials |
+| 6.6 — Wazuh bypass detection | SSH bypass attempts generate alerts |
+
+---
+
+## Hands-On Failure/Fix Exercises (Throughout Sections 1–5)
+
+The following exercises are embedded in each section's README. They introduce
+**genuine breakages** that participants must diagnose and fix manually.
+
+| Exercise | Section | What Breaks | Manual Skill |
+|----------|---------|-------------|-------------|
+| 1.8 — Certificate Trust | S1 | Self-signed cert on HTTPS endpoint | `openssl`, `ipa-getcert` |
+| 2.9 — Firewall Debugging | S2 | DB port removed from firewalld | `firewall-cmd` diagnosis |
+| 2.10 — Vault Policy Paths | S2 | Wrong path in Vault policy | `vault policy read/write` |
+| 2.11 — SELinux Contexts | S2 | Wrong SELinux context on app dir | `ausearch`, `chcon` |
+| 3B — OPA Rego Authoring | S3 | Buggy data classification policy | Writing/debugging Rego |
+| 4.5 — Arista ACL | S4 | Overly permissive network ACL | Arista EOS CLI |
+| 5.7 — Wazuh Rule Tuning | S5 | False positive alerts | Custom Wazuh XML rules |
+
+Each exercise follows a **break → diagnose → fix → verify** cycle.
+
+> **Instructor note:** Each hands-on exercise has a paired break/fix playbook.
+> Run the break playbook before the exercise; use the fix playbook as a safety
+> net if participants need a reset.
+
+---
+
 ## Workshop Summary
 
 ### What You Built
@@ -791,12 +845,16 @@ curl http://app.zta.lab:8081/health     # healthy again
 | **No standing access** | `vault-ssh` user has no password (S1) |
 | **Platform enforcement** | AAP Policy as Code blocks unauthorised launches (S3) |
 | **Workload identity** | SPIFFE/SPIRE proves the automation platform is legitimate (S4) |
-| **Defence in depth** | Two OPA rings — platform gate + runtime check (S4) |
-| **Micro-segmentation** | Arista ACL limits DB access to app server (S2) |
+| **Defence in depth** | Two OPA rings — platform gate + runtime check (S4); SSH lockdown layers (S6) |
+| **Micro-segmentation** | Arista ACL limits DB access to app server (S2); firewall debugging (S2) |
 | **CMDB as source of truth** | Netbox state drives decisions, updated after changes (S2, S4) |
-| **Continuous monitoring** | Wazuh watches every authentication attempt (S5) |
+| **Continuous monitoring** | Wazuh watches every authentication attempt (S5); alert tuning (S5) |
 | **Assume breach** | EDA automatically revokes credentials on attack (S5) |
 | **Blast radius containment** | Credential revocation limits attacker data access (S5) |
+| **Policy as Code** | OPA Rego authoring — find and fix policy bugs (S3B) |
+| **Service identity** | Certificate trust chain — verify service certs via IdM CA (S1) |
+| **Mandatory access controls** | SELinux context debugging on containers (S2) |
+| **Break-glass recovery** | HBAC lockout and recovery via break-glass path (S6) |
 
 ---
 

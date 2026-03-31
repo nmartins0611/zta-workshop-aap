@@ -246,3 +246,188 @@ credential revocation.
 - [ ] `http://app.zta.lab:8081/health` returns unhealthy or connection refused
 - [ ] Restore playbook brings the application back with fresh credentials
 - [ ] Total time from attack to revocation is under 30 seconds
+
+---
+
+# Exercise 5.7 — Wazuh Alert Tuning & Custom Rule Writing (Hands-On)
+
+## The Scenario
+
+After the incident response demo, look at the Wazuh dashboard. You'll notice
+that Wazuh is also alerting on **legitimate AAP SSH connections**. Every time
+AAP runs a job template, it generates SSH authentication events that can
+trigger false positive alerts. In a production environment, this alert noise
+would drown out real threats.
+
+You must write a **custom Wazuh rule** to suppress false positives from the
+AAP controller while keeping alerts active for genuinely suspicious traffic.
+
+## Duration: ~25 minutes
+
+---
+
+## Step 1 — Identify the False Positives
+
+Open the Wazuh Dashboard at `http://wazuh.zta.lab:5601`.
+
+Navigate to **Security events** and filter for SSH-related alerts. You'll
+see a mix of:
+- **Legitimate:** AAP controller (192.168.1.10) connecting to managed hosts
+- **Malicious:** The brute-force simulation from the previous exercise
+
+Both are generating alerts. In a production environment with hundreds of
+AAP jobs per day, the real attacks would be buried.
+
+---
+
+## Step 2 — Examine the Existing Rules
+
+SSH to the Wazuh manager and look at the brute-force rule:
+
+```bash
+ssh rhel@central.zta.lab
+sudo podman exec -it wazuh-manager bash
+
+# Find the brute-force rule definition
+grep -A 10 'id="5712"' /var/ossec/ruleset/rules/0095-sshd_rules.xml
+```
+
+You'll see:
+```xml
+<rule id="5712" level="10" frequency="8" timeframe="120" ignore="60">
+  <if_matched_sid>5710</if_matched_sid>
+  <description>SSHD brute force trying to get access to the system.</description>
+  ...
+</rule>
+```
+
+This rule fires when there are 8+ failed SSH attempts within 120 seconds.
+It doesn't distinguish between AAP automation and an actual attacker.
+
+---
+
+## Step 3 — Write a Custom Exclusion Rule
+
+Create a custom rule that suppresses brute-force alerts when the source IP
+is the AAP controller:
+
+```bash
+# Still inside the wazuh-manager container:
+cat >> /var/ossec/etc/rules/local_rules.xml << 'RULES'
+
+<!-- ZTA Workshop: Suppress false positives from AAP controller -->
+<group name="local,sshd,zta_tuning">
+
+  <!-- AAP controller SSH activity — informational only (suppress alert) -->
+  <rule id="100030" level="0">
+    <if_sid>5712</if_sid>
+    <srcip>192.168.1.10</srcip>
+    <description>Suppressed: SSH brute-force alert from AAP controller (expected automation traffic)</description>
+  </rule>
+
+  <!-- Same for the 5763/5764 variants -->
+  <rule id="100031" level="0">
+    <if_sid>5763</if_sid>
+    <srcip>192.168.1.10</srcip>
+    <description>Suppressed: SSH auth failures from AAP controller (expected)</description>
+  </rule>
+
+  <rule id="100032" level="0">
+    <if_sid>5764</if_sid>
+    <srcip>192.168.1.10</srcip>
+    <description>Suppressed: SSH multiple auth failures from AAP controller (expected)</description>
+  </rule>
+
+</group>
+RULES
+```
+
+**Key points about this rule:**
+- `level="0"` means the alert is suppressed (not logged as an alert)
+- `<if_sid>5712</if_sid>` means this rule only triggers when rule 5712 fires
+- `<srcip>192.168.1.10</srcip>` scopes it to the AAP controller IP only
+- Alerts from ANY OTHER source IP still fire at level 10
+
+---
+
+## Step 4 — Validate and Reload
+
+```bash
+# Test the rule syntax (inside the container)
+/var/ossec/bin/wazuh-analysisd -t
+# Expected: No errors
+
+# Restart the Wazuh manager to load new rules
+exit   # Exit the container shell
+sudo podman restart wazuh-manager
+```
+
+Wait 30 seconds for Wazuh to reload.
+
+---
+
+## Step 5 — Verify the Tuning
+
+**Test 1 — Simulate brute force from AAP (should NOT alert):**
+
+Run the brute-force simulation playbook from AAP. Check the Wazuh dashboard
+— rule 5712 should NOT fire for source IP 192.168.1.10.
+
+**Test 2 — Simulate brute force from a different source (should alert):**
+
+From a different host (e.g., central), manually trigger failed SSH attempts:
+
+```bash
+ssh rhel@central.zta.lab
+for i in $(seq 1 10); do
+  sshpass -p 'wrongpassword' ssh -o StrictHostKeyChecking=no vault-ssh@app.zta.lab 2>/dev/null
+done
+```
+
+Check the Wazuh dashboard — rule 5712 SHOULD fire for central's IP
+(192.168.1.11), since the exclusion only applies to the AAP controller.
+
+---
+
+## Step 6 — Advanced: Write a Detection Rule
+
+Instead of just suppressing, write a rule that **detects when someone tries
+to impersonate AAP** by SSH-ing from a non-AAP source to many hosts rapidly:
+
+```bash
+sudo podman exec -it wazuh-manager bash
+cat >> /var/ossec/etc/rules/local_rules.xml << 'RULES'
+
+<!-- Detect potential AAP impersonation — rapid SSH from non-AAP source -->
+<rule id="100035" level="12" frequency="5" timeframe="60">
+  <if_matched_sid>5715</if_matched_sid>
+  <srcip>!192.168.1.10</srcip>
+  <srcip>!192.168.1.11</srcip>
+  <description>ZTA: Rapid SSH logins from non-automation source $(srcip) — possible AAP impersonation</description>
+  <group>authentication_success,zta_suspicious</group>
+</rule>
+
+RULES
+```
+
+Reload Wazuh and test.
+
+---
+
+## Wazuh Tuning Discussion Points
+
+- How do you balance alert sensitivity vs. false positive volume?
+- What if the AAP controller IP changes — how do you keep the rule updated?
+- Could you use a Wazuh CDB list instead of hardcoded IPs?
+- Should suppressed events still be logged (just not alerted)?
+- How would you test rule changes in a staging environment?
+
+## Wazuh Tuning Validation Checklist
+
+- [ ] Existing rules examined (`grep 5712` shows rule definition)
+- [ ] Custom exclusion rule written with `level="0"` for AAP source IP
+- [ ] `wazuh-analysisd -t` passes syntax check
+- [ ] Wazuh manager restarted and rules loaded
+- [ ] Brute force from AAP IP does NOT generate level-10 alert
+- [ ] Brute force from other IPs STILL generates level-10 alert
+- [ ] (Bonus) Impersonation detection rule written and tested

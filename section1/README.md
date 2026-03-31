@@ -207,3 +207,185 @@ membership in IdM determines what each user can do.
 - [ ] Vault Integration — dynamic DB credentials generated and revoked
 - [ ] Vault SSH OTP — single-use login works, reuse blocked
 - [ ] OPA Policy — correct allow/deny for each scenario
+
+---
+
+# Exercise 1.8 — Certificate Trust Chain Debugging (Hands-On)
+
+## The Scenario
+
+A test HTTPS endpoint has been deployed on central, but it was set up with
+a **self-signed certificate** instead of one issued by the IdM CA. Any client
+that trusts the IdM CA will reject the connection because the certificate
+issuer is unknown.
+
+You must diagnose the TLS failure, identify the wrong certificate authority,
+and fix it by requesting a proper certificate from IdM.
+
+> **Instructor:** Run `ansible-playbook section1/playbooks/break-cert-trust.yml`
+
+## Duration: ~25 minutes
+
+---
+
+## Step 1 — Observe the TLS Failure
+
+Try to reach the test endpoint:
+
+```bash
+curl https://central.zta.lab:9443/
+```
+
+You'll get an error:
+```
+curl: (60) SSL certificate problem: self-signed certificate
+```
+
+Even with `-v` (verbose), curl tells you the certificate is not trusted:
+```bash
+curl -v https://central.zta.lab:9443/ 2>&1 | grep -i "ssl\|issuer\|verify"
+```
+
+---
+
+## Step 2 — Inspect the Certificate
+
+Use `openssl` to examine the certificate the server is presenting:
+
+```bash
+echo | openssl s_client -connect central.zta.lab:9443 2>/dev/null | \
+  openssl x509 -text -noout | grep -E "Issuer|Subject|Not "
+```
+
+You'll see:
+```
+Issuer: CN = central.zta.lab, O = Self-Signed, OU = NOT-IDM-CA
+Subject: CN = central.zta.lab, O = Self-Signed, OU = NOT-IDM-CA
+Not Before: ...
+Not After : ...
+```
+
+The **Issuer** is "Self-Signed / NOT-IDM-CA". This certificate was not
+issued by the IdM CA, so any client that trusts the IdM CA will reject it.
+
+**Compare with a working service** (the IdM web UI itself):
+
+```bash
+echo | openssl s_client -connect central.zta.lab:443 2>/dev/null | \
+  openssl x509 -text -noout | grep -E "Issuer|Subject"
+```
+
+You'll see the IdM CA as the issuer — this is the trusted chain.
+
+---
+
+## Step 3 — Understand the Trust Chain
+
+In a Zero Trust environment, the IdM CA is the **trust anchor**. All
+services should present certificates signed by this CA. When a service
+uses a self-signed cert:
+
+- **Automated clients** (like Ansible, curl) reject the connection
+- **Other services** cannot verify the identity of the endpoint
+- **The service is effectively untrusted** in the ZTA fabric
+
+The IdM CA certificate is available at `/etc/ipa/ca.crt` on enrolled hosts.
+You can verify this:
+
+```bash
+ssh rhel@central.zta.lab
+cat /etc/ipa/ca.crt | openssl x509 -text -noout | grep "Issuer"
+```
+
+---
+
+## Step 4 — Fix: Request a Certificate from IdM
+
+SSH to central and request a proper certificate using `ipa-getcert`:
+
+```bash
+ssh rhel@central.zta.lab
+
+# Request a certificate from the IdM CA
+sudo ipa-getcert request \
+  -K HTTP/central.zta.lab \
+  -D central.zta.lab \
+  -f /etc/pki/tls/certs/zta-test-idm.crt \
+  -k /etc/pki/tls/private/zta-test-idm.key \
+  -N CN=central.zta.lab \
+  -w
+
+# Check the request status
+sudo ipa-getcert list | grep -A5 "zta-test"
+# Expected: status: MONITORING (certificate issued and tracked)
+```
+
+---
+
+## Step 5 — Reconfigure the Endpoint
+
+Update the test endpoint to use the new IdM-signed certificate:
+
+```bash
+# Edit the test endpoint script
+sudo vi /opt/zta-test-https.py
+```
+
+Change the cert paths from:
+```python
+ctx.load_cert_chain(
+    '/etc/pki/tls/certs/zta-test-selfsigned.crt',
+    '/etc/pki/tls/private/zta-test-selfsigned.key'
+)
+```
+
+To:
+```python
+ctx.load_cert_chain(
+    '/etc/pki/tls/certs/zta-test-idm.crt',
+    '/etc/pki/tls/private/zta-test-idm.key'
+)
+```
+
+Restart the service:
+```bash
+sudo systemctl restart zta-test-https
+```
+
+---
+
+## Step 6 — Verify the Fix
+
+```bash
+# From any IdM-enrolled host (which trusts the IdM CA):
+curl https://central.zta.lab:9443/
+# Expected: {"status": "ok", "service": "zta-test-endpoint", ...}
+
+# Verify the certificate chain
+echo | openssl s_client -connect central.zta.lab:9443 2>/dev/null | \
+  openssl x509 -text -noout | grep "Issuer"
+# Expected: Issuer shows the IdM CA, not "Self-Signed"
+```
+
+---
+
+## ZTA Lesson
+
+Zero Trust requires **verified identity for services**, not just users.
+A self-signed certificate means the service cannot prove its identity to
+clients. In a ZTA environment:
+
+- All service certificates should be issued by the organisation's CA (IdM)
+- `ipa-getcert` automates certificate lifecycle (request, renew, track)
+- Expired or untrusted certificates break service-to-service communication
+- Certificate monitoring (`ipa-getcert list`) is part of operational hygiene
+
+## Certificate Trust Validation Checklist
+
+- [ ] `curl https://central.zta.lab:9443/` fails with TLS error
+- [ ] `openssl s_client` shows "Self-Signed" issuer
+- [ ] Comparison with working IdM service shows the correct CA
+- [ ] `ipa-getcert request` issues a new cert from the IdM CA
+- [ ] Test endpoint reconfigured with the IdM-signed cert
+- [ ] `curl https://central.zta.lab:9443/` succeeds after fix
+- [ ] `openssl` confirms the IdM CA is now the issuer

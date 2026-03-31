@@ -225,3 +225,371 @@ restarts the application — keeping it healthy continuously.
 - [ ] Application dashboard loads at `http://app.zta.lab:8081`
 - [ ] Credentials disappear from PostgreSQL after TTL expires
 - [ ] Application loses DB access when credentials expire
+
+---
+
+# Exercise 2.9 — Firewall Micro-segmentation Debugging (Hands-On)
+
+## The Scenario
+
+The application was working after the deployment, but now the health check
+fails. Someone (or a configuration drift) removed the PostgreSQL port from
+the firewall on the database host.
+
+> **Instructor:** Run `ansible-playbook section2/playbooks/break-firewall.yml`
+
+## Step 1 — Observe the Failure
+
+```bash
+curl http://app.zta.lab:8081/health
+# Expected: unhealthy or connection error to database
+```
+
+The app is running, but it cannot reach PostgreSQL. Is it a credential
+problem? A network problem? A firewall problem?
+
+## Step 2 — Narrow Down the Problem
+
+Check whether the application itself is running:
+
+```bash
+curl http://app.zta.lab:8081
+# If you get a response (even an error page), the app container is up
+```
+
+Try to reach PostgreSQL directly from the app container:
+
+```bash
+ssh -p 2023 rhel@central.zta.lab    # SSH to app container
+nc -zv 10.30.0.10 5432              # Test TCP to DB
+# Expected: Connection refused or timeout
+```
+
+The database process is running, but the connection is blocked. This points
+to a firewall issue.
+
+## Step 3 — Diagnose the Firewall
+
+SSH into the database container:
+
+```bash
+ssh -p 2022 rhel@central.zta.lab    # SSH to DB container
+```
+
+Check firewall rules:
+
+```bash
+sudo firewall-cmd --list-all
+```
+
+Look at the open ports — **5432/tcp is missing**.
+
+```bash
+sudo firewall-cmd --list-ports
+# Notice: 5432/tcp is not listed
+```
+
+## Step 4 — Fix the Firewall
+
+```bash
+sudo firewall-cmd --add-port=5432/tcp --permanent
+sudo firewall-cmd --reload
+
+# Verify
+sudo firewall-cmd --list-ports
+# Should now include: 5432/tcp
+```
+
+## Step 5 — Verify the Fix
+
+```bash
+# From the app container (or from your terminal):
+curl http://app.zta.lab:8081/health
+# Expected: healthy
+```
+
+## ZTA Lesson
+
+Micro-segmentation works by explicitly opening only the ports needed for
+each data flow. If a rule is missing, legitimate traffic is blocked. When
+troubleshooting a broken application in a ZTA environment, always check
+**firewalls at every hop** — not just the application and its credentials.
+
+Understanding the data path (`app 10.20.0.10` → `db 10.30.0.10:5432`) is
+essential for diagnosing connectivity issues.
+
+## Firewall Debugging Validation
+
+- [ ] App health check fails after break playbook runs
+- [ ] `firewall-cmd --list-ports` shows 5432/tcp is missing
+- [ ] Adding the port restores connectivity
+- [ ] App health check passes after fix
+
+---
+
+# Exercise 2.10 — Vault Policy Path Debugging (Hands-On)
+
+## The Scenario
+
+The `app-deployer` Vault policy has been misconfigured — someone changed the
+database credential path to a role that doesn't exist. The deployment workflow
+passes OPA but **fails at Vault with 403 permission denied**.
+
+> **Instructor:** Run `ansible-playbook section2/playbooks/break-vault-policy.yml`
+
+## Step 1 — Observe the Failure
+
+1. Log into AAP as `appdev`
+2. Launch the **Deploy Application Pipeline** workflow
+3. **Check DB Access Policy** passes (OPA says ALLOWED)
+4. **Create DB Credential** fails with a Vault error:
+   ```
+   FAILED! => {"msg": "permission denied"}
+   ```
+
+The OPA policy check passed — the user IS authorised. But Vault refuses to
+issue credentials. Why?
+
+## Step 2 — Investigate the Vault Policy
+
+SSH to the Vault server and read the current policy:
+
+```bash
+export VAULT_ADDR=http://vault.zta.lab:8200
+vault login -method=userpass username=admin password=ansible123!
+
+# Read the app-deployer policy
+vault policy read app-deployer
+```
+
+You'll see:
+```hcl
+path "database/creds/ztaapp-readonly" {
+  capabilities = ["read"]
+}
+```
+
+Now check what database roles actually exist:
+
+```bash
+vault list database/roles
+```
+
+Output:
+```
+Keys
+----
+ztaapp-short-lived
+```
+
+**The policy path `ztaapp-readonly` doesn't match the actual role
+`ztaapp-short-lived`.** One wrong word in the path = complete access denial.
+
+## Step 3 — Fix the Policy
+
+```bash
+vault policy write app-deployer - <<'EOF'
+path "database/creds/ztaapp-short-lived" {
+  capabilities = ["read"]
+}
+path "secret/data/network/*" {
+  capabilities = ["read"]
+}
+path "sys/leases/revoke" {
+  capabilities = ["update"]
+}
+EOF
+```
+
+Verify:
+```bash
+vault policy read app-deployer
+# Should now show: database/creds/ztaapp-short-lived
+```
+
+## Step 4 — Retry the Deployment
+
+Go back to AAP and re-launch the **Deploy Application Pipeline**. All four
+steps should complete successfully.
+
+## ZTA Lesson
+
+Least privilege in Vault means **exact path scoping**. The policy must match
+the precise secrets engine path. This is a common operational issue — a typo
+in a Vault policy can block an entire deployment pipeline while the OPA
+policy layer thinks everything is fine. Each layer has its own access model.
+
+## Vault Policy Debugging Validation
+
+- [ ] Deployment fails at "Create DB Credential" with 403
+- [ ] `vault policy read app-deployer` shows the wrong path
+- [ ] `vault list database/roles` shows the correct role name
+- [ ] Policy fix resolves the path mismatch
+- [ ] Deployment succeeds after policy fix
+
+---
+
+# Exercise 2.11 — SELinux Container Context Debugging (Hands-On)
+
+## The Scenario
+
+The application container suddenly fails after a routine operation reset the
+SELinux file context on its data directory. The container process cannot read
+or write files, and the health check fails. But the error messages are
+cryptic — you need to use SELinux audit tools to find the root cause.
+
+> **Instructor:** Run `ansible-playbook section2/playbooks/break-selinux.yml`
+
+## Duration: ~20 minutes
+
+---
+
+## Step 1 — Observe the Failure
+
+```bash
+curl http://app.zta.lab:8081/health
+# Expected: connection refused or error
+```
+
+Check the application service status:
+
+```bash
+ssh -p 2023 rhel@central.zta.lab
+sudo systemctl status ztaapp
+# May show: failed, inactive, or active with errors in the logs
+```
+
+Check the application logs:
+
+```bash
+sudo journalctl -u ztaapp --no-pager -n 20
+```
+
+You may see "Permission denied" errors when the app tries to access files
+in its data directory. But why? The file exists, the user is correct...
+
+---
+
+## Step 2 — Check SELinux Status
+
+```bash
+# Is SELinux enforcing?
+getenforce
+# Expected: Enforcing
+
+# Check the file context on the app directory
+ls -laZ /opt/ztaapp/
+```
+
+You'll see something like:
+```
+drwxr-xr-x. root root unconfined_u:object_r:default_t:s0 .
+```
+
+The context is `default_t` — this is **wrong** for a directory accessed by
+a container. Container processes run in a confined domain and can only
+access files labelled `container_file_t`.
+
+---
+
+## Step 3 — Find the SELinux Denial
+
+Use the audit tools to see the exact denial:
+
+```bash
+# Search for recent AVC (Access Vector Cache) denials
+sudo ausearch -m avc -ts recent
+```
+
+You'll see entries like:
+```
+type=AVC msg=audit(...): avc:  denied  { read } for  pid=... 
+  comm="python3" name="env" dev="..." ino=... 
+  scontext=system_u:system_r:container_t:s0:... 
+  tcontext=unconfined_u:object_r:default_t:s0 
+  tclass=file permissive=0
+```
+
+Key fields:
+- `denied { read }` — the operation that was blocked
+- `scontext=...container_t...` — the process context (container)
+- `tcontext=...default_t...` — the file context (**wrong**)
+- `tclass=file` — what type of object was accessed
+
+Use `audit2why` for a human-readable explanation:
+
+```bash
+sudo ausearch -m avc -ts recent | audit2why
+```
+
+This tells you exactly what SELinux expects: the file should have
+`container_file_t` context.
+
+---
+
+## Step 4 — Fix the SELinux Context
+
+```bash
+# Apply the correct context
+sudo chcon -R -t container_file_t /opt/ztaapp
+
+# Verify the context changed
+ls -laZ /opt/ztaapp/
+# Expected: container_file_t on all files
+```
+
+---
+
+## Step 5 — Restart and Verify
+
+```bash
+sudo systemctl restart ztaapp
+
+# Wait a moment, then check health
+curl http://app.zta.lab:8081/health
+# Expected: healthy
+```
+
+---
+
+## Step 6 — Understand Why This Matters
+
+In Zero Trust on RHEL, **SELinux is never disabled**. It provides Mandatory
+Access Control — a kernel-level security boundary that limits what processes
+can access, even if they are running as root.
+
+For containers:
+- Container processes run in the `container_t` SELinux domain
+- They can ONLY access files labelled `container_file_t`
+- Volumes mounted into containers must have this label
+- `podman` typically handles this with the `:Z` mount flag
+- Manual file operations (cp, mv, restore from backup) can reset the context
+
+Common tools:
+- `ls -Z` — show SELinux file contexts
+- `ausearch -m avc` — find SELinux denials in the audit log
+- `audit2why` — explain why a denial occurred
+- `chcon -t container_file_t` — change the file context
+- `semanage fcontext` + `restorecon` — make the change permanent
+- `getenforce` / `setenforce` — check/set SELinux mode (never use `setenforce 0` in ZTA!)
+
+---
+
+## SELinux Discussion Points
+
+- Why is "just disable SELinux" not acceptable in a Zero Trust environment?
+- What is the difference between `chcon` (temporary) and `semanage fcontext`
+  + `restorecon` (permanent)?
+- How would you ensure container volumes always get the correct context?
+- What other SELinux contexts might you encounter in this lab? (Hint:
+  `deploy-wazuh.yml` uses `chcon -t container_file_t` on Wazuh data dirs)
+
+## SELinux Debugging Validation Checklist
+
+- [ ] Application fails with permission errors after context reset
+- [ ] `ls -Z` shows `default_t` on the app data directory
+- [ ] `ausearch -m avc` reveals the exact SELinux denial
+- [ ] `audit2why` explains the required context
+- [ ] `chcon -R -t container_file_t` fixes the file context
+- [ ] Application restarts successfully after context fix
+- [ ] `getenforce` confirms SELinux is still in Enforcing mode

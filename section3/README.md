@@ -220,3 +220,270 @@ enforced by policy.
 - [ ] Password policy is deployed
 - [ ] Audit rules are active
 - [ ] `appdev` cannot launch patching templates (separation of duties)
+
+---
+
+# Section 3B — Manual OPA Rego Policy Authoring (Hands-On)
+
+## Objective
+
+Move from **consuming** OPA policies to **writing and debugging** them. A
+data classification policy has been deployed with deliberate logic bugs.
+Participants must find the bugs by querying OPA, read the Rego source,
+fix the policy, and verify their fix.
+
+## Duration: ~30 minutes
+
+## The Scenario
+
+A new `data_classification` policy controls access to databases based on
+sensitivity levels: `public`, `internal`, `confidential`, and `pii`.
+Someone pushed a buggy version. Sensitive PII data is exposed to users
+who should not have access.
+
+### Classification Rules (intended)
+
+| Level | Who should have access |
+|-------|----------------------|
+| `public` | Any authenticated user |
+| `internal` | `app-deployers` or `db-admins` |
+| `confidential` | `db-admins` only |
+| `pii` | BOTH `security-ops` AND `db-admins` (dual-group requirement) |
+
+---
+
+## Exercise 3B.1 — Discover the Bugs
+
+> **Instructor:** Run `ansible-playbook section3/playbooks/break-opa-policy.yml`
+> before this exercise.
+
+Query OPA from the terminal and test each classification level:
+
+**Test 1 — PII access for security-ops user (should be DENIED):**
+
+```bash
+curl -s http://central.zta.lab:8181/v1/data/zta/data_classification/decision \
+  -d '{
+    "input": {
+      "user": "spatel",
+      "user_groups": ["security-ops"],
+      "data_classification": "pii"
+    }
+  }' | python3 -m json.tool
+```
+
+**Expected:** `"allow": false` (spatel is only in security-ops, not db-admins)
+**Actual:** `"allow": true` — **BUG! PII is exposed.**
+
+**Test 2 — Confidential access for app developer (should be DENIED):**
+
+```bash
+curl -s http://central.zta.lab:8181/v1/data/zta/data_classification/decision \
+  -d '{
+    "input": {
+      "user": "appdev",
+      "user_groups": ["app-deployers"],
+      "data_classification": "confidential"
+    }
+  }' | python3 -m json.tool
+```
+
+**Expected:** `"allow": false` (appdev is not in db-admins)
+**Actual:** `"allow": true` — **BUG! Confidential data exposed to developers.**
+
+**Test 3 — PII access for app deployer (should be DENIED):**
+
+```bash
+curl -s http://central.zta.lab:8181/v1/data/zta/data_classification/decision \
+  -d '{
+    "input": {
+      "user": "appdev",
+      "user_groups": ["app-deployers"],
+      "data_classification": "pii"
+    }
+  }' | python3 -m json.tool
+```
+
+**Expected:** `"allow": false`
+**Actual:** `"allow": true` — **BUG! App deployers can access PII.**
+
+---
+
+## Exercise 3B.2 — Read the Rego Source
+
+Fetch the current policy from OPA:
+
+```bash
+curl -s http://central.zta.lab:8181/v1/policies | python3 -m json.tool
+```
+
+Find the `zta.data_classification` policy in the output. Or read it directly
+from the host:
+
+```bash
+ssh rhel@central.zta.lab
+sudo cat /opt/opa/policies/data_classification.rego
+```
+
+**Find the three bugs:**
+
+1. **BUG 1 (PII):** The PII access rules use two separate `allow if` blocks
+   (OR logic) instead of one block with both conditions (AND logic). Any user
+   in security-ops OR db-admins gets PII access.
+
+2. **BUG 2 (Confidential):** The confidential rule checks for `app-deployers`
+   instead of `db-admins`.
+
+3. **BUG 3 (Internal):** One of the internal rules is missing the
+   `input.data_classification == "internal"` check, which means app-deployers
+   match *any* classification level.
+
+---
+
+## Exercise 3B.3 — Fix the Policy
+
+SSH to central and edit the policy file:
+
+```bash
+ssh rhel@central.zta.lab
+sudo vi /opt/opa/policies/data_classification.rego
+```
+
+**Fix 1 — PII rule (combine into single `allow if` block):**
+
+Replace the two separate PII rules:
+```rego
+# WRONG — OR logic (two separate rules)
+allow if {
+    input.data_classification == "pii"
+    user_in_group("security-ops")
+}
+allow if {
+    input.data_classification == "pii"
+    user_in_group("db-admins")
+}
+```
+
+With one combined rule:
+```rego
+# CORRECT — AND logic (single rule, both conditions required)
+allow if {
+    input.data_classification == "pii"
+    user_in_group("security-ops")
+    user_in_group("db-admins")
+}
+```
+
+**Fix 2 — Confidential rule (correct the group name):**
+
+```rego
+# WRONG
+allow if {
+    input.data_classification == "confidential"
+    user_in_group("app-deployers")
+}
+
+# CORRECT
+allow if {
+    input.data_classification == "confidential"
+    user_in_group("db-admins")
+}
+```
+
+**Fix 3 — Internal rule (add the missing classification check):**
+
+```rego
+# WRONG — matches any classification
+allow if {
+    user_in_group("app-deployers")
+}
+
+# CORRECT — only matches "internal"
+allow if {
+    input.data_classification == "internal"
+    user_in_group("app-deployers")
+}
+```
+
+**Reload OPA:**
+
+```bash
+sudo podman restart opa
+```
+
+---
+
+## Exercise 3B.4 — Verify the Fix
+
+Re-run all three tests:
+
+```bash
+# Test 1: PII + security-ops only → should be DENIED
+curl -s http://central.zta.lab:8181/v1/data/zta/data_classification/decision \
+  -d '{"input": {"user": "spatel", "user_groups": ["security-ops"], "data_classification": "pii"}}' \
+  | python3 -m json.tool
+# Expected: "allow": false ✓
+
+# Test 2: Confidential + app-deployers → should be DENIED
+curl -s http://central.zta.lab:8181/v1/data/zta/data_classification/decision \
+  -d '{"input": {"user": "appdev", "user_groups": ["app-deployers"], "data_classification": "confidential"}}' \
+  | python3 -m json.tool
+# Expected: "allow": false ✓
+
+# Test 3: PII + app-deployers → should be DENIED
+curl -s http://central.zta.lab:8181/v1/data/zta/data_classification/decision \
+  -d '{"input": {"user": "appdev", "user_groups": ["app-deployers"], "data_classification": "pii"}}' \
+  | python3 -m json.tool
+# Expected: "allow": false ✓
+
+# Test 4: PII + BOTH groups → should be ALLOWED
+curl -s http://central.zta.lab:8181/v1/data/zta/data_classification/decision \
+  -d '{"input": {"user": "nobrien", "user_groups": ["db-admins", "security-ops"], "data_classification": "pii"}}' \
+  | python3 -m json.tool
+# Expected: "allow": true ✓ (nobrien would need both groups)
+```
+
+---
+
+## Exercise 3B.5 — Bonus: Add a Time-of-Day Restriction
+
+OPA can access the current time. Add a rule that only allows PII access
+during business hours (08:00–18:00 UTC):
+
+```rego
+import data.time
+
+allow if {
+    input.data_classification == "pii"
+    user_in_group("security-ops")
+    user_in_group("db-admins")
+    hour := time.clock(time.now_ns())[0]
+    hour >= 8
+    hour < 18
+}
+```
+
+Reload OPA and test. If it's outside business hours, even a user with both
+groups will be denied PII access.
+
+---
+
+## Section 3B Discussion Points
+
+- What is the risk of deploying an overly permissive policy? (Data breach
+  before anyone notices)
+- How would you test OPA policies in CI/CD before deploying? (OPA has a
+  built-in `opa test` framework)
+- Why is deny-by-default safer than allow-by-default? (A missing rule blocks
+  access instead of granting it)
+- Could this policy be integrated into the AAP gateway? (Yes — add a
+  classification check to `aap.gateway`)
+
+## Section 3B Validation Checklist
+
+- [ ] PII access denied for security-ops-only user (BUG 1 fixed)
+- [ ] Confidential access denied for app-deployers (BUG 2 fixed)
+- [ ] Internal rule only matches "internal" classification (BUG 3 fixed)
+- [ ] PII access granted for user in BOTH security-ops AND db-admins
+- [ ] Public access works for any authenticated user
+- [ ] OPA restarts cleanly after policy edit

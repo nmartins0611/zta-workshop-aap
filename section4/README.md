@@ -300,3 +300,154 @@ spiffe://zta.lab/workload/network-automation
 - [ ] The Arista switches show the new VLAN in `show vlan brief`
 - [ ] If SPIRE Agent is stopped, the job fails at the SPIFFE verification step
 - [ ] Adding `neteng` to `network-admins` in IdM allows the next attempt to succeed
+
+---
+
+# Exercise 4.5 — Network ACL Hands-On with Arista (Hands-On)
+
+## The Scenario
+
+The micro-segmentation ACL on the Arista cEOS switch has been changed to an
+**overly permissive rule** — any host can now reach the database on any port.
+This defeats the Zero Trust principle of least-privilege network access.
+
+You must SSH directly into the switch, identify the misconfiguration, and
+fix it manually from the switch CLI.
+
+> **Instructor:** Run `ansible-playbook section4/playbooks/break-acl.yml`
+
+## Duration: ~20 minutes
+
+---
+
+## Step 1 — Explore the Switch
+
+SSH into the Arista cEOS leaf switch that handles the data tier:
+
+```bash
+ssh -p 2002 admin@central.zta.lab
+# Password: admin
+```
+
+Get oriented:
+
+```bash
+# What VLANs exist?
+show vlan brief
+
+# What interfaces are configured?
+show ip interface brief
+
+# What ACLs are applied?
+show access-lists summary
+```
+
+---
+
+## Step 2 — Examine the Broken ACL
+
+```bash
+show access-lists ZTA-APP-TO-DB
+```
+
+You'll see:
+```
+IP Access List ZTA-APP-TO-DB
+    10 permit ip any host 10.30.0.10
+```
+
+**Problem:** This allows **any** host to reach the database (10.30.0.10) on
+**any** protocol and port. Only the app server (10.20.0.10) should be able
+to reach the database, and only on port 5432 (PostgreSQL).
+
+Check hit counters to see traffic patterns:
+
+```bash
+show access-lists ZTA-APP-TO-DB | include counters
+```
+
+---
+
+## Step 3 — Fix the ACL
+
+Enter configuration mode and replace the overly permissive rule:
+
+```bash
+configure terminal
+
+ip access-list ZTA-APP-TO-DB
+  no 10
+  10 permit tcp host 10.20.0.10 host 10.30.0.10 eq 5432
+  20 deny ip any host 10.30.0.10
+  exit
+
+exit
+```
+
+Verify the fix:
+
+```bash
+show access-lists ZTA-APP-TO-DB
+```
+
+Expected:
+```
+IP Access List ZTA-APP-TO-DB
+    10 permit tcp host 10.20.0.10 host 10.30.0.10 eq 5432
+    20 deny ip any host 10.30.0.10
+```
+
+---
+
+## Step 4 — Verify Micro-segmentation
+
+Check that the application can still reach the database:
+
+```bash
+# From outside the switch (back on your terminal):
+curl http://app.zta.lab:8081/health
+# Expected: healthy (app → DB on port 5432 is permitted)
+```
+
+The deny rule ensures no other host can reach the database.
+
+---
+
+## Step 5 — Discuss Configuration Drift
+
+You just fixed the ACL manually on the switch. But what happens next time
+AAP runs the VLAN or ACL playbook? It will overwrite your manual fix with
+whatever is in the playbook (which may be different).
+
+**This is configuration drift.** Manual changes to network devices create a
+gap between the desired state (in Git/AAP) and the actual state (on the
+switch). In Zero Trust:
+
+- **Desired state should live in code** (Ansible playbooks in Git)
+- **Enforcement should be automated** (AAP applies the state)
+- **Drift detection** (compare running config vs. intended config) is needed
+
+> Save the running config on the switch to see what Arista has:
+> ```bash
+> show running-config section access-list
+> ```
+
+---
+
+## Network ACL Discussion Points
+
+- What is the risk of an overly permissive ACL in a ZTA environment?
+- How would you detect configuration drift between AAP's intended state and
+  the actual switch config?
+- Should manual switch access be allowed in a Zero Trust environment?
+- How does the Arista ACL complement the firewalld rules on the DB host?
+- What if someone adds a rogue switch to the fabric?
+
+## Network ACL Validation Checklist
+
+- [ ] Connected to ceos2 via SSH on port 2002
+- [ ] `show access-lists` reveals the overly permissive rule
+- [ ] ACL manually fixed to permit only app → DB on port 5432
+- [ ] Deny rule blocks all other traffic to the DB
+- [ ] App health check passes after ACL fix
+- [ ] `show running-config section access-list` confirms the fix

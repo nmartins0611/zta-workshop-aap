@@ -99,19 +99,13 @@
 
   handlers:
     - name: Validate and restart sshd
-      block:
-        - name: Validate sshd config syntax
-          command: sshd -t
-          changed_when: false
-
-        - name: Restart sshd (config is valid)
-          systemd:
-            name: sshd
-            state: restarted
-      rescue:
-        - name: "SSHD CONFIG INVALID — not restarting to avoid lockout"
-          debug:
-            msg: >-
-              WARNING: sshd -t failed on {{ inventory_hostname }}.
-              Sshd was NOT restarted to prevent SSH lockout.
-              Fix /etc/ssh/sshd_config manually before restarting.
+      shell: |
+        if sshd -t; then
+          systemctl restart sshd
+        else
+          echo "SSHD CONFIG INVALID on {{ inventory_hostname }} — not restarting to avoid lockout" >&2
+          exit 1
+        fi
+      register: sshd_restart
+      failed_when: false
+      changed_when: sshd_restart.rc == 0

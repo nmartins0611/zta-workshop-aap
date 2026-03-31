@@ -57,7 +57,6 @@
         - "{{ idm_hostname }}"
         - vault.zta.lab
         - netbox.zta.lab
-        - gitea.zta.lab
         - "{{ app_host }}"
         - "{{ db_host }}"
         - ceos1.zta.lab

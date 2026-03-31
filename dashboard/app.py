@@ -110,15 +110,6 @@ COMPONENTS = [
             {"type": "http", "url": "http://localhost:8000", "label": "Web UI"},
         ],
     },
-    {
-        "id": "gitea",
-        "name": "Gitea",
-        "group": "services",
-        "details": "Git :3000",
-        "checks": [
-            {"type": "http", "url": "http://localhost:3000", "label": "Web UI"},
-        ],
-    },
     # ── Arista cEOS Switches ──────────────────────────────────────────────
     {
         "id": "ceos1",

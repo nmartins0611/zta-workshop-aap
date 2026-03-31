@@ -22,11 +22,8 @@ vault_skip_verify: true
 netbox_url: "http://netbox.zta.lab:8880"
 netbox_token: "{{ lookup('env', 'NETBOX_TOKEN') }}"
 
-# ── Gitea / Git Server (own container) ──────────────────────────────
+# ── Gitea / Git Server (managed manually, not by automation) ────────
 gitea_url: "http://gitea.zta.lab:3000"
-gitea_org: zta-workshop
-gitea_repo: zta-app
-gitea_webhook_secret: "{{ lookup('env', 'GITEA_WEBHOOK_SECRET') | default('zta-webhook-secret', true) }}"
 
 # ── Wazuh / SIEM (own VM) ──────────────────────────────────────────
 wazuh_url: "http://wazuh.zta.lab:5601"

@@ -131,7 +131,7 @@
         device_type: RHEL 9 Virtual Machine
         platform: RHEL 9
         tags: [identity-provider, pdp, zero-trust]
-        description: "IdM (FreeIPA) + OPA + Gitea — identity, policy, source control"
+        description: "IdM (FreeIPA) + OPA — identity and policy"
         interfaces:
           - name: eth0
             type: virtual
@@ -282,11 +282,6 @@
         ports: [8181]
         protocol: tcp
         description: "Open Policy Agent — REST API"
-      - device: central.zta.lab
-        name: Gitea
-        ports: [3000]
-        protocol: tcp
-        description: "Git server — source control"
       - device: central.zta.lab
         name: SPIRE Server
         ports: [8081]

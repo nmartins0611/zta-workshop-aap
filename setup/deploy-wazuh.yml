@@ -1,5 +1,5 @@
 ---
-# Deploy Wazuh SIEM stack (Indexer + Manager + Dashboard) as containers on central
+# Deploy Wazuh SIEM stack (Indexer + Manager + Dashboard) as containers on the wazuh VM
 #
 # Components:
 #   - Wazuh Indexer  (OpenSearch):           event storage and search
@@ -7,12 +7,12 @@
 #   - Wazuh Dashboard (OpenSearch Dashboards): web UI
 #
 # Services exposed:
-#   - Dashboard:          https://central.zta.lab:5601
-#   - Manager API:        https://central.zta.lab:55000
-#   - Indexer API:        https://central.zta.lab:9200
-#   - Agent connection:   central.zta.lab:1514 (TCP)
-#   - Agent enrollment:   central.zta.lab:1515 (TCP)
-#   - Syslog collection:  central.zta.lab:514  (UDP)
+#   - Dashboard:          http://wazuh.zta.lab:5601
+#   - Manager API:        https://wazuh.zta.lab:55000
+#   - Indexer API:        https://wazuh.zta.lab:9200
+#   - Agent connection:   wazuh.zta.lab:1514 (TCP)
+#   - Agent enrollment:   wazuh.zta.lab:1515 (TCP)
+#   - Syslog collection:  wazuh.zta.lab:514  (UDP)
 #
 # Dashboard login:  admin / admin
 #
@@ -28,7 +28,7 @@
 #   ansible-playbook -i inventory/hosts.ini setup/deploy-wazuh.yml
 
 - name: Deploy Wazuh SIEM Stack
-  hosts: zta_services
+  hosts: wazuh_servers
   become: true
   gather_facts: true
 

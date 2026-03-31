@@ -249,7 +249,6 @@
           ║    - db.zta.lab      (database server)                 ║
           ║    - vault.zta.lab   (secrets management)              ║
           ║    - netbox.zta.lab  (CMDB)                            ║
-          ║    - gitea.zta.lab   (source control)                  ║
           ║    - aap.zta.lab     (automation controller)           ║
           ║                                                        ║
           ║  Verify in Wazuh Dashboard:                            ║

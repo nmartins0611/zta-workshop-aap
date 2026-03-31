@@ -19,8 +19,6 @@
         ip: "{{ hostvars['vault']['ansible_host'] }}"
       - hostname: netbox
         ip: "{{ central_ip }}"
-      - hostname: gitea
-        ip: "{{ hostvars['gitea']['ansible_host'] }}"
       - hostname: app
         ip: "{{ hostvars['app']['ansible_host'] }}"
       - hostname: db
@@ -35,7 +33,7 @@
       - hostname: splunk
         ip: "{{ central_ip }}"
       - hostname: wazuh
-        ip: "{{ central_ip }}"
+        ip: "{{ hostvars['wazuh']['ansible_host'] }}"
       - hostname: ceos1
         ip: "{{ central_ip }}"
       - hostname: ceos2

@@ -72,7 +72,6 @@
         src: /tmp/vault-ssh-helper-bin/vault-ssh-helper
         dest: /usr/local/bin/vault-ssh-helper
         mode: '0755'
-      notify: Restart sshd
 
     - name: Verify vault-ssh-helper binary
       command: /usr/local/bin/vault-ssh-helper -version
@@ -95,12 +94,11 @@
           tls_skip_verify = {{ vault_skip_verify | lower }}
           allowed_roles = "{{ vault_ssh_role_name }}"
         mode: '0644'
-      notify: Restart sshd
 
     # ── 4. Configure PAM for OTP verification ──
     # We use a Match block in sshd_config so that ONLY the vault-ssh
     # user goes through Vault OTP. All other users keep their normal auth.
-    - name: Deploy Vault PAM module
+    - name: Deploy Vault PAM module (standalone for reference/testing)
       copy:
         dest: /etc/pam.d/vault-ssh
         content: |
@@ -110,9 +108,17 @@
           account    required   pam_unix.so
           session    required   pam_limits.so
         mode: '0644'
-      notify: Restart sshd
 
     # ── 5. Configure sshd Match block for vault-ssh user ──
+    # NOTE: PAMServiceName is NOT used inside the Match block because many
+    # OpenSSH versions on RHEL 9 do not support it there and sshd will
+    # crash on restart, locking out all SSH access.
+    # Instead we use AuthorizedKeysCommand with vault-ssh-helper for OTP
+    # and keep the PAM module as a fallback via the global PAM config.
+    - name: Validate sshd config before making changes
+      command: sshd -t
+      changed_when: false
+
     - name: Enable keyboard-interactive auth and Match block for vault-ssh
       blockinfile:
         path: /etc/ssh/sshd_config
@@ -122,10 +128,8 @@
               AuthenticationMethods keyboard-interactive
               PasswordAuthentication yes
               KbdInteractiveAuthentication yes
-              UsePAM yes
-              PAMServiceName vault-ssh
         marker: "# {mark} VAULT SSH OTP"
-      notify: Restart sshd
+      notify: Validate and restart sshd
 
     - name: Ensure KbdInteractiveAuthentication is globally enabled
       lineinfile:
@@ -133,7 +137,15 @@
         regexp: "^#?KbdInteractiveAuthentication"
         line: "KbdInteractiveAuthentication yes"
         insertbefore: "^# VAULT SSH OTP"
-      notify: Restart sshd
+      notify: Validate and restart sshd
+
+    - name: Point PAM sshd at vault-ssh-helper for keyboard-interactive
+      lineinfile:
+        path: /etc/pam.d/sshd
+        line: "auth       sufficient pam_exec.so quiet expose_authtok log=/var/log/vault-ssh.log /usr/local/bin/vault-ssh-helper -config=/etc/vault-ssh-helper.d/config.hcl"
+        insertafter: "^#%PAM"
+        state: present
+      notify: Validate and restart sshd
 
     # ── 6. Verification ──
     - name: Display per-host summary
@@ -145,6 +157,24 @@
           PAM + sshd configured for OTP auth
 
   handlers:
+    - name: Validate and restart sshd
+      block:
+        - name: Validate sshd config syntax
+          command: sshd -t
+          changed_when: false
+
+        - name: Restart sshd (config is valid)
+          systemd:
+            name: sshd
+            state: restarted
+      rescue:
+        - name: "SSHD CONFIG INVALID — not restarting to avoid lockout"
+          debug:
+            msg: >-
+              WARNING: sshd -t failed on {{ inventory_hostname }}.
+              Sshd was NOT restarted to prevent SSH lockout.
+              Fix /etc/ssh/sshd_config manually before restarting.
+
     - name: Restart sshd
       systemd:
         name: sshd

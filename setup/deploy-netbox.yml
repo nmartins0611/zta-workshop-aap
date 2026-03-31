@@ -1,5 +1,5 @@
 ---
-# Deploy NetBox CMDB as containers on central using podman-compose
+# Deploy NetBox CMDB as containers on the netbox VM using podman-compose
 #
 # Deploys the full netbox-docker stack:
 #   - NetBox web (gunicorn)
@@ -9,17 +9,18 @@
 #   - Redis 7
 #
 # Services exposed:
-#   - Web UI:  http://central.zta.lab:8880
-#   - API:     http://central.zta.lab:8880/api/
+#   - Web UI:  http://netbox.zta.lab:8880
+#   - API:     http://netbox.zta.lab:8880/api/
 #
 # Credentials:
 #   - Admin user:  admin / netbox
+#   - API Token:   0123456789abcdef0123456789abcdef01234567
 #
 # Usage:
 #   ansible-playbook -i inventory/hosts.ini setup/deploy-netbox.yml
 
-- name: Deploy NetBox on central
-  hosts: zta_services
+- name: Deploy NetBox on netbox VM
+  hosts: netbox_servers
   become: true
   gather_facts: true
 
@@ -29,6 +30,7 @@
     netbox_superuser: admin
     netbox_superuser_password: netbox
     netbox_superuser_email: "admin@zta.lab"
+    netbox_api_token: "0123456789abcdef0123456789abcdef01234567"
     netbox_repo: https://github.com/netbox-community/netbox-docker.git
 
   tasks:
@@ -71,6 +73,7 @@
                 SUPERUSER_EMAIL: "{{ netbox_superuser_email }}"
                 SUPERUSER_PASSWORD: "{{ netbox_superuser_password }}"
                 SUPERUSER_NAME: "{{ netbox_superuser }}"
+                SUPERUSER_API_TOKEN: "{{ netbox_api_token }}"
               healthcheck:
                 start_period: 300s
 
@@ -122,32 +125,7 @@
       delay: 10
 
     # ═══════════════════════════════════════════════════════════════════
-    # Phase 5 — Create API token for Ansible automation
-    # ═══════════════════════════════════════════════════════════════════
-
-    - name: Check if API token already exists
-      uri:
-        url: "http://localhost:{{ netbox_port }}/api/users/tokens/"
-        method: GET
-        headers:
-          Authorization: "Token 0123456789abcdef0123456789abcdef01234567"
-        status_code: [200, 403]
-      register: token_check
-      failed_when: false
-
-    - name: Create a known API token via Django management command
-      command: >
-        podman exec netbox-docker_netbox_1
-        python /opt/netbox/netbox/manage.py shell -c
-        "from users.models import Token; from django.contrib.auth import get_user_model;
-        User = get_user_model(); u = User.objects.get(username='{{ netbox_superuser }}');
-        Token.objects.get_or_create(user=u, key='0123456789abcdef0123456789abcdef01234567')"
-      register: token_create
-      changed_when: "'Created' in token_create.stdout"
-      failed_when: false
-
-    # ═══════════════════════════════════════════════════════════════════
-    # Summary
+    # Phase 5 — Summary
     # ═══════════════════════════════════════════════════════════════════
 
     - name: Display NetBox deployment summary
@@ -157,14 +135,14 @@
           ║           NetBox CMDB — Deployment Complete                   ║
           ╠════════════════════════════════════════════════════════════════╣
           ║                                                              ║
-          ║  Web UI:    http://central.zta.lab:{{ netbox_port }}
-          ║  API:       http://central.zta.lab:{{ netbox_port }}/api/
+          ║  Web UI:    http://netbox.zta.lab:{{ netbox_port }}
+          ║  API:       http://netbox.zta.lab:{{ netbox_port }}/api/
           ║                                                              ║
           ║  Credentials:                                                ║
           ║    Username:  {{ netbox_superuser }}
           ║    Password:  {{ netbox_superuser_password }}
           ║                                                              ║
-          ║  API Token:  0123456789abcdef0123456789abcdef01234567         ║
+          ║  API Token:  {{ netbox_api_token }}         ║
           ║                                                              ║
           ║  Stack:      {{ netbox_dir }}
           ║                                                              ║

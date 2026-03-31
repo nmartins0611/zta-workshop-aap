@@ -8,3 +8,4 @@ collections:
   - name: redhat.rhel_idm
   - name: netbox.netbox
   - name: containers.podman
+  - name: ansible.controller

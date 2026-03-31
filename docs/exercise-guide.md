@@ -196,6 +196,9 @@ ansible-playbook setup/configure-vault-ssh.yml
 # Database & Application
 ansible-playbook setup/deploy-db-app.yml
 
+# CMDB → AAP integration
+ansible-playbook setup/configure-aap-netbox.yml
+
 # Policy
 ansible-playbook setup/configure-opa-base.yml
 ansible-playbook setup/configure-aap-policy.yml
@@ -283,6 +286,11 @@ Log into AAP Controller at `https://aap.zta.lab` and create:
 | ZTA Vault SSH Credential | HashiCorp Vault Signed SSH | URL: `http://vault.zta.lab:8200`, AppRole (Role ID + Secret ID from instructor) |
 | ZTA Arista Credential | Network | Username: `admin`, Password: `admin` |
 | ZTA Gitea Credential | Source Control | Gitea username + password |
+| ZTA NetBox Credential | NetBox (custom) | URL: `http://netbox.zta.lab:8880`, Token: `0123456789abcdef0123456789abcdef01234567` |
+
+> **Note**: The `NetBox` credential type is pre-created by the setup playbook.
+> If missing, create it under **Administration → Credential Types** — see
+> `section1/README.md` Exercise 1.1 for the full Input/Injector YAML.
 
 **Vault SSH Signed Certificate Flow:** When a job template runs, AAP
 authenticates to Vault via AppRole, sends its public key to Vault's SSH CA,
@@ -291,23 +299,43 @@ hosts. No static SSH keys are stored in AAP. The hosts only need to trust
 Vault's CA public key (configured during setup).
 
 > **ZTA Concept**: Each credential is scoped to a specific purpose — this is
-> least privilege applied to the automation platform itself.
+> least privilege applied to the automation platform itself. The NetBox
+> credential injects `NETBOX_API` and `NETBOX_TOKEN` as environment variables,
+> so playbooks and the inventory plugin authenticate without hardcoded secrets.
 
 ---
 
 ### Exercise 1.3 — Create Inventory & Project
 
-**Inventory from Netbox:**
+**Project from Gitea (create first — the inventory source references it):**
 
-1. Create `ZTA Lab Inventory`
-2. Add source: Netbox → `http://netbox.zta.lab:8880`
-3. Sync and verify all hosts appear
-
-**Project from Gitea:**
-
-1. Create `ZTA Workshop`
+1. Create `ZTA Workshop` project
 2. Git URL: `http://gitea.zta.lab:3000/zta-workshop/zta-app.git`
-3. Sync and verify green status
+3. Credential: `ZTA Gitea Credential`
+4. Sync and verify green status
+
+**Inventory from NetBox:**
+
+1. Create inventory `ZTA Lab Inventory`
+2. Go to the **Sources** tab → **Add**:
+
+| Field | Value |
+|-------|-------|
+| Name | `NetBox CMDB` |
+| Source | `Sourced from a Project` |
+| Project | `ZTA Workshop` |
+| Inventory file | `inventory/netbox_inventory.yml` |
+| Credential | `ZTA NetBox Credential` |
+
+3. Enable **Overwrite** and **Update on launch**
+4. Sync the source — verify all workshop hosts appear (central, control,
+   vault, wazuh, netbox, app, db, ceos1–3)
+5. Check the **Groups** tab — device roles, tags, and platforms should appear
+   as auto-generated groups
+
+> **ZTA Concept**: The inventory is sourced from the CMDB, not a static file.
+> NetBox is the single source of truth — if a device is removed from NetBox,
+> it disappears from AAP on the next sync.
 
 ---
 

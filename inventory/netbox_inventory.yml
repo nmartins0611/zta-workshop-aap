@@ -1,0 +1,28 @@
+---
+# NetBox dynamic inventory for AAP.
+#
+# Authentication is handled via environment variables injected by the
+# AAP "NetBox" credential type:
+#   NETBOX_API   — full URL to the NetBox instance
+#   NETBOX_TOKEN — API token for authentication
+#
+# Usage in AAP:
+#   1. Create an inventory source with Source = "Sourced from a Project"
+#   2. Point to this file (inventory/netbox_inventory.yml)
+#   3. Attach the "ZTA NetBox Credential"
+#   4. Sync the inventory
+
+plugin: netbox.netbox.nb_inventory
+validate_certs: false
+
+group_by:
+  - device_roles
+  - sites
+  - tags
+  - platforms
+
+device_query_filters:
+  - has_primary_ip: true
+
+interfaces: true
+services: true

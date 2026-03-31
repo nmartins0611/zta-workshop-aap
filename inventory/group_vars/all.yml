@@ -238,6 +238,7 @@ spire_trust_domain: "{{ idm_domain }}"
 spire_server_host: central.zta.lab
 spire_server_bind_port: 8082
 spire_install_dir: /opt/spire
+spire_server_socket: /tmp/spire-server/private/api.sock
 spire_agent_socket: /run/spire/agent/api.sock
 spire_download_base: "https://github.com/spiffe/spire/releases/download"
 spire_arch: linux-amd64-musl

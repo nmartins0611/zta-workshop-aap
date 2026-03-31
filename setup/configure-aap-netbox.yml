@@ -1,0 +1,138 @@
+---
+# Configure AAP Controller with NetBox CMDB integration.
+#
+# Creates:
+#   - Custom "NetBox" credential type (injects NETBOX_API + NETBOX_TOKEN env vars)
+#   - "ZTA NetBox Credential" with the workshop API token
+#   - "ZTA Lab Inventory" (empty — add the NetBox source in Exercise 1.2)
+#
+# The credential type's environment variable injection enables:
+#   - netbox.netbox.nb_inventory plugin (dynamic inventory sync)
+#   - netbox.netbox collection modules (playbook lookups)
+#
+# Prerequisites:
+#   - AAP Controller is installed and reachable
+#   - NetBox is deployed and seeded (deploy-netbox.yml + configure-netbox.yml)
+#   - ansible.controller collection available
+#
+# Usage:
+#   ansible-playbook -i inventory/hosts.ini setup/configure-aap-netbox.yml
+
+- name: Configure AAP NetBox CMDB Integration
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  vars:
+    aap_host: "{{ aap_controller_url | default('https://aap.zta.lab') }}"
+    aap_user: admin
+    aap_password: "{{ lookup('env', 'AAP_ADMIN_PASSWORD') | default('ansible123!', true) }}"
+    aap_verify_ssl: false
+
+    nb_api_url: "{{ netbox_url | default('http://netbox.zta.lab:8880') }}"
+    nb_api_token: "{{ netbox_token | default('0123456789abcdef0123456789abcdef01234567') }}"
+
+  module_defaults:
+    group/ansible.controller.controller:
+      controller_host: "{{ aap_host }}"
+      controller_username: "{{ aap_user }}"
+      controller_password: "{{ aap_password }}"
+      validate_certs: "{{ aap_verify_ssl }}"
+
+  tasks:
+    # ── Verify prerequisites ──────────────────────────────────────────
+
+    - name: Verify AAP Controller is reachable
+      uri:
+        url: "{{ aap_host }}/api/v2/ping/"
+        method: GET
+        validate_certs: "{{ aap_verify_ssl }}"
+        status_code: 200
+      register: aap_ping
+
+    - name: Display AAP version
+      debug:
+        msg: "AAP Controller {{ aap_ping.json.version }} detected"
+
+    - name: Verify NetBox API is reachable
+      uri:
+        url: "{{ nb_api_url }}/api/status/"
+        method: GET
+        status_code: 200
+
+    # ── Create NetBox credential type ─────────────────────────────────
+
+    - name: Create NetBox credential type
+      ansible.controller.credential_type:
+        name: NetBox
+        description: "NetBox CMDB API credentials for inventory sync and module lookups"
+        kind: cloud
+        inputs:
+          fields:
+            - id: netbox_url
+              label: NetBox URL
+              type: string
+              help_text: "Full URL (e.g. http://netbox.zta.lab:8880)"
+            - id: netbox_token
+              label: API Token
+              type: string
+              secret: true
+          required:
+            - netbox_url
+            - netbox_token
+        injectors:
+          env:
+            NETBOX_API: "{% raw %}{{ netbox_url }}{% endraw %}"
+            NETBOX_TOKEN: "{% raw %}{{ netbox_token }}{% endraw %}"
+        state: present
+
+    # ── Create NetBox credential ──────────────────────────────────────
+
+    - name: Create ZTA NetBox Credential
+      ansible.controller.credential:
+        name: ZTA NetBox Credential
+        description: "NetBox CMDB — workshop API token for inventory sync and lookups"
+        credential_type: NetBox
+        organization: Default
+        inputs:
+          netbox_url: "{{ nb_api_url }}"
+          netbox_token: "{{ nb_api_token }}"
+        state: present
+
+    # ── Create inventory ──────────────────────────────────────────────
+
+    - name: Create ZTA Lab Inventory
+      ansible.controller.inventory:
+        name: ZTA Lab Inventory
+        description: "Dynamic inventory from NetBox CMDB — infrastructure source of truth"
+        organization: Default
+        state: present
+
+    # ── Summary ───────────────────────────────────────────────────────
+
+    - name: Display configuration summary
+      debug:
+        msg: |
+          ╔════════════════════════════════════════════════════════════════╗
+          ║     AAP NetBox CMDB Integration — Configuration Complete      ║
+          ╠════════════════════════════════════════════════════════════════╣
+          ║                                                              ║
+          ║  Credential Type:  NetBox (custom)                           ║
+          ║  Credential:       ZTA NetBox Credential                     ║
+          ║  Inventory:        ZTA Lab Inventory                         ║
+          ║                                                              ║
+          ║  NetBox URL:       {{ nb_api_url }}
+          ║                                                              ║
+          ║  Injected env vars (available to playbooks & inventory):     ║
+          ║    NETBOX_API   → NetBox URL                                 ║
+          ║    NETBOX_TOKEN → API token (secret)                         ║
+          ║                                                              ║
+          ║  Next Steps (Exercise 1.2):                                  ║
+          ║    1. Create the ZTA Workshop project (Gitea)                ║
+          ║    2. Add a NetBox inventory source to ZTA Lab Inventory:    ║
+          ║       Source = "Sourced from a Project"                      ║
+          ║       Project = ZTA Workshop                                 ║
+          ║       Inventory file = inventory/netbox_inventory.yml        ║
+          ║       Credential = ZTA NetBox Credential                     ║
+          ║    3. Sync the inventory and verify hosts appear             ║
+          ╚════════════════════════════════════════════════════════════════╝

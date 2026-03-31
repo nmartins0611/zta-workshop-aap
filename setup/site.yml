@@ -117,6 +117,10 @@
   ansible.builtin.import_playbook: configure-aap-ldap.yml
   tags: [policy, aap, identity]
 
+- name: "Layer 7d: Configure AAP NetBox CMDB integration"
+  ansible.builtin.import_playbook: configure-aap-netbox.yml
+  tags: [cmdb, aap, netbox]
+
 # ═════════════════════════════════════════════════════════════════════
 # Layer 8 — Workload Identity
 # ═════════════════════════════════════════════════════════════════════

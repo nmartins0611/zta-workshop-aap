@@ -149,7 +149,7 @@
         daemon_reload: true
 
     - name: Wait for SPIRE Server to become healthy
-      command: "{{ spire_install_dir }}/bin/spire-server healthcheck -socketPath {{ spire_install_dir }}/data/server/api.sock"
+      command: "{{ spire_install_dir }}/bin/spire-server healthcheck -socketPath {{ spire_server_socket }}"
       register: server_health
       until: server_health.rc == 0
       retries: 15
@@ -158,7 +158,7 @@
     - name: Export trust bundle for agents
       shell: >
         {{ spire_install_dir }}/bin/spire-server bundle show
-        -socketPath {{ spire_install_dir }}/data/server/api.sock
+        -socketPath {{ spire_server_socket }}
         > {{ spire_install_dir }}/conf/server/bootstrap.crt
       changed_when: true
 
@@ -180,7 +180,7 @@
       command: >
         {{ spire_install_dir }}/bin/spire-server token generate
         -spiffeID spiffe://{{ spire_trust_domain }}/host/{{ inventory_hostname }}
-        -socketPath {{ spire_install_dir }}/data/server/api.sock
+        -socketPath {{ spire_server_socket }}
         -ttl 600
       delegate_to: "{{ groups['zta_services'][0] }}"
       register: token_result
@@ -301,7 +301,7 @@
     - name: List attested agents
       command: >
         {{ spire_install_dir }}/bin/spire-server agent list
-        -socketPath {{ spire_install_dir }}/data/server/api.sock
+        -socketPath {{ spire_server_socket }}
       register: agent_list
 
     - name: Display attested agents
@@ -311,14 +311,14 @@
     - name: Get agent SPIFFE IDs
       shell: >
         {{ spire_install_dir }}/bin/spire-server agent list
-        -socketPath {{ spire_install_dir }}/data/server/api.sock
+        -socketPath {{ spire_server_socket }}
         | grep -oP 'spiffe://\S+'
       register: agent_spiffe_ids
 
     - name: Register workload entries
       command: >
         {{ spire_install_dir }}/bin/spire-server entry create
-        -socketPath {{ spire_install_dir }}/data/server/api.sock
+        -socketPath {{ spire_server_socket }}
         -spiffeID {{ item.spiffe_id }}
         -parentID {{ agent_spiffe_ids.stdout_lines | select('search', '/host/' + item.parent_host) | first }}
         -selector {{ item.selectors | join(' -selector ') }}
@@ -331,7 +331,7 @@
     - name: List registered entries
       command: >
         {{ spire_install_dir }}/bin/spire-server entry show
-        -socketPath {{ spire_install_dir }}/data/server/api.sock
+        -socketPath {{ spire_server_socket }}
       register: entry_list
 
 
@@ -343,20 +343,20 @@
 
   tasks:
     - name: SPIRE Server health check
-      command: "{{ spire_install_dir }}/bin/spire-server healthcheck -socketPath {{ spire_install_dir }}/data/server/api.sock"
+      command: "{{ spire_install_dir }}/bin/spire-server healthcheck -socketPath {{ spire_server_socket }}"
       register: final_server_health
 
     - name: Count attested agents
       shell: >
         {{ spire_install_dir }}/bin/spire-server agent list
-        -socketPath {{ spire_install_dir }}/data/server/api.sock
+        -socketPath {{ spire_server_socket }}
         | grep -c 'SPIFFE ID'
       register: agent_count
 
     - name: Count registered entries
       shell: >
         {{ spire_install_dir }}/bin/spire-server entry show
-        -socketPath {{ spire_install_dir }}/data/server/api.sock
+        -socketPath {{ spire_server_socket }}
         | grep -c 'Entry ID'
       register: entry_count
 

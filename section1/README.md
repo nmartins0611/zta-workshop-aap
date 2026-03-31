@@ -88,27 +88,147 @@ integrations.
 4. Username: your Gitea username
 5. Password: your Gitea password or access token
 
+### NetBox CMDB Credential
+
+> **Note**: The `NetBox` credential type is pre-created by the setup playbook
+> (`setup/configure-aap-netbox.yml`). If it is missing, see the manual steps
+> in the box below.
+
+1. Navigate to **Resources → Credentials → Add**
+2. Name: `ZTA NetBox Credential`
+3. Credential Type: `NetBox`
+4. NetBox URL: `http://netbox.zta.lab:8880`
+5. API Token: `0123456789abcdef0123456789abcdef01234567`
+
+> **How the credential type works**: The `NetBox` credential type injects two
+> environment variables into every job that uses it:
+>
+> | Env var | Value |
+> |---------|-------|
+> | `NETBOX_API` | The NetBox URL |
+> | `NETBOX_TOKEN` | The API token (secret) |
+>
+> These are auto-detected by the `netbox.netbox.nb_inventory` plugin and by
+> all `netbox.netbox` collection modules, so playbooks never need hardcoded
+> NetBox credentials.
+
+<details>
+<summary><strong>Manual: Create the NetBox credential type from scratch</strong></summary>
+
+If the setup playbook has not been run, create the credential type first:
+
+1. Navigate to **Administration → Credential Types → Add**
+2. Name: `NetBox`
+3. **Input Configuration** (paste as YAML):
+
+```yaml
+fields:
+  - id: netbox_url
+    label: NetBox URL
+    type: string
+    help_text: "Full URL (e.g. http://netbox.zta.lab:8880)"
+  - id: netbox_token
+    label: API Token
+    type: string
+    secret: true
+required:
+  - netbox_url
+  - netbox_token
+```
+
+4. **Injector Configuration** (paste as YAML):
+
+```yaml
+env:
+  NETBOX_API: "{{ netbox_url }}"
+  NETBOX_TOKEN: "{{ netbox_token }}"
+```
+
+5. Click **Save**
+6. Now return to step 1 above to create the credential
+
+</details>
+
 ---
 
 ## Exercise 1.2 — Configure Inventory & Project
 
-### Inventory from Netbox
-
-1. Navigate to **Resources → Inventories → Add**
-2. Name: `ZTA Lab Inventory`
-3. Add a **Source**: Netbox
-4. Source URL: `http://netbox.zta.lab:8880`
-5. Token: your Netbox API token
-6. Sync the inventory — verify all hosts appear
-
-### Project from Gitea
+### Project from Gitea (create first — the inventory source depends on it)
 
 1. Navigate to **Resources → Projects → Add**
 2. Name: `ZTA Workshop`
 3. Source Control Type: `Git`
 4. Source Control URL: `http://gitea.zta.lab:3000/zta-workshop/zta-app.git`
 5. Source Control Credential: `ZTA Gitea Credential`
-6. Sync the project — verify it pulls successfully
+6. Click **Save** and wait for the sync to complete (green status)
+
+### Inventory from NetBox
+
+**Step 1 — Create the inventory**
+
+1. Navigate to **Resources → Inventories → Add → Add inventory**
+2. Name: `ZTA Lab Inventory`
+3. Organization: `Default`
+4. Click **Save**
+
+**Step 2 — Add the NetBox inventory source**
+
+1. Inside the `ZTA Lab Inventory`, go to the **Sources** tab
+2. Click **Add**
+3. Configure:
+
+| Field | Value |
+|-------|-------|
+| Name | `NetBox CMDB` |
+| Source | `Sourced from a Project` |
+| Project | `ZTA Workshop` |
+| Inventory file | `inventory/netbox_inventory.yml` |
+| Credential | `ZTA NetBox Credential` (type: NetBox) |
+
+4. Under **Update options**, enable:
+   - **Overwrite** — replace hosts on each sync (NetBox is the source of truth)
+   - **Update on launch** — re-sync before every job that uses this inventory
+5. Click **Save**
+
+**Step 3 — Sync and verify**
+
+1. Click the **Sync** (refresh) button on the `NetBox CMDB` source
+2. Wait for the sync to complete (green status)
+3. Go to the **Hosts** tab — you should see all workshop devices:
+
+| Host | Device Role |
+|------|-------------|
+| `central.zta.lab` | Identity Provider |
+| `control.zta.lab` | Automation Controller |
+| `vault.zta.lab` | Secrets Manager |
+| `wazuh.zta.lab` | Security Appliance |
+| `netbox.zta.lab` | CMDB Server |
+| `app.zta.lab` | Application Server |
+| `db.zta.lab` | Application Server |
+| `ceos1.zta.lab` | Network Switch |
+| `ceos2.zta.lab` | Network Switch |
+| `ceos3.zta.lab` | Network Switch |
+
+4. Go to the **Groups** tab — verify groups were created by device role,
+   site, tag, and platform (e.g. `device_role_identity_provider`,
+   `tag_zero_trust`, `platform_rhel_9`)
+
+> **ZTA Concept**: The inventory is sourced from the CMDB — not a static file.
+> If a device is decommissioned in NetBox, it disappears from AAP on the next
+> sync. NetBox is the *single source of truth* for infrastructure state.
+
+**Troubleshooting**
+
+If the sync fails:
+
+```bash
+# Verify NetBox is reachable and the token works
+curl -s -H "Authorization: Token 0123456789abcdef0123456789abcdef01234567" \
+  http://netbox.zta.lab:8880/api/dcim/devices/ | python3 -m json.tool
+
+# Verify the netbox.netbox collection is in the AAP execution environment
+# (check the EE image used by the project)
+```
 
 ---
 

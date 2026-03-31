@@ -236,7 +236,7 @@ vault_ssh_allowed_users: "rhel,aap-service"
 spire_version: "1.12.0"
 spire_trust_domain: "{{ idm_domain }}"
 spire_server_host: central.zta.lab
-spire_server_bind_port: 8081
+spire_server_bind_port: 8082
 spire_install_dir: /opt/spire
 spire_agent_socket: /run/spire/agent/api.sock
 spire_download_base: "https://github.com/spiffe/spire/releases/download"

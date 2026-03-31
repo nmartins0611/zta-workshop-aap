@@ -80,6 +80,13 @@
       changed_when: false
       failed_when: dns_verify.stdout | length == 0
 
+    - name: Add upstream DNS to /etc/resolv.conf on central
+      lineinfile:
+        path: /etc/resolv.conf
+        line: "nameserver 172.30.0.10"
+        insertafter: "^nameserver"
+        state: present
+
     - name: Display DNS configuration
       debug:
         msg: |

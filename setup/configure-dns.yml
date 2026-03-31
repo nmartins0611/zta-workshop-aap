@@ -52,7 +52,9 @@
         state: absent
 
     - name: Set IdM global DNS forwarder for internet resolution
-      command: ipa dnsconfig-mod --forwarder=172.30.0.10
+      shell: |
+        echo '{{ idm_admin_password }}' | kinit admin 2>/dev/null
+        ipa dnsconfig-mod --forwarder=172.30.0.10
       register: dns_fwd
       changed_when: "'Modified' in dns_fwd.stdout"
       failed_when: dns_fwd.rc != 0 and 'no modifications' not in dns_fwd.stderr

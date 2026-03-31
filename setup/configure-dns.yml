@@ -26,6 +26,8 @@
       - hostname: aap
         ip: "{{ hostvars['control']['ansible_host'] }}"
       # ── Services on central (containers) ──
+      - hostname: gitea
+        ip: "{{ central_ip }}"
       - hostname: keycloak
         ip: "{{ central_ip }}"
       - hostname: opa

@@ -14,7 +14,7 @@ integrations.
 |-----------|----------------------------------|
 | **Never trust, always verify** | Every service health is checked, not assumed |
 | **Short-lived credentials** | Vault dynamic DB credentials expire after TTL |
-| **No standing access** | SSH OTP replaces static machine passwords |
+| **No standing access** | Vault SSH signed certificates replace static keys |
 | **Least privilege** | Vault policies scope secrets to specific roles |
 | **Policy-driven access** | OPA deny-by-default with explicit allow rules |
 
@@ -39,7 +39,7 @@ integrations.
   │  Templates:                                   │
   │    - Verify ZTA Services                      │
   │    - Test Vault Integration                   │
-  │    - Test Vault SSH OTP                       │
+  │    - Test Vault SSH Certificates               │
   │    - Test OPA Policy Check                    │
   └──────┬───────────┬──────────┬────────────────┘
          │           │          │
@@ -118,7 +118,7 @@ integrations.
 |---------------|----------|-----------|-------------|
 | Verify ZTA Services | `section1/playbooks/verify-zta-services.yml` | ZTA Lab Inventory | ZTA Machine Credential |
 | Test Vault Integration | `section1/playbooks/test-vault-integration.yml` | ZTA Lab Inventory | ZTA Machine Credential |
-| Test Vault SSH OTP | `section1/playbooks/test-vault-ssh.yml` | ZTA Lab Inventory | ZTA Machine Credential |
+| Test Vault SSH Certificates | `section1/playbooks/test-vault-ssh.yml` | ZTA Lab Inventory | ZTA Machine Credential |
 | Test OPA Policy | `section1/playbooks/test-opa-policy.yml` | ZTA Lab Inventory | ZTA Machine Credential |
 
 ---
@@ -154,18 +154,21 @@ never reuses credentials.
 
 ---
 
-## Exercise 1.6 — Test Vault SSH OTP
+## Exercise 1.6 — Test Vault SSH Signed Certificates
 
-Launch **Test Vault SSH OTP**.
+Launch **Test Vault SSH Certificates**.
 
-A `vault-ssh` user exists on each RHEL host with **no static password**. The
-only way to log in is via a Vault-issued one-time password.
+Each RHEL host trusts the Vault SSH Certificate Authority. The only way to
+authenticate via certificate is with a key signed by Vault. No static SSH
+keys are distributed — every certificate is generated on demand, time-bound,
+and scoped to specific principals.
 
 **What to observe:**
 
-- OTPs are generated for the `app` and `db` hosts
-- First use: SSH login succeeds
-- Second use (same OTP): **login denied** — single-use enforced
+- An ephemeral keypair is generated and signed by Vault's SSH CA
+- Certificate details are displayed (TTL, valid principals, serial number)
+- SSH login to `app` and `db` hosts succeeds using the signed certificate
+- The certificate has a 30-minute TTL (configurable)
 
 ### Manual Demo
 
@@ -174,9 +177,22 @@ export VAULT_ADDR=http://vault.zta.lab:8200
 export VAULT_SKIP_VERIFY=true
 vault login -method=userpass username=admin password=ansible123!
 
-vault write ssh/creds/rhel-otp ip=192.168.1.11     # get an OTP for central (containers)
-ssh -p 2023 vault-ssh@192.168.1.11                  # works once (app container)
-ssh -p 2023 vault-ssh@192.168.1.11                  # denied
+# Generate an ephemeral keypair
+ssh-keygen -t rsa -b 2048 -f /tmp/ephemeral -N '' -q
+
+# Sign the public key with Vault
+vault write -field=signed_key ssh/sign/ssh-signer \
+  public_key=@/tmp/ephemeral.pub valid_principals=rhel > /tmp/ephemeral-cert.pub
+
+# Inspect the certificate
+ssh-keygen -L -f /tmp/ephemeral-cert.pub
+
+# SSH using the signed certificate
+ssh -i /tmp/ephemeral -o CertificateFile=/tmp/ephemeral-cert.pub \
+  -p 2023 rhel@192.168.1.11
+
+# Clean up
+rm -f /tmp/ephemeral /tmp/ephemeral.pub /tmp/ephemeral-cert.pub
 ```
 
 ---
@@ -205,7 +221,7 @@ membership in IdM determines what each user can do.
 - [ ] Gitea project synced successfully
 - [ ] Verify ZTA Services — all services healthy
 - [ ] Vault Integration — dynamic DB credentials generated and revoked
-- [ ] Vault SSH OTP — single-use login works, reuse blocked
+- [ ] Vault SSH Certificates — signed cert login works, certificate details visible
 - [ ] OPA Policy — correct allow/deny for each scenario
 
 ---

@@ -22,7 +22,7 @@ and Arista cEOS network infrastructure.
      │  .lab  │ │ .lab  │ │.lab  │ │      │  Host services: IdM, OPA, Keycloak, │
      │        │ │       │ │      │ │      │                 SPIRE Server         │
      │Secrets │ │ CMDB  │ │ Git  │ │      │                                     │
-     │SSH OTP │ │       │ │Server│ │      │  Containers:                        │
+     │SSH CA  │ │       │ │Server│ │      │  Containers:                        │
      └────────┘ └───────┘ └──────┘ │      │  ┌────────┐ ┌────────┐ ┌────────┐  │
           │          │         │   │      │  │Splunk  │ │ Wazuh  │ │Keycloak│  │
           └──────────┴─────────┴───┘      │  │ :8000  │ │:5601   │ │ :8543  │  │
@@ -55,7 +55,7 @@ and Arista cEOS network infrastructure.
 | **Keycloak** | SSO / OIDC (future use) | central.zta.lab |
 | **SPIRE Server** | Trust root for SPIFFE workload identity | central.zta.lab |
 | **SPIRE Agents** | Workload attestation, SVID issuance | control, db, vault |
-| **HashiCorp Vault** | Secrets management, dynamic DB creds, SSH OTP | vault.zta.lab (own VM) |
+| **HashiCorp Vault** | Secrets management, dynamic DB creds, SSH CA | vault.zta.lab (own VM) |
 | **Netbox** | CMDB / source of truth for infrastructure | netbox.zta.lab (own VM) |
 | **Gitea** | Git server for GitOps workflows | gitea.zta.lab |
 | **Splunk** | Log aggregation, security analytics | central.zta.lab (container) |
@@ -84,7 +84,7 @@ containers via published ports on central's management IP.
 ### Section 1 — Configure ZTA Components & AAP Integration
 
 Configure AAP and connect it to the Zero Trust infrastructure: IdM for
-identity, Vault for secrets (including SSH one-time passwords), OPA for
+identity, Vault for secrets (including SSH signed certificates), OPA for
 policy decisions, Netbox as a CMDB, and Gitea for source control. Verify
 all services are healthy.
 
@@ -162,7 +162,7 @@ ansible-playbook setup/configure-dns.yml
 ansible-playbook setup/enroll-idm-clients.yml
 ansible-playbook setup/configure-idm-users.yml
 
-# Secrets & SSH OTP
+# Secrets & SSH Certificates
 ansible-playbook setup/configure-vault.yml
 ansible-playbook setup/configure-vault-ssh.yml
 
@@ -211,8 +211,8 @@ section5/README.md   — Automated Incident Response (EDA)
 |-----------|-------|
 | **Never trust, always verify** | Every AAP job checks OPA policy before execution |
 | **Least privilege** | Vault issues DB credentials with minimum grants |
-| **Short-lived credentials** | Dynamic DB users expire; SSH OTPs are single-use |
-| **No standing access** | `vault-ssh` user has no password — only Vault OTPs |
+| **Short-lived credentials** | Dynamic DB users expire; SSH certificates are time-bound |
+| **No standing access** | SSH requires a Vault-signed certificate — no static keys |
 | **Deny by default** | OPA blocks all actions unless explicitly allowed |
 | **Identity-driven access** | IdM groups control who can run which operations |
 | **Workload identity** | SPIFFE/SPIRE proves the automation platform is legitimate |

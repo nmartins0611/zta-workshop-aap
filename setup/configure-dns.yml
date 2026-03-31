@@ -26,8 +26,6 @@
       - hostname: aap
         ip: "{{ hostvars['control']['ansible_host'] }}"
       # ── Services on central (containers) ──
-      - hostname: gitea
-        ip: "{{ central_ip }}"
       - hostname: keycloak
         ip: "{{ central_ip }}"
       - hostname: opa
@@ -44,6 +42,21 @@
         ip: "{{ central_ip }}"
 
   tasks:
+    - name: Remove stale gitea DNS record
+      redhat.rhel_idm.ipadnsrecord:
+        ipaadmin_password: "{{ idm_admin_password }}"
+        zone_name: "{{ idm_domain }}"
+        name: gitea
+        record_type: A
+        record_value: "{{ central_ip }}"
+        state: absent
+
+    - name: Set IdM global DNS forwarder for internet resolution
+      command: ipa dnsconfig-mod --forwarder=172.30.0.10
+      register: dns_fwd
+      changed_when: "'Modified' in dns_fwd.stdout"
+      failed_when: dns_fwd.rc != 0 and 'no modifications' not in dns_fwd.stderr
+
     - name: Add DNS A records for workshop VMs
       redhat.rhel_idm.ipadnsrecord:
         ipaadmin_password: "{{ idm_admin_password }}"

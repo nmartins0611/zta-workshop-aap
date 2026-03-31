@@ -224,12 +224,13 @@ vault_db_role_name: ztaapp-short-lived
 vault_db_max_ttl: 1h
 vault_db_default_ttl: 5m
 
-# ── Vault SSH OTP (Short-Lived Machine Credentials) ───────────────
+# ── Vault SSH Signed Certificates (Short-Lived Machine Credentials) ──
 vault_ssh_secrets_path: ssh
-vault_ssh_role_name: rhel-otp
-vault_ssh_user: vault-ssh
-vault_ssh_helper_version: "0.2.1"
-vault_ssh_helper_url: "https://releases.hashicorp.com/vault-ssh-helper/{{ vault_ssh_helper_version }}/vault-ssh-helper_{{ vault_ssh_helper_version }}_linux_amd64.zip"
+vault_ssh_role_name: ssh-signer
+vault_ssh_ca_pubkey_path: /etc/ssh/trusted-user-ca-keys.pub
+vault_ssh_ttl: 30m
+vault_ssh_max_ttl: 1h
+vault_ssh_allowed_users: "rhel,aap-service"
 
 # ── SPIFFE / SPIRE (Workload Identity) ─────────────────────────────
 spire_version: "1.12.0"

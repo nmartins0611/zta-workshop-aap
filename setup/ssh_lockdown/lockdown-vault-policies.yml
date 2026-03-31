@@ -3,7 +3,7 @@
 #
 # Ensure only AAP (via AppRole) can generate secrets.  Humans logged in
 # via userpass can browse policies and view health but CANNOT request
-# dynamic credentials (SSH OTP, DB creds).
+# dynamic credentials (SSH signed certs, DB creds).
 #
 # This playbook:
 #   1. Enables the AppRole auth backend
@@ -59,10 +59,16 @@
           path "{{ vault_db_secrets_path }}/creds/*" {
             capabilities = ["read"]
           }
-          path "{{ vault_ssh_secrets_path }}/creds/*" {
+          path "{{ vault_ssh_secrets_path }}/sign/*" {
+            capabilities = ["create", "update"]
+          }
+          path "{{ vault_ssh_secrets_path }}/issue/*" {
             capabilities = ["create", "update"]
           }
           path "{{ vault_ssh_secrets_path }}/roles/*" {
+            capabilities = ["read"]
+          }
+          path "{{ vault_ssh_secrets_path }}/config/ca" {
             capabilities = ["read"]
           }
           path "{{ vault_kv_secrets_path }}/data/*" {
@@ -85,8 +91,11 @@
         dest: /tmp/vault-policy-human-readonly.hcl
         content: |
           # Human operators — can inspect but NOT generate secrets
-          # SSH OTPs: DENIED
-          path "{{ vault_ssh_secrets_path }}/creds/*" {
+          # SSH certificate signing: DENIED
+          path "{{ vault_ssh_secrets_path }}/sign/*" {
+            capabilities = ["deny"]
+          }
+          path "{{ vault_ssh_secrets_path }}/issue/*" {
             capabilities = ["deny"]
           }
 
@@ -212,7 +221,7 @@
           ║  Human (admin/userpass):                                      ║
           ║    Policy:     human-readonly                                 ║
           ║    Can do:     View roles, configs, policies, KV secrets      ║
-          ║    CANNOT do:  Generate SSH OTPs or DB credentials            ║
+          ║    CANNOT do:  Sign SSH certs or generate DB credentials       ║
           ║                                                              ║
           ║  ┌────────────────────────────────────────────────────────┐   ║
           ║  │  IMPORTANT: Configure AAP with these AppRole creds:   │   ║

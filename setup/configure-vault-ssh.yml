@@ -1,160 +1,101 @@
 ---
-# Pre-workshop setup: Prepare RHEL hosts to accept Vault SSH OTP credentials
+# Pre-workshop setup: Configure RHEL hosts to trust Vault SSH signed certificates
 #
 # This playbook:
-#   1. Creates a dedicated 'vault-ssh' local user on each RHEL host
-#   2. Installs the vault-ssh-helper binary
-#   3. Configures PAM and sshd so that the vault-ssh user authenticates
-#      via Vault OTP instead of a static password
+#   1. Fetches the Vault SSH CA public key
+#   2. Distributes it to each RHEL host as a TrustedUserCAKeys file
+#   3. Configures sshd to accept Vault-signed certificates
 #
-# After this playbook runs, anyone with an SSH OTP from Vault can:
-#   vault write ssh/creds/rhel-otp ip=<target_ip>
-#   ssh vault-ssh@<target> # enter the OTP as the password
+# After this playbook runs, AAP (or any client with a Vault-signed cert) can:
+#   vault write -field=signed_key ssh/sign/ssh-signer public_key=@~/.ssh/id_rsa.pub
+#   ssh -i ~/.ssh/id_rsa -o CertificateFile=signed-cert.pub rhel@<target>
 #
-# The OTP is single-use and expires immediately after login or after 30s.
+# The certificate is time-bound (default 30m) and scoped to specific principals.
+# No agent or binary is required on the target hosts — only native OpenSSH.
 
-- name: Configure RHEL Hosts for Vault SSH OTP
+- name: Configure RHEL Hosts to Trust Vault SSH CA
   hosts: idm_clients
   become: true
   gather_facts: true
 
   pre_tasks:
-    - name: Check if vault-ssh-helper already on controller
-      stat:
-        path: /tmp/vault-ssh-helper.zip
+    - name: Authenticate to Vault
+      uri:
+        url: "{{ vault_addr }}/v1/auth/userpass/login/{{ vault_username | default('admin') }}"
+        method: POST
+        body_format: json
+        body:
+          password: "{{ vault_password | default(idm_admin_password) }}"
+        validate_certs: false
+        status_code: 200
+      register: vault_login
       delegate_to: localhost
       run_once: true
-      register: helper_zip
 
-    - name: Download vault-ssh-helper to controller
-      get_url:
-        url: "{{ vault_ssh_helper_url }}"
-        dest: /tmp/vault-ssh-helper.zip
-        mode: '0644'
-      delegate_to: localhost
-      run_once: true
-      when: not helper_zip.stat.exists
-
-    - name: Extract vault-ssh-helper binary on controller
-      command: unzip -o -d /tmp/vault-ssh-helper-bin /tmp/vault-ssh-helper.zip
-      args:
-        creates: /tmp/vault-ssh-helper-bin/vault-ssh-helper
+    - name: Fetch Vault SSH CA public key
+      uri:
+        url: "{{ vault_addr }}/v1/{{ vault_ssh_secrets_path }}/public_key"
+        method: GET
+        return_content: true
+        validate_certs: false
+        status_code: 200
+      register: vault_ca_pubkey
       delegate_to: localhost
       run_once: true
 
   tasks:
-    # ── 1. Create the dedicated SSH OTP user ──
-    - name: Create vault-ssh local user
-      user:
-        name: "{{ vault_ssh_user }}"
-        comment: "Vault SSH OTP — short-lived access"
-        shell: /bin/bash
-        create_home: true
-        state: present
-
-    - name: Grant vault-ssh limited sudo for workshop demos
+    # ── 1. Distribute the Vault CA public key ──
+    - name: Write Vault SSH CA public key to trusted CA file
       copy:
-        dest: "/etc/sudoers.d/{{ vault_ssh_user }}"
-        content: |
-          {{ vault_ssh_user }} ALL=(ALL) NOPASSWD: /usr/bin/systemctl status *, /usr/bin/journalctl *, /usr/bin/ss, /usr/bin/ip addr
-        mode: '0440'
-        validate: "visudo -cf %s"
-
-    # ── 2. Install vault-ssh-helper ──
-    - name: Create vault-ssh-helper directory
-      file:
-        path: /usr/local/bin
-        state: directory
-        mode: '0755'
-
-    - name: Copy vault-ssh-helper binary from controller
-      copy:
-        src: /tmp/vault-ssh-helper-bin/vault-ssh-helper
-        dest: /usr/local/bin/vault-ssh-helper
-        mode: '0755'
-
-    - name: Verify vault-ssh-helper binary
-      command: /usr/local/bin/vault-ssh-helper -version
-      register: helper_version
-      changed_when: false
-
-    # ── 3. Configure vault-ssh-helper ──
-    - name: Create vault-ssh-helper config directory
-      file:
-        path: /etc/vault-ssh-helper.d
-        state: directory
-        mode: '0755'
-
-    - name: Write vault-ssh-helper configuration
-      copy:
-        dest: /etc/vault-ssh-helper.d/config.hcl
-        content: |
-          vault_addr = "{{ vault_addr }}"
-          ssh_mount_point = "{{ vault_ssh_secrets_path }}"
-          tls_skip_verify = {{ vault_skip_verify | lower }}
-          allowed_roles = "{{ vault_ssh_role_name }}"
+        dest: "{{ vault_ssh_ca_pubkey_path }}"
+        content: "{{ vault_ca_pubkey.content }}"
+        owner: root
+        group: root
         mode: '0644'
-
-    # ── 4. Configure PAM for OTP verification ──
-    # We use a Match block in sshd_config so that ONLY the vault-ssh
-    # user goes through Vault OTP. All other users keep their normal auth.
-    - name: Deploy Vault PAM module (standalone for reference/testing)
-      copy:
-        dest: /etc/pam.d/vault-ssh
-        content: |
-          #%PAM-1.0
-          auth       requisite  pam_exec.so quiet expose_authtok log=/var/log/vault-ssh.log /usr/local/bin/vault-ssh-helper -config=/etc/vault-ssh-helper.d/config.hcl
-          auth       optional   pam_unix.so not_set_pass use_first_pass nodelay
-          account    required   pam_unix.so
-          session    required   pam_limits.so
-        mode: '0644'
-
-    # ── 5. Configure sshd Match block for vault-ssh user ──
-    # NOTE: PAMServiceName is NOT used inside the Match block because many
-    # OpenSSH versions on RHEL 9 do not support it there and sshd will
-    # crash on restart, locking out all SSH access.
-    # Instead we use AuthorizedKeysCommand with vault-ssh-helper for OTP
-    # and keep the PAM module as a fallback via the global PAM config.
-    - name: Validate sshd config before making changes
-      command: sshd -t
-      changed_when: false
-
-    - name: Enable keyboard-interactive auth and Match block for vault-ssh
-      blockinfile:
-        path: /etc/ssh/sshd_config
-        block: |
-          # Vault SSH OTP — short-lived credentials for the vault-ssh user
-          Match User {{ vault_ssh_user }}
-              AuthenticationMethods keyboard-interactive
-              PasswordAuthentication yes
-              KbdInteractiveAuthentication yes
-        marker: "# {mark} VAULT SSH OTP"
       notify: Validate and restart sshd
 
-    - name: Ensure KbdInteractiveAuthentication is globally enabled
+    # ── 2. Configure sshd to trust certificates signed by Vault ──
+    - name: Configure TrustedUserCAKeys in sshd
       lineinfile:
         path: /etc/ssh/sshd_config
-        regexp: "^#?KbdInteractiveAuthentication"
-        line: "KbdInteractiveAuthentication yes"
-        insertbefore: "^# VAULT SSH OTP"
+        regexp: "^#?TrustedUserCAKeys"
+        line: "TrustedUserCAKeys {{ vault_ssh_ca_pubkey_path }}"
       notify: Validate and restart sshd
 
-    - name: Point PAM sshd at vault-ssh-helper for keyboard-interactive
+    # ── 3. Configure AuthorizedPrincipalsFile for fine-grained access ──
+    - name: Create principals directory
+      file:
+        path: /etc/ssh/auth_principals
+        state: directory
+        owner: root
+        group: root
+        mode: '0755'
+
+    - name: Write authorized principals for rhel user
+      copy:
+        dest: /etc/ssh/auth_principals/rhel
+        content: |
+          rhel
+          aap-service
+        owner: root
+        group: root
+        mode: '0644'
+      notify: Validate and restart sshd
+
+    - name: Configure AuthorizedPrincipalsFile in sshd
       lineinfile:
-        path: /etc/pam.d/sshd
-        line: "auth       sufficient pam_exec.so quiet expose_authtok log=/var/log/vault-ssh.log /usr/local/bin/vault-ssh-helper -config=/etc/vault-ssh-helper.d/config.hcl"
-        insertafter: "^#%PAM"
-        state: present
+        path: /etc/ssh/sshd_config
+        regexp: "^#?AuthorizedPrincipalsFile"
+        line: "AuthorizedPrincipalsFile /etc/ssh/auth_principals/%u"
       notify: Validate and restart sshd
 
-    # ── 6. Verification ──
+    # ── 4. Verification ──
     - name: Display per-host summary
       debug:
         msg: >-
           {{ inventory_hostname }}:
-          vault-ssh user created,
-          vault-ssh-helper {{ helper_version.stdout | default('installed') }},
-          PAM + sshd configured for OTP auth
+          Vault SSH CA trusted ({{ vault_ssh_ca_pubkey_path }}),
+          sshd configured for certificate authentication
 
   handlers:
     - name: Validate and restart sshd
@@ -174,8 +115,3 @@
               WARNING: sshd -t failed on {{ inventory_hostname }}.
               Sshd was NOT restarted to prevent SSH lockout.
               Fix /etc/ssh/sshd_config manually before restarting.
-
-    - name: Restart sshd
-      systemd:
-        name: sshd
-        state: restarted

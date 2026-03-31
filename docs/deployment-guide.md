@@ -245,7 +245,7 @@ Then configure Vault:
 # Configure KV, database secrets engine, policies
 ansible-playbook setup/configure-vault.yml
 
-# Configure Vault SSH OTP on RHEL hosts
+# Configure Vault SSH CA trust on RHEL hosts
 ansible-playbook setup/configure-vault-ssh.yml
 ```
 
@@ -255,7 +255,7 @@ export VAULT_TOKEN="<root-token-from-output>"
 ```
 
 Creates Vault KV secrets (Arista creds, DB admin, IdM admin), database
-secrets engine with a `ztaapp-short-lived` role (5-min TTL), SSH OTP role,
+secrets engine with a `ztaapp-short-lived` role (5-min TTL), SSH CA signing role,
 and policies for `app-deployer`, `network-admin`, `patch-admin`, `ssh-access`.
 
 #### Layer 3 — Network Fabric and Compute (~5 min)
@@ -497,8 +497,9 @@ setup), pre-create these in the AAP UI:
 
 | Name | Type | Details |
 |------|------|---------|
-| ZTA Machine Credential | Machine | User: `rhel`, sudo enabled |
+| ZTA Machine Credential | Machine | User: `rhel`, sudo enabled, linked to Vault SSH cert |
 | ZTA Vault Credential | HashiCorp Vault | URL: `http://vault.zta.lab:8200`, userpass: `admin`/`ansible123!` |
+| ZTA Vault SSH Credential | HashiCorp Vault Signed SSH | URL: `http://vault.zta.lab:8200`, AppRole auth |
 | ZTA Arista Credential | Network | User: `admin`, Pass: `admin` |
 | ZTA Gitea Credential | Source Control | Gitea user + password |
 
@@ -535,7 +536,7 @@ Run through this checklist the day of the workshop:
 - [ ] Workshop IdM users and groups exist (`ipa user-find --sizelimit=0`)
 - [ ] Vault unsealed and healthy (`vault status`)
 - [ ] Vault engines configured (`vault secrets list`)
-- [ ] `vault-ssh` user exists on RHEL hosts with OTP auth
+- [ ] RHEL hosts trust Vault SSH CA (`TrustedUserCAKeys` configured)
 - [ ] Arista cEOS switches respond (`ssh -p 2001 admin@central.zta.lab`)
 - [ ] DB and App containers running (`podman ps` on central)
 - [ ] PostgreSQL accepting connections
@@ -619,7 +620,7 @@ Total time: ~50 minutes (mostly automated).
 | `configure-idm-users.yml` | 1 | identity, idm | Create users and groups |
 | `deploy-vault.yml` | 2 | secrets, vault | Deploy Vault container (if needed) |
 | `configure-vault.yml` | 2 | secrets, vault | Configure Vault engines and policies |
-| `configure-vault-ssh.yml` | 2 | secrets, vault | Configure SSH OTP on hosts |
+| `configure-vault-ssh.yml` | 2 | secrets, vault | Configure SSH CA trust on hosts |
 | `deploy-arista.yml` | 3 | network, arista | Deploy cEOS switch fabric |
 | `deploy-rhel-containers.yml` | 3 | network, containers | Deploy DB/App RHEL containers |
 | `deploy-db-app.yml` | 4 | app, database | Deploy PostgreSQL and Flask app |
@@ -659,7 +660,7 @@ Total time: ~50 minutes (mostly automated).
 |---------|----------|---------|
 | 1 | `verify-zta-services.yml` | Health checks |
 | 1 | `test-vault-integration.yml` | Dynamic DB creds |
-| 1 | `test-vault-ssh.yml` | SSH OTP lifecycle |
+| 1 | `test-vault-ssh.yml` | SSH certificate lifecycle |
 | 1 | `test-opa-policy.yml` | Policy allow/deny |
 | 2 | `check-db-policy.yml` | OPA db_access gate |
 | 2 | `create-db-credential.yml` | Vault dynamic creds |

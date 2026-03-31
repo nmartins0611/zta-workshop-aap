@@ -13,7 +13,7 @@
 #
 # Tag reference:
 #   identity  — DNS, IdM client enrollment, IdM users, AAP LDAP
-#   secrets   — Vault configuration, Vault SSH OTP
+#   secrets   — Vault configuration, Vault SSH CA trust
 #   network   — Arista cEOS switch fabric, RHEL containers (DB + App)
 #   app       — PostgreSQL database, Flask application
 #   cmdb      — Netbox deploy + seed data
@@ -49,7 +49,7 @@
   ansible.builtin.import_playbook: configure-vault.yml
   tags: [secrets, vault]
 
-- name: "Layer 2b: Configure Vault SSH OTP on RHEL hosts"
+- name: "Layer 2b: Configure Vault SSH CA Trust on RHEL Hosts"
   ansible.builtin.import_playbook: configure-vault-ssh.yml
   tags: [secrets, vault]
 

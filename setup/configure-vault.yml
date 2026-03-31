@@ -91,7 +91,7 @@
         max_ttl="{{ vault_db_max_ttl }}"
       environment: "{{ vault_env }}"
 
-    # ── SSH Secrets Engine (One-Time Passwords for RHEL access) ──
+    # ── SSH Secrets Engine (Signed Certificates for RHEL access) ──
     - name: Enable SSH secrets engine
       command: "vault secrets enable -path={{ vault_ssh_secrets_path }} ssh"
       environment: "{{ vault_env }}"
@@ -99,13 +99,30 @@
       changed_when: ssh_enable.rc == 0
       failed_when: ssh_enable.rc != 0 and 'already in use' not in ssh_enable.stderr
 
-    - name: Create SSH OTP role for RHEL machines
+    - name: Configure Vault as SSH Certificate Authority
+      command: "vault write {{ vault_ssh_secrets_path }}/config/ca generate_signing_key=true"
+      environment: "{{ vault_env }}"
+      register: ssh_ca_config
+      changed_when: ssh_ca_config.rc == 0
+      failed_when: ssh_ca_config.rc != 0 and 'already configured' not in ssh_ca_config.stderr
+
+    - name: Create SSH certificate signing role
       command: >
         vault write {{ vault_ssh_secrets_path }}/roles/{{ vault_ssh_role_name }}
-        key_type=otp
-        default_user={{ vault_ssh_user }}
-        cidr_list=192.168.1.0/24,10.0.0.0/8
+        key_type=ca
+        algorithm_signer=rsa-sha2-256
+        allow_user_certificates=true
+        allowed_users="{{ vault_ssh_allowed_users }}"
+        default_user=rhel
+        ttl={{ vault_ssh_ttl }}
+        max_ttl={{ vault_ssh_max_ttl }}
       environment: "{{ vault_env }}"
+
+    - name: Fetch SSH CA public key
+      command: "vault read -field=public_key {{ vault_ssh_secrets_path }}/config/ca"
+      environment: "{{ vault_env }}"
+      register: ssh_ca_pubkey
+      changed_when: false
 
     # ── Vault Policies ──
     - name: Write app-deployer policy
@@ -142,10 +159,19 @@
       copy:
         dest: /tmp/vault-policy-ssh-access.hcl
         content: |
-          path "{{ vault_ssh_secrets_path }}/creds/{{ vault_ssh_role_name }}" {
+          path "{{ vault_ssh_secrets_path }}/sign/{{ vault_ssh_role_name }}" {
+            capabilities = ["create", "update"]
+          }
+          path "{{ vault_ssh_secrets_path }}/issue/{{ vault_ssh_role_name }}" {
             capabilities = ["create", "update"]
           }
           path "{{ vault_ssh_secrets_path }}/roles/{{ vault_ssh_role_name }}" {
+            capabilities = ["read"]
+          }
+          path "{{ vault_ssh_secrets_path }}/config/ca" {
+            capabilities = ["read"]
+          }
+          path "{{ vault_ssh_secrets_path }}/public_key" {
             capabilities = ["read"]
           }
         mode: '0644'
@@ -187,14 +213,15 @@
             - Role: {{ vault_db_role_name }}
             - TTL:  {{ vault_db_default_ttl }} (max {{ vault_db_max_ttl }})
 
-          SSH OTP Engine:
+          SSH Certificate Authority:
             - Path: {{ vault_ssh_secrets_path }}
             - Role: {{ vault_ssh_role_name }}
-            - User: {{ vault_ssh_user }}
+            - TTL:  {{ vault_ssh_ttl }} (max {{ vault_ssh_max_ttl }})
+            - Users: {{ vault_ssh_allowed_users }}
 
           Policies:
             - app-deployer  (DB creds read)
             - network-admin (network creds read)
             - patch-admin   (IdM creds read)
-            - ssh-access    (SSH OTP generate)
+            - ssh-access    (SSH cert signing)
           ═══════════════════════════════════════════

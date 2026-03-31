@@ -135,7 +135,7 @@ ansible-playbook section5/playbooks/simulate-bruteforce.yml
 **What happens:**
 
 1. The playbook sends 10 rapid failed SSH login attempts to `app.zta.lab`
-2. Each attempt uses the `vault-ssh` user with an incorrect password
+2. Each attempt uses the `rhel` user with an incorrect password
 3. The failed logins are recorded in `/var/log/secure` on the app server
 4. The Wazuh agent detects the pattern and sends it to the Wazuh manager
 5. Wazuh fires **rule 5712** (SSH brute force detected)
@@ -380,7 +380,7 @@ From a different host (e.g., central), manually trigger failed SSH attempts:
 ```bash
 ssh rhel@central.zta.lab
 for i in $(seq 1 10); do
-  sshpass -p 'wrongpassword' ssh -o StrictHostKeyChecking=no vault-ssh@app.zta.lab 2>/dev/null
+  sshpass -p 'wrongpassword' ssh -o StrictHostKeyChecking=no rhel@app.zta.lab 2>/dev/null
 done
 ```
 

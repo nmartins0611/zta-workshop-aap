@@ -82,7 +82,7 @@ executing.
 | **Identity Provider** | IdM (FreeIPA) | Authenticates users, manages group memberships |
 | **Identity Broker** | Keycloak | OIDC/SSO federation (future use) |
 | **Workload Identity** | SPIFFE/SPIRE | Cryptographic workload attestation |
-| **Secrets Manager** | HashiCorp Vault | Dynamic credentials, SSH OTP, secrets storage |
+| **Secrets Manager** | HashiCorp Vault | Dynamic credentials, SSH certificates, secrets storage |
 | **CMDB / Source of Truth** | Netbox | Infrastructure state, device inventory, maintenance status |
 | **Source Control** | Gitea | GitOps trigger, automation code repository |
 | **SIEM** | Wazuh | Security event monitoring, brute-force detection |
@@ -189,7 +189,7 @@ ansible-playbook setup/configure-dns.yml
 ansible-playbook setup/enroll-idm-clients.yml
 ansible-playbook setup/configure-idm-users.yml
 
-# Secrets & SSH OTP
+# Secrets & SSH Certificates
 ansible-playbook setup/configure-vault.yml
 ansible-playbook setup/configure-vault-ssh.yml
 
@@ -212,8 +212,8 @@ ansible-playbook setup/configure-wazuh-eda.yml
 - [ ] IdM, Keycloak, OPA running on central.zta.lab
 - [ ] DNS records for all workshop VMs
 - [ ] Workshop IdM users and groups created
-- [ ] Vault configured (KV, database engine, SSH OTP engine)
-- [ ] `vault-ssh` user deployed to RHEL hosts with vault-ssh-helper
+- [ ] Vault configured (KV, database engine, SSH CA engine)
+- [ ] RHEL hosts trust Vault SSH CA (`TrustedUserCAKeys` configured)
 - [ ] PostgreSQL and Global Telemetry Platform deployed
 - [ ] OPA policies loaded (patching, network, db_access, aap_gateway)
 - [ ] AAP Policy as Code configured (OPA gateway)
@@ -279,9 +279,16 @@ Log into AAP Controller at `https://aap.zta.lab` and create:
 | Credential | Type | Key Details |
 |------------|------|-------------|
 | ZTA Machine Credential | Machine | Username: `rhel`, sudo |
-| ZTA Vault Credential | HashiCorp Vault | URL: `http://vault.zta.lab:8200`, admin / ansible123! |
+| ZTA Vault Credential | HashiCorp Vault Secret Lookup | URL: `http://vault.zta.lab:8200`, admin / ansible123! |
+| ZTA Vault SSH Credential | HashiCorp Vault Signed SSH | URL: `http://vault.zta.lab:8200`, AppRole (Role ID + Secret ID from instructor) |
 | ZTA Arista Credential | Network | Username: `admin`, Password: `admin` |
 | ZTA Gitea Credential | Source Control | Gitea username + password |
+
+**Vault SSH Signed Certificate Flow:** When a job template runs, AAP
+authenticates to Vault via AppRole, sends its public key to Vault's SSH CA,
+receives a time-bound signed certificate, and uses it to SSH into target
+hosts. No static SSH keys are stored in AAP. The hosts only need to trust
+Vault's CA public key (configured during setup).
 
 > **ZTA Concept**: Each credential is scoped to a specific purpose — this is
 > least privilege applied to the automation platform itself.
@@ -310,7 +317,7 @@ Log into AAP Controller at `https://aap.zta.lab` and create:
 |----------|----------|
 | Verify ZTA Services | `section1/playbooks/verify-zta-services.yml` |
 | Test Vault Integration | `section1/playbooks/test-vault-integration.yml` |
-| Test Vault SSH OTP | `section1/playbooks/test-vault-ssh.yml` |
+| Test Vault SSH Certificates | `section1/playbooks/test-vault-ssh.yml` |
 | Test OPA Policy | `section1/playbooks/test-opa-policy.yml` |
 
 All use: `ZTA Lab Inventory` + `ZTA Machine Credential`
@@ -325,8 +332,9 @@ and the Arista cEOS switches are all healthy.
 **Test Vault Integration** — Watch Vault generate a dynamic PostgreSQL user
 with a 5-minute TTL. Run it twice — the usernames will be different.
 
-**Test Vault SSH OTP** — Watch Vault generate one-time passwords for SSH.
-The OTP works once and is then permanently consumed.
+**Test Vault SSH Certificates** — Watch Vault sign an ephemeral SSH certificate.
+The certificate is time-bound, scoped to specific principals, and requires
+no host-side agent or Vault connectivity at login time.
 
 **Test OPA Policy** — Five policy tests showing allow/deny based on group
 membership. OPA's deny-by-default means no rule = no access.
@@ -335,7 +343,7 @@ membership. OPA's deny-by-default means no rule = no access.
 
 ### Section 1 Checkpoint
 
-AAP is now the PEP with connections to IdM (identity), Vault (secrets + SSH OTP),
+AAP is now the PEP with connections to IdM (identity), Vault (secrets + SSH certs),
 OPA (policy), Netbox (CMDB), and Gitea (source control).
 
 ---
@@ -841,8 +849,8 @@ Each exercise follows a **break → diagnose → fix → verify** cycle.
 | **Never trust, always verify** | Every job checks OPA before executing (all sections) |
 | **Deny by default** | `neteng` denied deployment (S2), patching (S3), VLAN (S4) |
 | **Least privilege** | Vault DB credentials grant only SELECT/INSERT/UPDATE (S2) |
-| **Short-lived credentials** | 5-minute TTL, SSH OTP single-use (S1, S2) |
-| **No standing access** | `vault-ssh` user has no password (S1) |
+| **Short-lived credentials** | 5-minute DB TTL, 30-minute SSH certificates (S1, S2) |
+| **No standing access** | SSH requires a Vault-signed certificate — no static keys (S1) |
 | **Platform enforcement** | AAP Policy as Code blocks unauthorised launches (S3) |
 | **Workload identity** | SPIFFE/SPIRE proves the automation platform is legitimate (S4) |
 | **Defence in depth** | Two OPA rings — platform gate + runtime check (S4); SSH lockdown layers (S6) |

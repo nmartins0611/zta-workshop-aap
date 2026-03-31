@@ -13,9 +13,9 @@
 #        - breakglass    → all managed hosts (SSH + sudo)
 #        - zta-admins    → central only (for IdM management)
 #
-# NOTE: Local users (rhel, vault-ssh) are NOT subject to HBAC because they
-# bypass SSSD.  The 'rhel' local user remains available from central as a
-# fallback — controlled by the firewall layer instead.
+# NOTE: The local 'rhel' user is NOT subject to HBAC because it bypasses
+# SSSD.  It remains available from central as a fallback — controlled by
+# the firewall layer instead.
 
 - name: "SSH Lockdown | Layer 2 — IdM HBAC: Restrict Login Access"
   hosts: zta_services
@@ -162,7 +162,7 @@
           ║    ✗ neteng, appdev, etc. CANNOT SSH directly                ║
           ║    ✗ Any unlisted IdM user is DENIED at login                ║
           ║                                                              ║
-          ║  NOTE: Local users (rhel, vault-ssh) bypass HBAC as they    ║
-          ║        authenticate via PAM, not SSSD. They are controlled   ║
+          ║  NOTE: The local 'rhel' user bypasses HBAC as it             ║
+          ║        authenticates via PAM, not SSSD. It is controlled     ║
           ║        by the firewall layer (Layer 1) instead.              ║
           ╚════════════════════════════════════════════════════════════════╝

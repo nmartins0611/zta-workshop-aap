@@ -187,8 +187,9 @@ ansible-playbook -i inventory/hosts.ini setup/ssh_lockdown/lockdown-vault-polici
 export VAULT_ADDR=http://vault.zta.lab:8200
 vault login -method=userpass username=admin password=ansible123!
 
-# Try to generate an SSH OTP (should FAIL)
-vault write ssh/creds/rhel-otp ip=192.168.1.14
+# Try to sign an SSH certificate (should FAIL)
+ssh-keygen -t rsa -b 2048 -f /tmp/test-key -N '' -q
+vault write ssh/sign/ssh-signer public_key=@/tmp/test-key.pub
 # Expected: Error — permission denied
 
 # Try to read a KV secret (should SUCCEED — read-only is allowed)
@@ -196,9 +197,9 @@ vault kv get secret/network/arista
 # Expected: Success — human-readonly policy allows reads
 ```
 
-> **ZTA Lesson:** Humans can inspect and troubleshoot but cannot generate
-> dynamic credentials. Only AAP's AppRole can create SSH OTPs and database
-> credentials. This is machine-to-machine least privilege.
+> **ZTA Lesson:** Humans can inspect and troubleshoot but cannot sign SSH
+> certificates or generate DB credentials. Only AAP's AppRole can request
+> signed certificates. This is machine-to-machine least privilege.
 
 **Discuss:**
 - Why use AppRole instead of userpass for AAP?
@@ -241,7 +242,7 @@ With all four layers active, verify the complete defence chain:
 |------|------|----|----------|
 | SSH from workstation | workstation | ztauser | **Layer 1:** Connection refused |
 | SSH from central | central | neteng | **Layer 2:** HBAC denied |
-| Vault SSH OTP | central | admin (human) | **Layer 3:** Permission denied |
+| Vault SSH cert signing | central | admin (human) | **Layer 3:** Permission denied |
 | Launch AAP job | AAP UI | ztauser | **Success** (AAP is the only path) |
 
 ---
@@ -264,7 +265,7 @@ With all four layers active, verify the complete defence chain:
 - [ ] Breakage: AAP jobs fail after `break-hbac.yml` runs
 - [ ] Recovery: Participants fix HBAC via break-glass path
 - [ ] Recovery: AAP jobs succeed after `ipa hbacrule-add-user` fix
-- [ ] Layer 3: Human Vault login cannot generate SSH OTPs
+- [ ] Layer 3: Human Vault login cannot sign SSH certificates
 - [ ] Layer 3: Human Vault login CAN read KV secrets
 - [ ] Layer 4: Wazuh alerts fire on HBAC-denied SSH attempts
 - [ ] Full chain: AAP is the only working path to managed hosts

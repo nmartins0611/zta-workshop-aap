@@ -23,7 +23,7 @@ workshop demonstrates. These playbooks close that gap with four defence layers.
        │                                   └── LOGIN DENIED
        │                                       (neteng not in HBAC rule)
        │
-       ├──── vault write ssh/creds ─►  Layer 3: VAULT POLICY
+       ├──── vault write ssh/sign ──►  Layer 3: VAULT POLICY
        │     (as human/userpass)           │
        │                                   └── PERMISSION DENIED
        │                                       (human-readonly policy)
@@ -40,7 +40,7 @@ workshop demonstrates. These playbooks close that gap with four defence layers.
 |-------|---------|-------------|----------|
 | **1** | Firewall (`firewalld`) | Only allows SSH from AAP controller (192.168.1.10) and central (192.168.1.11) | `lockdown-firewall.yml` |
 | **2** | IdM HBAC | Only `aap-service` and `breakglass-admins` IdM users can log in via SSH | `lockdown-idm-hbac.yml` |
-| **3** | Vault Policy | Only AAP's AppRole can generate SSH OTPs and DB credentials; humans get read-only access | `lockdown-vault-policies.yml` |
+| **3** | Vault Policy | Only AAP's AppRole can sign SSH certificates and generate DB credentials; humans get read-only access | `lockdown-vault-policies.yml` |
 | **4** | Wazuh Rules | Detects SSH from non-AAP sources, HBAC denials, repeated recon — forwards to EDA | `lockdown-wazuh-bypass.yml` |
 
 ## Prerequisites
@@ -50,7 +50,7 @@ Run these **before** applying lockdown:
 1. All hosts enrolled as IdM clients (`setup/enroll-idm-clients.yml`)
 2. IdM users and groups created (`setup/configure-idm-users.yml`)
 3. Vault configured with secrets engines (`setup/configure-vault.yml`)
-4. Vault SSH OTP configured (`setup/configure-vault-ssh.yml`)
+4. Vault SSH CA trust configured (`setup/configure-vault-ssh.yml`)
 5. Wazuh → EDA integration active (`setup/configure-wazuh-eda.yml`)
 6. Console / out-of-band access available (in case of lockout)
 
@@ -117,7 +117,8 @@ ssh neteng@app.zta.lab
 
 # From Vault CLI as admin (should FAIL — Layer 3)
 vault login -method=userpass username=admin password=ansible123!
-vault write ssh/creds/rhel-otp ip=192.168.1.14
+ssh-keygen -t rsa -b 2048 -f /tmp/test-key -N '' -q
+vault write ssh/sign/ssh-signer public_key=@/tmp/test-key.pub
 # → Permission denied
 
 # From AAP (should SUCCEED — all layers pass)
@@ -161,7 +162,7 @@ sudo systemctl restart wazuh-manager
 
 ## Key Design Decisions
 
-**Why local users (rhel, vault-ssh) bypass HBAC:**
+**Why the local `rhel` user bypasses HBAC:**
 HBAC is enforced by SSSD, which only handles IdM-authenticated users.
 Local users authenticate via PAM directly. This is intentional — the `rhel`
 local user serves as the break-glass account, controlled by the firewall

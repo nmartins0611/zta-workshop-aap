@@ -153,7 +153,7 @@
         device_type: RHEL 9 Virtual Machine
         platform: RHEL 9
         tags: [secrets-manager, zero-trust]
-        description: "HashiCorp Vault — dynamic secrets, SSH OTP, credential management"
+        description: "HashiCorp Vault — dynamic secrets, SSH certificates, credential management"
         interfaces:
           - name: eth0
             type: virtual

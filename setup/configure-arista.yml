@@ -1,0 +1,77 @@
+---
+# configure-arista.yml — Push startup configs to already-running cEOS switches
+#
+# Use this instead of deploy-arista.yml when the switches are already running
+# and you just need to apply/update their configuration.
+#
+# What it does:
+#   1. Verifies all three cEOS containers are running
+#   2. Copies the startup-config files into each container
+#   3. Restarts the containers to apply cleanly
+#   4. Waits for SSH to come back up
+#
+# Prerequisites:
+#   - cEOS containers (ceos1, ceos2, ceos3) are already running on central
+#   - Switch config files exist in setup/switch-configs/
+#
+# Usage:
+#   ansible-playbook -i inventory/hosts.ini setup/configure-arista.yml
+
+- name: Apply Configuration to Running cEOS Switches
+  hosts: zta_services
+  become: true
+  gather_facts: false
+
+  vars:
+    config_dir: "{{ playbook_dir }}/switch-configs"
+    switches:
+      - { name: ceos1, config: sw01, ssh_port: 2001 }
+      - { name: ceos2, config: sw02, ssh_port: 2002 }
+      - { name: ceos3, config: sw03, ssh_port: 2003 }
+
+  tasks:
+
+    - name: Verify cEOS containers are running
+      command: podman inspect --format '{{ '{{' }}.State.Status{{ '}}' }}' {{ item.name }}
+      loop: "{{ switches }}"
+      loop_control:
+        label: "{{ item.name }}"
+      register: container_status
+      failed_when: "'running' not in container_status.stdout"
+
+    - name: Copy startup-config into containers
+      command: >
+        podman cp {{ config_dir }}/{{ item.config }}/{{ item.config }}
+        {{ item.name }}:/mnt/flash/startup-config
+      loop: "{{ switches }}"
+      loop_control:
+        label: "{{ item.name }}"
+
+    - name: Restart switches to apply new config
+      command: podman restart {{ item.name }}
+      loop: "{{ switches }}"
+      loop_control:
+        label: "{{ item.name }}"
+
+    - name: Wait for switches to boot (30s)
+      ansible.builtin.pause:
+        seconds: 30
+        prompt: "Waiting for EOS to reload with new config..."
+
+    - name: Verify SSH is reachable
+      ansible.builtin.wait_for:
+        host: localhost
+        port: "{{ item.ssh_port }}"
+        timeout: 90
+        delay: 5
+      loop: "{{ switches }}"
+      loop_control:
+        label: "{{ item.name }} (port {{ item.ssh_port }})"
+
+    - name: Display summary
+      debug:
+        msg: |
+          cEOS switch configs applied:
+            ceos1 (spine)     ← sw01  SSH: central.zta.lab:2001
+            ceos2 (leaf/data) ← sw02  SSH: central.zta.lab:2002
+            ceos3 (leaf/app)  ← sw03  SSH: central.zta.lab:2003

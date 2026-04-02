@@ -1,0 +1,131 @@
+---
+# Section 5 Solve: Automated Incident Response
+#
+# Auto-creates:
+#   - 3 job templates (Revoke, Simulate, Restore)
+#   - Verifies Wazuh agent and EDA webhook readiness
+#
+# Note: EDA rulebook activation must be configured manually or via the
+# EDA Controller API (not covered here as it varies by AAP version).
+#
+# Prerequisites: Sections 1-2 solve must be complete
+#
+# Usage:
+#   ansible-playbook -i inventory/hosts.ini setup/validation/solve-section5.yml
+
+- name: "Section 5 Solve | Templates"
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tags: [section5]
+
+  vars_files:
+    - validation_vars.yml
+
+  module_defaults:
+    group/ansible.controller.controller:
+      controller_host: "{{ aap_host }}"
+      controller_username: "{{ aap_user }}"
+      controller_password: "{{ aap_password }}"
+      validate_certs: "{{ aap_verify_ssl }}"
+
+  tasks:
+    - name: Verify AAP Controller is reachable
+      uri:
+        url: "{{ aap_host }}/api/controller/v2/ping/"
+        method: GET
+        validate_certs: "{{ aap_verify_ssl }}"
+        status_code: 200
+
+    # ── Job Templates ──────────────────────────────────────────────────
+
+    - name: Create Section 5 job templates
+      ansible.controller.job_template:
+        name: "{{ item.name }}"
+        description: "{{ item.description }}"
+        project: "{{ expected_project }}"
+        playbook: "{{ item.playbook }}"
+        inventory: "{{ expected_inventory }}"
+        credentials: [ZTA Machine Credential]
+        state: present
+      loop:
+        - name: "Emergency: Revoke App Credentials"
+          description: "Section 5 — Revoke Vault DB credentials and stop the application"
+          playbook: section5/playbooks/revoke-app-credentials.yml
+        - name: Simulate Brute Force
+          description: "Section 5 — Simulate SSH brute-force attack on app.zta.lab"
+          playbook: section5/playbooks/simulate-bruteforce.yml
+        - name: Restore App Credentials
+          description: "Section 5 — Issue fresh Vault DB credentials and restore the application"
+          playbook: section5/playbooks/restore-app-credentials.yml
+      loop_control:
+        label: "{{ item.name }}"
+      tags: [templates]
+
+- name: "Section 5 Solve | Verify Wazuh Agent"
+  hosts: zta_services
+  become: true
+  gather_facts: false
+  ignore_errors: true
+  tags: [section5, wazuh]
+
+  tasks:
+    - name: Verify Wazuh agent for app is registered
+      command: >
+        podman exec wazuh-manager
+        /var/ossec/bin/agent_control -l
+      register: s5_wazuh_agents
+      changed_when: false
+      failed_when: false
+
+    - name: Report Wazuh agent status
+      debug:
+        msg: >-
+          Wazuh agent for app: {{ 'REGISTERED' if 'app' in (s5_wazuh_agents.stdout | default('')) else 'NOT FOUND — run setup/configure-wazuh-eda.yml' }}
+
+- name: "Section 5 Solve | Verify EDA Readiness"
+  hosts: automation
+  become: false
+  gather_facts: false
+  ignore_errors: true
+  tags: [section5, eda]
+
+  tasks:
+    - name: Check EDA webhook port
+      ansible.builtin.wait_for:
+        host: localhost
+        port: 5000
+        timeout: 5
+      register: s5_eda_port
+      failed_when: false
+
+    - name: Report EDA status
+      debug:
+        msg: >-
+          EDA webhook (port 5000): {{ 'LISTENING' if (s5_eda_port.state | default('')) == 'started' else 'NOT LISTENING — configure EDA rulebook activation' }}
+
+- name: "Section 5 Solve | Summary"
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tags: [section5]
+
+  tasks:
+    - name: Display solve summary
+      debug:
+        msg: |
+          ╔══════════════════════════════════════════════════════════════════╗
+          ║  Section 5 Solve — Complete                                    ║
+          ╠══════════════════════════════════════════════════════════════════╣
+          ║                                                                ║
+          ║  Created:                                                      ║
+          ║    ✓ Template: Emergency: Revoke App Credentials               ║
+          ║    ✓ Template: Simulate Brute Force                            ║
+          ║    ✓ Template: Restore App Credentials                         ║
+          ║                                                                ║
+          ║  Manual steps (if not already done):                           ║
+          ║    - Configure EDA rulebook activation in EDA Controller       ║
+          ║    - Verify Wazuh → EDA webhook integration                    ║
+          ║                                                                ║
+          ║  Run check-section5.yml to verify.                             ║
+          ╚══════════════════════════════════════════════════════════════════╝

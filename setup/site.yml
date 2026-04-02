@@ -101,8 +101,8 @@
 #  Stand up all infrastructure — nothing is wired together yet
 # ═════════════════════════════════════════════════════════════════════
 
-- name: "Deploy 1: Arista cEOS switch fabric"
-  ansible.builtin.import_playbook: deploy-arista.yml
+- name: "Deploy 1: Apply Arista cEOS switch configs"
+  ansible.builtin.import_playbook: configure-arista.yml
   tags: [deploy, network, arista]
 
 - ansible.builtin.import_playbook: _reset-errors.yml

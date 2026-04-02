@@ -8,6 +8,11 @@
 #   Phase 4 — AAP Bootstrap (credentials, inventory — skip if students do Section 1)
 #   Phase 5 — Verify
 #
+# Error handling:
+#   Every step is followed by a host-error reset (_reset-errors.yml) so a
+#   failure in one playbook does NOT prevent subsequent playbooks from running.
+#   The final verify play will report what actually succeeded.
+#
 # Usage:
 #   ansible-playbook setup/site.yml                                # full deploy
 #   ansible-playbook setup/site.yml --tags deploy                  # only deploy infrastructure
@@ -80,9 +85,15 @@
   ansible.builtin.import_playbook: configure-dns.yml
   tags: [prereq, identity, dns]
 
+- ansible.builtin.import_playbook: _reset-errors.yml
+  tags: [always]
+
 - name: "Prereq 2: Enroll Linux hosts as IdM clients"
   ansible.builtin.import_playbook: enroll-idm-clients.yml
   tags: [prereq, identity, idm-enroll]
+
+- ansible.builtin.import_playbook: _reset-errors.yml
+  tags: [always]
 
 
 # ═════════════════════════════════════════════════════════════════════
@@ -94,37 +105,64 @@
   ansible.builtin.import_playbook: deploy-arista.yml
   tags: [deploy, network, arista]
 
+- ansible.builtin.import_playbook: _reset-errors.yml
+  tags: [always]
+
 - name: "Deploy 2: RHEL containers (DB + App)"
   ansible.builtin.import_playbook: deploy-rhel-containers.yml
   tags: [deploy, network, containers]
+
+- ansible.builtin.import_playbook: _reset-errors.yml
+  tags: [always]
 
 - name: "Deploy 3: PostgreSQL and Global Telemetry Platform"
   ansible.builtin.import_playbook: deploy-db-app.yml
   tags: [deploy, app, db-app]
 
+- ansible.builtin.import_playbook: _reset-errors.yml
+  tags: [always]
+
 - name: "Deploy 4: Netbox CMDB"
   ansible.builtin.import_playbook: deploy-netbox.yml
   tags: [deploy, cmdb, netbox-deploy]
+
+- ansible.builtin.import_playbook: _reset-errors.yml
+  tags: [always]
 
 - name: "Deploy 5: Splunk log aggregation"
   ansible.builtin.import_playbook: deploy-splunk.yml
   tags: [deploy, logging, splunk-deploy, security]
 
+- ansible.builtin.import_playbook: _reset-errors.yml
+  tags: [always]
+
 - name: "Deploy 6: Wazuh SIEM stack"
   ansible.builtin.import_playbook: deploy-wazuh.yml
   tags: [deploy, siem, wazuh, wazuh-server, security]
+
+- ansible.builtin.import_playbook: _reset-errors.yml
+  tags: [always]
 
 - name: "Deploy 7: Wazuh agents on managed hosts"
   ansible.builtin.import_playbook: deploy-wazuh-agents.yml
   tags: [deploy, siem, wazuh, wazuh-agents, security]
 
+- ansible.builtin.import_playbook: _reset-errors.yml
+  tags: [always]
+
 - name: "Deploy 8: SPIFFE/SPIRE server and agents"
   ansible.builtin.import_playbook: deploy-spire.yml
   tags: [deploy, spire, security]
 
+- ansible.builtin.import_playbook: _reset-errors.yml
+  tags: [always]
+
 - name: "Deploy 9: ZTA Live Topology Dashboard"
   ansible.builtin.import_playbook: deploy-dashboard.yml
   tags: [deploy, dashboard]
+
+- ansible.builtin.import_playbook: _reset-errors.yml
+  tags: [always]
 
 
 # ═════════════════════════════════════════════════════════════════════
@@ -136,49 +174,85 @@
   ansible.builtin.import_playbook: configure-idm-users.yml
   tags: [configure, identity, idm-users]
 
+- ansible.builtin.import_playbook: _reset-errors.yml
+  tags: [always]
+
 - name: "Configure 2: IdM CA-signed TLS certificates for services"
   ansible.builtin.import_playbook: configure-idm-certs.yml
   tags: [configure, identity, idm-certs]
+
+- ansible.builtin.import_playbook: _reset-errors.yml
+  tags: [always]
 
 - name: "Configure 3: HashiCorp Vault engines and policies"
   ansible.builtin.import_playbook: configure-vault.yml
   tags: [configure, secrets, vault-engines]
 
+- ansible.builtin.import_playbook: _reset-errors.yml
+  tags: [always]
+
 - name: "Configure 4: Vault SSH CA trust on all RHEL hosts"
   ansible.builtin.import_playbook: configure-vault-ssh.yml
   tags: [configure, secrets, vault-ssh]
+
+- ansible.builtin.import_playbook: _reset-errors.yml
+  tags: [always]
 
 - name: "Configure 5: Seed Netbox with workshop infrastructure"
   ansible.builtin.import_playbook: configure-netbox.yml
   tags: [configure, cmdb, netbox-seed]
 
+- ansible.builtin.import_playbook: _reset-errors.yml
+  tags: [always]
+
 - name: "Configure 6: OPA base policies"
   ansible.builtin.import_playbook: configure-opa-base.yml
   tags: [configure, policy, opa]
+
+- ansible.builtin.import_playbook: _reset-errors.yml
+  tags: [always]
 
 - name: "Configure 7: AAP Policy as Code gateway"
   ansible.builtin.import_playbook: configure-aap-policy.yml
   tags: [configure, policy, aap, aap-policy]
 
+- ansible.builtin.import_playbook: _reset-errors.yml
+  tags: [always]
+
 - name: "Configure 8: AAP LDAP authentication"
   ansible.builtin.import_playbook: configure-aap-ldap.yml
   tags: [configure, identity, aap, aap-ldap]
+
+- ansible.builtin.import_playbook: _reset-errors.yml
+  tags: [always]
 
 - name: "Configure 9: AAP NetBox CMDB integration"
   ansible.builtin.import_playbook: configure-aap-netbox.yml
   tags: [configure, cmdb, aap, aap-netbox]
 
+- ansible.builtin.import_playbook: _reset-errors.yml
+  tags: [always]
+
 - name: "Configure 10: Wazuh → EDA webhook integration"
   ansible.builtin.import_playbook: configure-wazuh-eda.yml
   tags: [configure, siem, aap-eda, security]
+
+- ansible.builtin.import_playbook: _reset-errors.yml
+  tags: [always]
 
 - name: "Configure 11: Splunk centralized log shipping"
   ansible.builtin.import_playbook: integrate-splunk.yml
   tags: [configure, logging, splunk-ship]
 
+- ansible.builtin.import_playbook: _reset-errors.yml
+  tags: [always]
+
 - name: "Configure 12: Keycloak realm, IdM LDAP federation, OIDC + JWT policies"
   ansible.builtin.import_playbook: configure-keycloak.yml
   tags: [configure, identity, keycloak]
+
+- ansible.builtin.import_playbook: _reset-errors.yml
+  tags: [always]
 
 
 # ═════════════════════════════════════════════════════════════════════
@@ -191,9 +265,15 @@
   ansible.builtin.import_playbook: configure-aap-credentials.yml
   tags: [aap-bootstrap, aap, aap-creds]
 
+- ansible.builtin.import_playbook: _reset-errors.yml
+  tags: [always]
+
 - name: "AAP Bootstrap 2: Create AAP static inventory"
   ansible.builtin.import_playbook: configure-aap-inventory.yml
   tags: [aap-bootstrap, aap, aap-inventory]
+
+- ansible.builtin.import_playbook: _reset-errors.yml
+  tags: [always]
 
 
 # ═════════════════════════════════════════════════════════════════════

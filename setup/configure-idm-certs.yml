@@ -75,6 +75,10 @@
       loop: "{{ idm_service_certs }}"
       loop_control:
         label: "HTTP/{{ item.hostname }}"
+      register: svc_create
+      failed_when:
+        - svc_create is failed
+        - "'already a member' not in (svc_create.msg | default(''))"
 
     - name: Grant central host permission to manage service certs
       redhat.rhel_idm.ipaservice:
@@ -88,6 +92,10 @@
       loop: "{{ idm_service_certs }}"
       loop_control:
         label: "HTTP/{{ item.hostname }}"
+      register: svc_member
+      failed_when:
+        - svc_member is failed
+        - "'already a member' not in (svc_member.msg | default(''))"
 
     - name: Clean up any stuck or rejected certificate requests
       shell: |

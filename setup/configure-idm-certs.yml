@@ -35,6 +35,61 @@
       changed_when: false
       failed_when: "'RUNNING' not in idm_status.stdout"
 
+    - name: Check RA agent certificate validity
+      shell: |
+        if [ -f /var/lib/ipa/ra-agent.pem ]; then
+          openssl x509 -in /var/lib/ipa/ra-agent.pem -noout -checkend 86400 2>/dev/null \
+            && echo "VALID" || echo "EXPIRED"
+        else
+          echo "MISSING"
+        fi
+      register: ra_agent_status
+      changed_when: false
+
+    - name: Display RA agent certificate status
+      debug:
+        msg: "RA agent certificate: {{ ra_agent_status.stdout }}"
+
+    - name: Renew IPA certificates (fixes RA agent auth issues)
+      command: ipa-certupdate
+      when: ra_agent_status.stdout != 'VALID'
+
+    - name: Restart IPA CA to pick up renewed certificates
+      shell: |
+        ipactl restart
+        sleep 10
+      when: ra_agent_status.stdout != 'VALID'
+
+    - name: Obtain Kerberos admin ticket
+      shell: echo '{{ idm_admin_password }}' | kinit admin
+      changed_when: false
+      no_log: true
+
+    - name: Verify CA can issue certificates
+      shell: |
+        ipa ca-show ipa 2>&1
+      register: ca_health
+      changed_when: false
+      failed_when: false
+
+    - name: Display CA health
+      debug:
+        msg: "{{ ca_health.stdout_lines | default(['CA check failed: ' + ca_health.stderr | default('unknown')]) }}"
+
+    - name: Force CA restart if CA check failed
+      shell: |
+        systemctl restart pki-tomcatd@pki-tomcat
+        sleep 15
+        ipactl restart
+        sleep 10
+      when: ca_health.rc != 0
+
+    - name: Re-obtain Kerberos ticket after restart
+      shell: echo '{{ idm_admin_password }}' | kinit admin
+      changed_when: false
+      no_log: true
+      when: ca_health.rc != 0 or ra_agent_status.stdout != 'VALID'
+
     - name: Create certificate directories
       file:
         path: "{{ item.cert_dir }}"
@@ -117,11 +172,6 @@
         label: "{{ item.hostname }}"
       register: cert_check
       changed_when: false
-
-    - name: Obtain Kerberos admin ticket
-      shell: echo '{{ idm_admin_password }}' | kinit admin
-      changed_when: false
-      no_log: true
 
     - name: Generate RSA private key
       command: >

@@ -1,146 +1,137 @@
 ---
 # site.yml — Deploy the entire ZTA Workshop lab in one run
 #
-# Orchestrates all setup playbooks in dependency order with tags
-# so individual layers can be targeted independently.
+# Structure:
+#   Phase 1 — Prerequisites (DNS + IdM enrollment — must resolve before anything)
+#   Phase 2 — Deploy (stand up all infrastructure)
+#   Phase 3 — Configure (wire services together on running infra)
+#   Phase 4 — Verify
 #
 # Usage:
 #   ansible-playbook setup/site.yml                    # deploy everything
+#   ansible-playbook setup/site.yml --tags deploy      # only deploy infrastructure
+#   ansible-playbook setup/site.yml --tags configure   # only configure services
 #   ansible-playbook setup/site.yml --tags network     # only Arista + RHEL containers
 #   ansible-playbook setup/site.yml --tags security    # Wazuh + Splunk + SPIRE
 #   ansible-playbook setup/site.yml --tags verify      # verification only
 #   ansible-playbook setup/site.yml --skip-tags verify # deploy without verify
 #
 # Tag reference:
-#   identity  — DNS, IdM client enrollment, IdM users, AAP LDAP
-#   secrets   — Vault configuration, Vault SSH CA trust
-#   network   — Arista cEOS switch fabric, RHEL containers (DB + App)
+#   prereq    — DNS, IdM client enrollment (must run first)
+#   deploy    — All infrastructure deployment tasks
+#   configure — All service configuration tasks
+#   identity  — DNS, IdM enrollment, IdM users, AAP LDAP
+#   secrets   — Vault engines, policies, SSH CA trust
+#   network   — Arista cEOS switch fabric, RHEL containers
 #   app       — PostgreSQL database, Flask application
 #   cmdb      — Netbox deploy + seed data
 #   logging   — Splunk
-#   siem      — Wazuh manager, Wazuh agents
+#   siem      — Wazuh manager, agents, EDA integration
 #   policy    — OPA base policies, AAP Policy as Code gateway
 #   spire     — SPIFFE/SPIRE server + agents
 #   eda       — Wazuh → EDA webhook integration
 #   security  — siem + logging + spire (convenience group)
 #   verify    — Full lab verification
 
+
 # ═════════════════════════════════════════════════════════════════════
-# Layer 1 — Identity & DNS
+#  PHASE 1 — Prerequisites
+#  DNS + IdM enrollment so all hosts can resolve and authenticate
 # ═════════════════════════════════════════════════════════════════════
 
-- name: "Layer 1a: Register Workshop VMs in IdM DNS"
+- name: "Prereq 1: Register workshop VMs in IdM DNS"
   ansible.builtin.import_playbook: configure-dns.yml
-  tags: [identity, dns]
+  tags: [prereq, identity, dns]
 
-- name: "Layer 1b: Enroll Linux hosts as IdM clients"
+- name: "Prereq 2: Enroll Linux hosts as IdM clients"
   ansible.builtin.import_playbook: enroll-idm-clients.yml
-  tags: [identity, idm]
+  tags: [prereq, identity, idm]
 
-- name: "Layer 1c: Configure IdM users and groups"
-  ansible.builtin.import_playbook: configure-idm-users.yml
-  tags: [identity, idm]
 
 # ═════════════════════════════════════════════════════════════════════
-# Layer 2 — Secrets Management
+#  PHASE 2 — Deploy
+#  Stand up all infrastructure — nothing is wired together yet
 # ═════════════════════════════════════════════════════════════════════
 
-- name: "Layer 2a: Configure HashiCorp Vault"
-  ansible.builtin.import_playbook: configure-vault.yml
-  tags: [secrets, vault]
-
-- name: "Layer 2b: Configure Vault SSH CA Trust on RHEL Hosts"
-  ansible.builtin.import_playbook: configure-vault-ssh.yml
-  tags: [secrets, vault]
-
-# ═════════════════════════════════════════════════════════════════════
-# Layer 3 — Network Fabric & Compute
-# ═════════════════════════════════════════════════════════════════════
-
-- name: "Layer 3a: Deploy Arista cEOS switch fabric"
+- name: "Deploy 1: Arista cEOS switch fabric"
   ansible.builtin.import_playbook: deploy-arista.yml
-  tags: [network, arista]
+  tags: [deploy, network, arista]
 
-- name: "Layer 3b: Deploy RHEL containers (DB + App)"
+- name: "Deploy 2: RHEL containers (DB + App)"
   ansible.builtin.import_playbook: deploy-rhel-containers.yml
-  tags: [network, containers]
+  tags: [deploy, network, containers]
 
-# ═════════════════════════════════════════════════════════════════════
-# Layer 4 — Application Stack
-# ═════════════════════════════════════════════════════════════════════
-
-- name: "Layer 4: Deploy PostgreSQL and Global Telemetry Platform"
+- name: "Deploy 3: PostgreSQL and Global Telemetry Platform"
   ansible.builtin.import_playbook: deploy-db-app.yml
-  tags: [app, database]
+  tags: [deploy, app, database]
 
-# ═════════════════════════════════════════════════════════════════════
-# Layer 5 — CMDB
-# ═════════════════════════════════════════════════════════════════════
-
-- name: "Layer 5a: Deploy Netbox"
+- name: "Deploy 4: Netbox CMDB"
   ansible.builtin.import_playbook: deploy-netbox.yml
-  tags: [cmdb, netbox]
+  tags: [deploy, cmdb, netbox]
 
-- name: "Layer 5b: Seed Netbox with workshop infrastructure"
-  ansible.builtin.import_playbook: configure-netbox.yml
-  tags: [cmdb, netbox]
-
-# ═════════════════════════════════════════════════════════════════════
-# Layer 6 — Logging & SIEM
-# ═════════════════════════════════════════════════════════════════════
-
-- name: "Layer 6a: Deploy Splunk"
+- name: "Deploy 5: Splunk log aggregation"
   ansible.builtin.import_playbook: deploy-splunk.yml
-  tags: [logging, splunk, security]
+  tags: [deploy, logging, splunk, security]
 
-- name: "Layer 6b: Deploy Wazuh SIEM stack"
+- name: "Deploy 6: Wazuh SIEM stack"
   ansible.builtin.import_playbook: deploy-wazuh.yml
-  tags: [siem, wazuh, security]
+  tags: [deploy, siem, wazuh, security]
 
-- name: "Layer 6c: Deploy Wazuh agents"
+- name: "Deploy 7: Wazuh agents on managed hosts"
   ansible.builtin.import_playbook: deploy-wazuh-agents.yml
-  tags: [siem, wazuh, security]
+  tags: [deploy, siem, wazuh, security]
 
-# ═════════════════════════════════════════════════════════════════════
-# Layer 7 — Policy
-# ═════════════════════════════════════════════════════════════════════
-
-- name: "Layer 7a: Configure OPA base policies"
-  ansible.builtin.import_playbook: configure-opa-base.yml
-  tags: [policy, opa]
-
-- name: "Layer 7b: Configure AAP Policy as Code gateway"
-  ansible.builtin.import_playbook: configure-aap-policy.yml
-  tags: [policy, aap]
-
-- name: "Layer 7c: Configure AAP LDAP authentication"
-  ansible.builtin.import_playbook: configure-aap-ldap.yml
-  tags: [policy, aap, identity]
-
-- name: "Layer 7d: Configure AAP NetBox CMDB integration"
-  ansible.builtin.import_playbook: configure-aap-netbox.yml
-  tags: [cmdb, aap, netbox]
-
-# ═════════════════════════════════════════════════════════════════════
-# Layer 8 — Workload Identity
-# ═════════════════════════════════════════════════════════════════════
-
-- name: "Layer 8: Deploy SPIFFE/SPIRE server and agents"
+- name: "Deploy 8: SPIFFE/SPIRE server and agents"
   ansible.builtin.import_playbook: deploy-spire.yml
-  tags: [spire, security]
+  tags: [deploy, spire, security]
+
 
 # ═════════════════════════════════════════════════════════════════════
-# Layer 9 — Event-Driven Automation
+#  PHASE 3 — Configure
+#  Wire services together — all infrastructure is running
 # ═════════════════════════════════════════════════════════════════════
 
-- name: "Layer 9: Configure Wazuh → EDA integration"
+- name: "Configure 1: IdM users and groups"
+  ansible.builtin.import_playbook: configure-idm-users.yml
+  tags: [configure, identity, idm]
+
+- name: "Configure 2: HashiCorp Vault engines and policies"
+  ansible.builtin.import_playbook: configure-vault.yml
+  tags: [configure, secrets, vault]
+
+- name: "Configure 3: Vault SSH CA trust on all RHEL hosts"
+  ansible.builtin.import_playbook: configure-vault-ssh.yml
+  tags: [configure, secrets, vault]
+
+- name: "Configure 4: Seed Netbox with workshop infrastructure"
+  ansible.builtin.import_playbook: configure-netbox.yml
+  tags: [configure, cmdb, netbox]
+
+- name: "Configure 5: OPA base policies"
+  ansible.builtin.import_playbook: configure-opa-base.yml
+  tags: [configure, policy, opa]
+
+- name: "Configure 6: AAP Policy as Code gateway"
+  ansible.builtin.import_playbook: configure-aap-policy.yml
+  tags: [configure, policy, aap]
+
+- name: "Configure 7: AAP LDAP authentication"
+  ansible.builtin.import_playbook: configure-aap-ldap.yml
+  tags: [configure, identity, aap]
+
+- name: "Configure 8: AAP NetBox CMDB integration"
+  ansible.builtin.import_playbook: configure-aap-netbox.yml
+  tags: [configure, cmdb, aap, netbox]
+
+- name: "Configure 9: Wazuh → EDA webhook integration"
   ansible.builtin.import_playbook: configure-wazuh-eda.yml
-  tags: [eda, siem, security]
+  tags: [configure, eda, siem, security]
+
 
 # ═════════════════════════════════════════════════════════════════════
-# Layer 10 — Verification
+#  PHASE 4 — Verify
 # ═════════════════════════════════════════════════════════════════════
 
-- name: "Layer 10: Verify full lab deployment"
+- name: "Verify: Full lab deployment"
   ansible.builtin.import_playbook: verify-lab.yml
   tags: [verify]

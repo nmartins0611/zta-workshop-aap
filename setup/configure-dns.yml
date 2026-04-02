@@ -118,3 +118,71 @@
           /etc/resolv.conf to {{ idm_hostname }}
           to resolve *.{{ idm_domain }} names.
           ═══════════════════════════════════════════
+
+# ═════════════════════════════════════════════════════════════════════════
+# Play 2 — Configure DNS inside RHEL containers (db, app)
+#
+# Points container /etc/resolv.conf at the IdM server on central so that
+# dnf, ipa-client-install, and all hostname resolution works correctly.
+# Safe to re-run: always overwrites resolv.conf with the correct values.
+# ═════════════════════════════════════════════════════════════════════════
+
+- name: Configure DNS Inside RHEL Containers
+  hosts: zta_services
+  become: true
+  gather_facts: true
+
+  vars:
+    central_ip: "{{ ansible_default_ipv4.address | default('192.168.1.11') }}"
+    rhel_containers:
+      - name: db
+        hostname: db.zta.lab
+      - name: app
+        hostname: app.zta.lab
+
+  tasks:
+    - name: Check which containers are running
+      command: "podman inspect --format '{{ '{{' }}.State.Running{{ '}}' }}' {{ item.name }}"
+      loop: "{{ rhel_containers }}"
+      loop_control:
+        label: "{{ item.name }}"
+      register: container_state
+      failed_when: false
+      changed_when: false
+
+    - name: Set DNS resolver in running containers
+      shell: >-
+        podman exec {{ item.item.name }} bash -c
+        'printf "search zta.lab\nnameserver {{ central_ip }}\n" > /etc/resolv.conf'
+      loop: "{{ container_state.results }}"
+      loop_control:
+        label: "{{ item.item.name }}"
+      when: item.rc == 0 and item.stdout == 'true'
+      changed_when: true
+
+    - name: Verify DNS resolution from containers
+      command: >
+        podman exec {{ item.item.name }}
+        dig +short central.zta.lab @{{ central_ip }}
+      loop: "{{ container_state.results }}"
+      loop_control:
+        label: "{{ item.item.name }}"
+      when: item.rc == 0 and item.stdout == 'true'
+      register: container_dns_verify
+      changed_when: false
+      failed_when: false
+
+    - name: Display container DNS status
+      debug:
+        msg: |
+          ═══════════════════════════════════════════
+            Container DNS Configuration
+          ═══════════════════════════════════════════
+          {% for result in container_state.results %}
+          {% if result.rc == 0 and result.stdout == 'true' %}
+            {{ result.item.name }} ({{ result.item.hostname }}): DNS → {{ central_ip }} ✓
+          {% else %}
+            {{ result.item.name }} ({{ result.item.hostname }}): Not running — skipped
+          {% endif %}
+          {% endfor %}
+          ═══════════════════════════════════════════

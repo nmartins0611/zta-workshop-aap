@@ -167,7 +167,31 @@
         label: "{{ item.name }} (port {{ item.ssh_port }})"
 
     # ═══════════════════════════════════════════════════════════════════
-    # Phase 5 — Install role-specific packages
+    # Phase 5 — Configure DNS (must happen before dnf for repo access)
+    # ═══════════════════════════════════════════════════════════════════
+
+    - name: Configure DNS resolver to use IdM
+      shell: >-
+        podman exec {{ item.name }} bash -c
+        'printf "search zta.lab\nnameserver {{ central_ip }}\n" > /etc/resolv.conf'
+      loop: "{{ containers }}"
+      loop_control:
+        label: "{{ item.name }}"
+      changed_when: true
+
+    - name: Verify DNS resolution from containers
+      command: >
+        podman exec {{ item.name }}
+        dig +short central.zta.lab @{{ central_ip }}
+      loop: "{{ containers }}"
+      loop_control:
+        label: "{{ item.name }}"
+      register: dns_verify
+      changed_when: false
+      failed_when: false
+
+    # ═══════════════════════════════════════════════════════════════════
+    # Phase 6 — Install role-specific packages
     # ═══════════════════════════════════════════════════════════════════
 
     - name: Install packages in containers
@@ -181,7 +205,7 @@
       changed_when: "'Complete!' in pkg_install.stdout"
 
     # ═══════════════════════════════════════════════════════════════════
-    # Phase 6 — Verify
+    # Phase 7 — Verify SSH and dnf
     # ═══════════════════════════════════════════════════════════════════
 
     - name: Verify SSH access to containers
@@ -208,7 +232,7 @@
       changed_when: false
 
     # ═══════════════════════════════════════════════════════════════════
-    # Phase 7 — Enable auto-start on boot
+    # Phase 8 — Enable auto-start on boot
     # ═══════════════════════════════════════════════════════════════════
 
     - name: Generate systemd service for RHEL containers
@@ -231,7 +255,7 @@
         label: "{{ item.name }}"
 
     # ═══════════════════════════════════════════════════════════════════
-    # Phase 8 — Connect containers to Arista switch fabric
+    # Phase 9 — Connect containers to Arista switch fabric
     # ═══════════════════════════════════════════════════════════════════
 
     - name: Connect containers to data-plane networks
@@ -249,30 +273,6 @@
       loop: "{{ containers }}"
       loop_control:
         label: "{{ item.name }}: {{ item.peer_network }} via {{ item.data_gateway }}"
-      failed_when: false
-
-    # ═══════════════════════════════════════════════════════════════════
-    # Phase 9 — Configure DNS (point to IdM on central)
-    # ═══════════════════════════════════════════════════════════════════
-
-    - name: Configure DNS resolver to use IdM
-      shell: >-
-        podman exec {{ item.name }} bash -c
-        'printf "search zta.lab\nnameserver {{ central_ip }}\n" > /etc/resolv.conf'
-      loop: "{{ containers }}"
-      loop_control:
-        label: "{{ item.name }}"
-      changed_when: true
-
-    - name: Verify DNS resolution from containers
-      command: >
-        podman exec {{ item.name }}
-        dig +short central.zta.lab @{{ central_ip }}
-      loop: "{{ containers }}"
-      loop_control:
-        label: "{{ item.name }}"
-      register: dns_verify
-      changed_when: false
       failed_when: false
 
     # ═══════════════════════════════════════════════════════════════════

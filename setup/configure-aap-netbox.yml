@@ -29,7 +29,7 @@
     aap_password: "{{ lookup('env', 'AAP_ADMIN_PASSWORD') | default('ansible123!', true) }}"
     aap_verify_ssl: false
 
-    nb_api_url: "{{ netbox_url | default('http://netbox.zta.lab:8880') }}"
+    nb_api_url: "{{ netbox_url | default('http://netbox.zta.lab:8000') }}"
     nb_api_token: "{{ netbox_token | default('0123456789abcdef0123456789abcdef01234567') }}"
 
   module_defaults:
@@ -44,7 +44,7 @@
 
     - name: Verify AAP Controller is reachable
       uri:
-        url: "{{ aap_host }}/api/v2/ping/"
+        url: "{{ aap_host }}/api/controller/v2/ping/"
         method: GET
         validate_certs: "{{ aap_verify_ssl }}"
         status_code: 200

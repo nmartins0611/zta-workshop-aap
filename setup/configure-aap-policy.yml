@@ -17,7 +17,7 @@
   gather_facts: false
 
   vars:
-    aap_host: "{{ aap_controller_url | default('https://aap.zta.lab') }}"
+    aap_host: "{{ aap_controller_url | default('https://control.zta.lab') }}"
     aap_user: admin
     aap_password: "{{ lookup('env', 'AAP_ADMIN_PASSWORD') | default('ansible123!', true) }}"
     aap_verify_ssl: false

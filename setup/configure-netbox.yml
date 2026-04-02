@@ -179,7 +179,7 @@
         interfaces:
           - name: eth0
             type: virtual
-            ip: 192.168.1.11/24
+            ip: 10.30.0.10/24
 
       - name: app.zta.lab
         role: Application Server
@@ -190,7 +190,7 @@
         interfaces:
           - name: eth0
             type: virtual
-            ip: 192.168.1.11/24
+            ip: 10.20.0.10/24
 
       - name: netbox.zta.lab
         role: CMDB Server
@@ -212,7 +212,13 @@
         interfaces:
           - name: Management0
             type: virtual
-            ip: 192.168.1.11/24
+            ip: false
+          - name: Ethernet2
+            type: "1000base-t"
+            ip: 10.10.0.1/24
+          - name: Ethernet3
+            type: "1000base-t"
+            ip: 10.20.0.254/24
 
       - name: ceos2.zta.lab
         role: Network Switch
@@ -223,7 +229,13 @@
         interfaces:
           - name: Management0
             type: virtual
-            ip: 192.168.1.11/24
+            ip: false
+          - name: Ethernet2
+            type: "1000base-t"
+            ip: 10.10.0.2/24
+          - name: Ethernet3
+            type: "1000base-t"
+            ip: 10.30.0.1/24
 
       - name: ceos3.zta.lab
         role: Network Switch
@@ -234,7 +246,10 @@
         interfaces:
           - name: Management0
             type: virtual
-            ip: 192.168.1.11/24
+            ip: false
+          - name: Ethernet3
+            type: "1000base-t"
+            ip: 10.20.0.1/24
 
     # ── IP Prefixes ──
     nb_prefixes:
@@ -243,7 +258,7 @@
         status: active
         is_pool: false
       - prefix: "10.10.0.0/24"
-        description: "VLAN 10 — Management tier"
+        description: "net1 — Spine-leaf interconnect (ceos1 ↔ ceos2)"
         vlan_id: 10
         status: active
       - prefix: "10.20.0.0/24"
@@ -478,11 +493,12 @@
           assigned_object:
             device: "{{ item.0.name }}"
             name: "{{ item.1.name }}"
-          description: "{{ item.0.name }} primary"
+          description: "{{ item.0.name }} — {{ item.1.name }}"
         state: present
       loop: "{{ nb_devices | subelements('interfaces') }}"
       loop_control:
         label: "{{ item.0.name }} → {{ item.1.ip }}"
+      when: item.1.ip | default(false)
       tags: [phase3, ip-addresses]
 
     - name: "Phase 3 | Set primary IP on each device"
@@ -491,7 +507,7 @@
         netbox_token: "{{ nb_token }}"
         data:
           name: "{{ item.name }}"
-          primary_ip4: "{{ item.interfaces[0].ip }}"
+          primary_ip4: "{{ (item.interfaces | selectattr('ip') | first).ip }}"
         state: present
       loop: "{{ nb_devices }}"
       loop_control:

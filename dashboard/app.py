@@ -60,7 +60,7 @@ COMPONENTS = [
         "ip": "192.168.1.15",
         "details": "CMDB :8880",
         "checks": [
-            {"type": "http", "url": "http://192.168.1.15:8880", "label": "Web UI"},
+            {"type": "http", "url": "http://192.168.1.15:8000", "label": "Web UI"},
         ],
     },
     # ── Services on Central ───────────────────────────────────────────────

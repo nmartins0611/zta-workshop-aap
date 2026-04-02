@@ -97,64 +97,79 @@
         - svc_member is failed
         - "'already a member' not in (svc_member.msg | default(''))"
 
-    - name: Clean up any stuck or rejected certificate requests
+    - name: Check existing certificate request status
       shell: |
         if ipa-getcert list -f {{ item.cert_dir }}/server.crt 2>/dev/null | grep -q 'status:'; then
-          status=$(ipa-getcert list -f {{ item.cert_dir }}/server.crt | grep 'status:' | head -1)
-          if echo "$status" | grep -qE 'CA_REJECTED|CA_UNREACHABLE|NEED_GUIDANCE'; then
-            ipa-getcert stop-tracking -f {{ item.cert_dir }}/server.crt 2>/dev/null || true
-            rm -f {{ item.cert_dir }}/server.crt {{ item.cert_dir }}/server.key
-            echo "CLEANED"
-          else
-            echo "OK"
-          fi
+          ipa-getcert list -f {{ item.cert_dir }}/server.crt | grep 'status:' | head -1 | awk '{print $2}'
         else
           echo "NONE"
         fi
       loop: "{{ idm_service_certs }}"
       loop_control:
         label: "{{ item.hostname }}"
-      register: cert_cleanup
-      changed_when: "'CLEANED' in cert_cleanup.stdout"
+      register: cert_status_check
+      changed_when: false
+
+    - name: Clean up stuck or rejected certificate requests
+      shell: |
+        ipa-getcert stop-tracking -f {{ item.item.cert_dir }}/server.crt 2>/dev/null || true
+        rm -f {{ item.item.cert_dir }}/server.crt {{ item.item.cert_dir }}/server.key
+      loop: "{{ cert_status_check.results }}"
+      loop_control:
+        label: "{{ item.item.hostname }}"
+      when: item.stdout in ['CA_REJECTED', 'CA_UNREACHABLE', 'NEED_GUIDANCE']
+      changed_when: true
+
+    - name: Obtain Kerberos admin ticket for certmonger
+      shell: echo '{{ idm_admin_password }}' | kinit admin
+      changed_when: false
+      no_log: true
+
+    - name: Restart certmonger to pick up fresh credentials
+      systemd:
+        name: certmonger
+        state: restarted
 
     - name: Request certificates from IdM CA
       command: >
         ipa-getcert request
-        -f {{ item.cert_dir }}/server.crt
-        -k {{ item.cert_dir }}/server.key
-        -N CN={{ item.hostname }}
-        -D {{ item.hostname }}
-        -K HTTP/{{ item.hostname }}@{{ idm_realm }}
-      loop: "{{ idm_service_certs }}"
+        -f {{ item.item.cert_dir }}/server.crt
+        -k {{ item.item.cert_dir }}/server.key
+        -N CN={{ item.item.hostname }}
+        -D {{ item.item.hostname }}
+        -K HTTP/{{ item.item.hostname }}@{{ idm_realm }}
+      loop: "{{ cert_status_check.results }}"
       loop_control:
-        label: "{{ item.hostname }}"
+        label: "{{ item.item.hostname }}"
+      when: item.stdout != 'MONITORING'
       register: cert_request
-      changed_when: "'New signing request' in cert_request.stdout"
+      changed_when: "'New signing request' in (cert_request.stdout | default(''))"
       failed_when: false
 
     - name: Wait for certificate issuance
       shell: |
         for i in $(seq 1 30); do
-          status=$(ipa-getcert list -f {{ item.cert_dir }}/server.crt 2>/dev/null | grep 'status:' | head -1)
+          status=$(ipa-getcert list -f {{ item.item.cert_dir }}/server.crt 2>/dev/null | grep 'status:' | head -1)
           if echo "$status" | grep -q 'MONITORING'; then
             echo "ISSUED"
             exit 0
           fi
           if echo "$status" | grep -qE 'CA_REJECTED|NEED_GUIDANCE'; then
-            ipa-getcert list -f {{ item.cert_dir }}/server.crt 2>&1
+            ipa-getcert list -f {{ item.item.cert_dir }}/server.crt 2>&1
             echo "REJECTED"
             exit 1
           fi
           sleep 2
         done
-        ipa-getcert list -f {{ item.cert_dir }}/server.crt 2>&1
+        ipa-getcert list -f {{ item.item.cert_dir }}/server.crt 2>&1
         echo "TIMEOUT"
-      loop: "{{ idm_service_certs }}"
+      loop: "{{ cert_status_check.results }}"
       loop_control:
-        label: "{{ item.hostname }}"
+        label: "{{ item.item.hostname }}"
+      when: item.stdout != 'MONITORING'
       register: cert_wait
       changed_when: false
-      failed_when: "'TIMEOUT' in cert_wait.stdout or 'REJECTED' in cert_wait.stdout"
+      failed_when: "'TIMEOUT' in (cert_wait.stdout | default('')) or 'REJECTED' in (cert_wait.stdout | default(''))"
 
     - name: Set certificate file permissions
       file:

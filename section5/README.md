@@ -1,20 +1,20 @@
-# Section 5 — Automated Incident Response: Brute Force → Wazuh → EDA → Vault Revocation
+# Section 5 — Automated Incident Response: Brute Force → Splunk → EDA → Vault Revocation
 
 ## Objective
 
 Demonstrate automated incident response in a Zero Trust architecture. A
-brute-force SSH attack is simulated against the app server. **Wazuh** (SIEM)
-detects the attack and sends an alert to **Event-Driven Ansible** (EDA).
-EDA automatically triggers an AAP job template that **revokes the application's
-database credentials in Vault** — cutting off data access in seconds, with no
-human intervention.
+brute-force SSH attack is simulated against the app server. **Splunk**
+detects the attack via a saved search alert and sends a webhook to
+**Event-Driven Ansible** (EDA). EDA automatically triggers an AAP job
+template that **revokes the application's database credentials in Vault**
+— cutting off data access in seconds, with no human intervention.
 
 ## Zero Trust Principles
 
 | Principle | How This Section Demonstrates It |
 |-----------|----------------------------------|
 | **Assume breach** | Automated response doesn't wait for a human to investigate |
-| **Continuous monitoring** | Wazuh SIEM watches every authentication attempt |
+| **Continuous monitoring** | Splunk watches every authentication event forwarded from hosts |
 | **Automatic remediation** | EDA triggers credential revocation without manual approval |
 | **Blast radius containment** | Revoking credentials limits what an attacker can access |
 | **Just-in-time recovery** | Fresh credentials are only re-issued after investigation |
@@ -23,17 +23,17 @@ human intervention.
 
 ```
   ┌────────────┐     ┌──────────────┐     ┌────────────┐     ┌────────────┐
-  │  Attacker  │     │  App Server  │     │   Wazuh    │     │    EDA     │
-  │            │     │  app.zta.lab │     │  Manager   │     │ Controller │
-  │            │     │              │     │            │     │            │
-  │  SSH brute │────▶│ /var/log/    │────▶│ Rule 5712  │────▶│  Rulebook  │
-  │  force     │     │   secure     │     │ (brute     │     │  matches   │
-  │  attempt   │     │              │     │  force)    │     │  event     │
+  │  Attacker  │     │  App Server  │     │   Splunk   │     │    EDA     │
+  │            │     │  app.zta.lab │     │  central   │     │ Controller │
+  │            │     │              │     │  :8000     │     │            │
+  │  SSH brute │────▶│ /var/log/    │────▶│  Saved     │────▶│  Rulebook  │
+  │  force     │     │   secure     │     │  search    │     │  matches   │
+  │  attempt   │     │              │     │  alert     │     │  event     │
   └────────────┘     └──────────────┘     └─────┬──────┘     └─────┬──────┘
                                                 │                   │
-                                          Wazuh agent          Webhook POST
-                                          detects failed       to EDA
-                                          SSH logins
+                                          Splunk UF             Webhook POST
+                                          forwards logs         to EDA
+                                          to indexer
                                                                     │
                                                                     ▼
   ┌────────────┐     ┌──────────────┐     ┌────────────────────────────────┐
@@ -51,13 +51,13 @@ human intervention.
 | Time | Event |
 |------|-------|
 | T+0s | Attacker starts brute-force SSH attempts on app.zta.lab |
-| T+10s | Wazuh agent detects 5+ failed logins, sends to manager |
-| T+12s | Wazuh manager fires rule 5712 (SSH brute force) |
-| T+13s | Wazuh integration POSTs alert JSON to EDA webhook |
-| T+14s | EDA rulebook matches the event, triggers AAP job |
-| T+20s | AAP runs revocation playbook — Vault lease revoked |
-| T+25s | Application stopped, database credentials gone |
-| T+25s | **Attack surface eliminated in ~25 seconds** |
+| T+10s | Splunk Universal Forwarder sends auth logs to indexer |
+| T+15s | Splunk saved search fires — detects 5+ failed logins in 60 seconds |
+| T+16s | Splunk webhook alert action POSTs to EDA endpoint |
+| T+17s | EDA rulebook matches the event, triggers AAP job |
+| T+23s | AAP runs revocation playbook — Vault lease revoked |
+| T+28s | Application stopped, database credentials gone |
+| T+28s | **Attack surface eliminated in ~28 seconds** |
 
 ---
 
@@ -67,9 +67,10 @@ Before running this section:
 
 1. **Section 2 must be complete** — the application must be deployed with
    active Vault database credentials
-2. **Wazuh agent** must be installed and active on `app.zta.lab`
-3. **EDA Controller** must be running (or standalone `ansible-rulebook`)
-4. **Wazuh→EDA integration** must be configured (`setup/configure-wazuh-eda.yml`)
+2. **Splunk** must be running on central (`http://central.zta.lab:8000`)
+3. **Splunk log shipping** must be configured — `/var/log/secure` from app/db
+   containers is forwarded to Splunk (`setup/integrate-splunk.yml`)
+4. **EDA Controller** must be running (or standalone `ansible-rulebook`)
 
 ---
 
@@ -83,15 +84,75 @@ Before running this section:
 
 ---
 
-## Exercise 5.2 — Configure EDA Rulebook
+## Exercise 5.2 — Configure the Splunk Saved Search & Alert
+
+### Step 1 — Verify logs are arriving in Splunk
+
+Open `http://central.zta.lab:8000` and run this search:
+
+```
+index=main sourcetype=linux_secure "Failed password"
+```
+
+You should see failed SSH login events. If not, verify `integrate-splunk.yml`
+has been run and the Universal Forwarder is sending logs.
+
+### Step 2 — Create the Saved Search
+
+1. Navigate to **Settings → Searches, reports, and alerts → New Alert**
+2. Configure:
+
+| Field | Value |
+|-------|-------|
+| Title | `ZTA: SSH Brute Force Detected` |
+| Search | `index=main sourcetype=linux_secure "Failed password" \| stats count by src_ip, host \| where count >= 5` |
+| Time Range | Real-time, 60-second window |
+| Alert type | Real-time |
+| Trigger condition | Number of results > 0 |
+
+3. Under **Trigger Actions**, click **Add Actions → Webhook**:
+
+| Field | Value |
+|-------|-------|
+| URL | `http://control.zta.lab:5000/endpoint` |
+
+4. Click **Save**
+
+> **ZTA Concept**: Splunk acts as the detection layer. It watches authentication
+> logs from all hosts and fires an alert when a brute-force pattern is detected.
+> The webhook bridges SIEM to automation — no human in the loop.
+
+### Alternative — Create via Splunk REST API
+
+If you prefer automation over UI clicks:
+
+```bash
+curl -k -u admin:splunkpassword \
+  http://central.zta.lab:8000/servicesNS/admin/search/saved/searches \
+  -d name="ZTA: SSH Brute Force Detected" \
+  -d search='index=main sourcetype=linux_secure "Failed password" | stats count by src_ip, host | where count >= 5' \
+  -d alert_type=always \
+  -d alert.severity=4 \
+  -d alert.suppress=0 \
+  -d dispatch.earliest_time=rt-60s \
+  -d dispatch.latest_time=rt \
+  -d is_scheduled=1 \
+  -d cron_schedule="*/1 * * * *" \
+  -d actions=webhook \
+  -d 'action.webhook.param.url=http://control.zta.lab:5000/endpoint'
+```
+
+---
+
+## Exercise 5.3 — Configure EDA Rulebook
 
 ### Option A — EDA Controller (AAP 2.5+)
 
 1. Navigate to **EDA Controller → Rulebooks**
-2. Import `section5/eda/wazuh-credential-revoke.yml`
+2. Import `section5/eda/splunk-credential-revoke.yml`
 3. Create a **Rulebook Activation**:
-   - Name: `Wazuh Brute Force Response`
-   - Rulebook: `wazuh-credential-revoke`
+   - Name: `Splunk Brute Force Response`
+   - Rulebook: `splunk-credential-revoke`
    - Decision Environment: your EDA decision environment
    - Restart policy: `On failure`
 4. Enable the activation — it starts listening on port 5000
@@ -100,14 +161,14 @@ Before running this section:
 
 ```bash
 ssh rhel@control.zta.lab
-ansible-rulebook --rulebook /tmp/zta-workshop-aap/section5/eda/wazuh-credential-revoke.yml \
+ansible-rulebook --rulebook /tmp/zta-workshop-aap/section5/eda/splunk-credential-revoke.yml \
   -i /tmp/zta-workshop-aap/inventory/hosts.ini \
   --verbose
 ```
 
 ---
 
-## Exercise 5.3 — Verify the Application Is Healthy
+## Exercise 5.4 — Verify the Application Is Healthy
 
 Before the attack, confirm everything is working:
 
@@ -124,7 +185,7 @@ You should see a healthy application and an active Vault-generated DB user.
 
 ---
 
-## Exercise 5.4 — Launch the Brute-Force Attack
+## Exercise 5.5 — Launch the Brute-Force Attack
 
 Launch **Simulate Brute Force** from AAP (or run the playbook directly):
 
@@ -137,26 +198,32 @@ ansible-playbook section5/playbooks/simulate-bruteforce.yml
 1. The playbook sends 10 rapid failed SSH login attempts to `app.zta.lab`
 2. Each attempt uses the `rhel` user with an incorrect password
 3. The failed logins are recorded in `/var/log/secure` on the app server
-4. The Wazuh agent detects the pattern and sends it to the Wazuh manager
-5. Wazuh fires **rule 5712** (SSH brute force detected)
+4. Splunk Universal Forwarder ships the logs to the Splunk indexer
+5. Splunk saved search detects 5+ failures and fires the webhook alert
 
 ---
 
-## Exercise 5.5 — Watch the Automated Response
+## Exercise 5.6 — Watch the Automated Response
 
 After the brute-force simulation completes, observe the chain reaction:
 
-### Check Wazuh Dashboard
+### Check Splunk Dashboard
 
-Open `http://wazuh.zta.lab:5601` (resolves to central — Wazuh runs as a container) and look for:
-- Alert rule 5712: "SSHD brute force trying to get access to the system"
-- Agent: `app.zta.lab`
-- Level: 10 (high severity)
+Open `http://central.zta.lab:8000` and run:
+
+```
+index=main sourcetype=linux_secure "Failed password" | stats count by src_ip, host | where count >= 5
+```
+
+You should see the brute-force source IP with a high failure count.
+
+Check **Activity → Triggered Alerts** — the `ZTA: SSH Brute Force Detected`
+alert should show as recently fired.
 
 ### Check EDA Controller
 
 In the EDA Controller UI (or ansible-rulebook terminal output):
-- Event received from Wazuh webhook
+- Event received from Splunk webhook
 - Rule matched: `Revoke credentials on SSH brute-force detection`
 - Action: `run_job_template` triggered
 
@@ -182,7 +249,7 @@ sudo -u postgres psql -d ztaapp -c "\du" | grep v-root
 
 ---
 
-## Exercise 5.6 — Restore the Application
+## Exercise 5.7 — Restore the Application
 
 After investigating the incident (in a real scenario), restore the
 application with fresh credentials:
@@ -207,175 +274,48 @@ curl -s http://app.zta.lab:8081/health
 
 ---
 
-## Discussion Points
+## Exercise 5.8 — Splunk Alert Tuning (Hands-On)
 
-- How fast was the response from attack detection to credential revocation?
-- What if the attacker already had valid credentials — does revoking help?
-- Why stop the application instead of just revoking credentials?
-- Could EDA trigger additional responses (block IP, isolate network segment)?
-- What if Wazuh itself is compromised — how do you protect the SIEM?
-- How would you add a human approval step for less severe alerts?
-- What's the difference between EDA Controller (AAP) and standalone ansible-rulebook?
+### The Problem
 
----
+After the incident response demo, check the Splunk triggered alerts. You'll
+notice the saved search may also fire on **legitimate AAP SSH connections**.
+Every time AAP runs a job template, it generates SSH authentication events
+that could trigger the brute-force alert.
 
-## Wazuh Rules Reference
-
-| Rule ID | Description | Level |
-|---------|-------------|-------|
-| 5712 | SSHD brute force trying to get access to the system | 10 |
-| 5763 | SSHD brute force (multiple failed logins from same source) | 10 |
-| 5764 | SSHD multiple authentication failures | 10 |
-
-The integration triggers on all three rules. Any of these will cause
-credential revocation.
-
----
-
-## Validation Checklist
-
-- [ ] Application is healthy before the attack (Section 2 deployed)
-- [ ] Wazuh agent is active on app.zta.lab
-- [ ] EDA rulebook activation is running (port 5000 listening)
-- [ ] Brute-force simulation generates 10 failed SSH attempts
-- [ ] Wazuh fires rule 5712 (visible in dashboard)
-- [ ] Wazuh integration sends webhook to EDA
-- [ ] EDA triggers "Emergency: Revoke App Credentials" in AAP
-- [ ] Vault DB lease is revoked (no `v-root-*` user in PostgreSQL)
-- [ ] Application service is stopped
-- [ ] `http://app.zta.lab:8081/health` returns unhealthy or connection refused
-- [ ] Restore playbook brings the application back with fresh credentials
-- [ ] Total time from attack to revocation is under 30 seconds
-
----
-
-# Exercise 5.7 — Wazuh Alert Tuning & Custom Rule Writing (Hands-On)
-
-## The Scenario
-
-After the incident response demo, look at the Wazuh dashboard. You'll notice
-that Wazuh is also alerting on **legitimate AAP SSH connections**. Every time
-AAP runs a job template, it generates SSH authentication events that can
-trigger false positive alerts. In a production environment, this alert noise
-would drown out real threats.
-
-You must write a **custom Wazuh rule** to suppress false positives from the
-AAP controller while keeping alerts active for genuinely suspicious traffic.
-
-## Duration: ~25 minutes
-
----
-
-## Step 1 — Identify the False Positives
-
-Open the Wazuh Dashboard at `http://wazuh.zta.lab:5601`.
-
-Navigate to **Security events** and filter for SSH-related alerts. You'll
-see a mix of:
-- **Legitimate:** AAP controller (192.168.1.10) connecting to managed hosts
-- **Malicious:** The brute-force simulation from the previous exercise
-
-Both are generating alerts. In a production environment with hundreds of
-AAP jobs per day, the real attacks would be buried.
-
----
-
-## Step 2 — Examine the Existing Rules
-
-SSH to the Wazuh manager and look at the brute-force rule:
+### Step 1 — Identify the AAP controller's IP
 
 ```bash
-ssh rhel@central.zta.lab
-sudo podman exec -it wazuh-manager bash
-
-# Find the brute-force rule definition
-grep -A 10 'id="5712"' /var/ossec/ruleset/rules/0095-sshd_rules.xml
+dig +short control.zta.lab
+# 192.168.1.10
 ```
 
-You'll see:
-```xml
-<rule id="5712" level="10" frequency="8" timeframe="120" ignore="60">
-  <if_matched_sid>5710</if_matched_sid>
-  <description>SSHD brute force trying to get access to the system.</description>
-  ...
-</rule>
+### Step 2 — Update the Saved Search to Exclude AAP
+
+Edit the saved search in **Settings → Searches, reports, and alerts**:
+
+Change the search to:
+
+```
+index=main sourcetype=linux_secure "Failed password" NOT src_ip=192.168.1.10
+| stats count by src_ip, host
+| where count >= 5
 ```
 
-This rule fires when there are 8+ failed SSH attempts within 120 seconds.
-It doesn't distinguish between AAP automation and an actual attacker.
+The `NOT src_ip=192.168.1.10` excludes the AAP controller from brute-force
+detection. Failed logins from AAP are expected (e.g., credential rotation,
+connectivity tests).
 
----
+### Step 3 — Test the Tuning
 
-## Step 3 — Write a Custom Exclusion Rule
+**Test 1 — Brute force from AAP (should NOT alert):**
 
-Create a custom rule that suppresses brute-force alerts when the source IP
-is the AAP controller:
+Run the brute-force simulation from AAP. Check Splunk triggered alerts —
+the alert should NOT fire for source IP 192.168.1.10.
 
-```bash
-# Still inside the wazuh-manager container:
-cat >> /var/ossec/etc/rules/local_rules.xml << 'RULES'
+**Test 2 — Brute force from another source (should alert):**
 
-<!-- ZTA Workshop: Suppress false positives from AAP controller -->
-<group name="local,sshd,zta_tuning">
-
-  <!-- AAP controller SSH activity — informational only (suppress alert) -->
-  <rule id="100030" level="0">
-    <if_sid>5712</if_sid>
-    <srcip>192.168.1.10</srcip>
-    <description>Suppressed: SSH brute-force alert from AAP controller (expected automation traffic)</description>
-  </rule>
-
-  <!-- Same for the 5763/5764 variants -->
-  <rule id="100031" level="0">
-    <if_sid>5763</if_sid>
-    <srcip>192.168.1.10</srcip>
-    <description>Suppressed: SSH auth failures from AAP controller (expected)</description>
-  </rule>
-
-  <rule id="100032" level="0">
-    <if_sid>5764</if_sid>
-    <srcip>192.168.1.10</srcip>
-    <description>Suppressed: SSH multiple auth failures from AAP controller (expected)</description>
-  </rule>
-
-</group>
-RULES
-```
-
-**Key points about this rule:**
-- `level="0"` means the alert is suppressed (not logged as an alert)
-- `<if_sid>5712</if_sid>` means this rule only triggers when rule 5712 fires
-- `<srcip>192.168.1.10</srcip>` scopes it to the AAP controller IP only
-- Alerts from ANY OTHER source IP still fire at level 10
-
----
-
-## Step 4 — Validate and Reload
-
-```bash
-# Test the rule syntax (inside the container)
-/var/ossec/bin/wazuh-analysisd -t
-# Expected: No errors
-
-# Restart the Wazuh manager to load new rules
-exit   # Exit the container shell
-sudo podman restart wazuh-manager
-```
-
-Wait 30 seconds for Wazuh to reload.
-
----
-
-## Step 5 — Verify the Tuning
-
-**Test 1 — Simulate brute force from AAP (should NOT alert):**
-
-Run the brute-force simulation playbook from AAP. Check the Wazuh dashboard
-— rule 5712 should NOT fire for source IP 192.168.1.10.
-
-**Test 2 — Simulate brute force from a different source (should alert):**
-
-From a different host (e.g., central), manually trigger failed SSH attempts:
+From central, manually trigger failed SSH attempts:
 
 ```bash
 ssh rhel@central.zta.lab
@@ -384,50 +324,48 @@ for i in $(seq 1 10); do
 done
 ```
 
-Check the Wazuh dashboard — rule 5712 SHOULD fire for central's IP
-(192.168.1.11), since the exclusion only applies to the AAP controller.
+Check Splunk — the alert SHOULD fire for central's IP (192.168.1.11).
 
 ---
 
-## Step 6 — Advanced: Write a Detection Rule
+## Discussion Points
 
-Instead of just suppressing, write a rule that **detects when someone tries
-to impersonate AAP** by SSH-ing from a non-AAP source to many hosts rapidly:
-
-```bash
-sudo podman exec -it wazuh-manager bash
-cat >> /var/ossec/etc/rules/local_rules.xml << 'RULES'
-
-<!-- Detect potential AAP impersonation — rapid SSH from non-AAP source -->
-<rule id="100035" level="12" frequency="5" timeframe="60">
-  <if_matched_sid>5715</if_matched_sid>
-  <srcip>!192.168.1.10</srcip>
-  <srcip>!192.168.1.11</srcip>
-  <description>ZTA: Rapid SSH logins from non-automation source $(srcip) — possible AAP impersonation</description>
-  <group>authentication_success,zta_suspicious</group>
-</rule>
-
-RULES
-```
-
-Reload Wazuh and test.
+- How fast was the response from attack detection to credential revocation?
+- What if the attacker already had valid credentials — does revoking help?
+- Why stop the application instead of just revoking credentials?
+- Could EDA trigger additional responses (block IP, isolate network segment)?
+- What if Splunk itself is compromised — how do you protect the SIEM?
+- How would you add a human approval step for less severe alerts?
+- Compare the Splunk webhook approach to Wazuh's native integration — trade-offs?
 
 ---
 
-## Wazuh Tuning Discussion Points
+## Splunk Search Reference
 
-- How do you balance alert sensitivity vs. false positive volume?
-- What if the AAP controller IP changes — how do you keep the rule updated?
-- Could you use a Wazuh CDB list instead of hardcoded IPs?
-- Should suppressed events still be logged (just not alerted)?
-- How would you test rule changes in a staging environment?
+| Search | Purpose |
+|--------|---------|
+| `index=main sourcetype=linux_secure "Failed password"` | All failed SSH logins |
+| `... \| stats count by src_ip` | Group by attacker source IP |
+| `... \| where count >= 5` | Threshold for brute-force detection |
+| `index=main sourcetype=linux_secure "Accepted password"` | Successful logins |
+| `index=main sourcetype=linux_secure "Accepted publickey"` | Key-based logins |
 
-## Wazuh Tuning Validation Checklist
+---
 
-- [ ] Existing rules examined (`grep 5712` shows rule definition)
-- [ ] Custom exclusion rule written with `level="0"` for AAP source IP
-- [ ] `wazuh-analysisd -t` passes syntax check
-- [ ] Wazuh manager restarted and rules loaded
-- [ ] Brute force from AAP IP does NOT generate level-10 alert
-- [ ] Brute force from other IPs STILL generates level-10 alert
-- [ ] (Bonus) Impersonation detection rule written and tested
+## Validation Checklist
+
+- [ ] Application is healthy before the attack (Section 2 deployed)
+- [ ] Splunk is receiving `/var/log/secure` logs from app/db hosts
+- [ ] Splunk saved search `ZTA: SSH Brute Force Detected` is created
+- [ ] Webhook action points to `http://control.zta.lab:5000/endpoint`
+- [ ] EDA rulebook activation is running (port 5000 listening)
+- [ ] Brute-force simulation generates 10 failed SSH attempts
+- [ ] Splunk alert fires (visible in Activity → Triggered Alerts)
+- [ ] Splunk webhook POSTs to EDA
+- [ ] EDA triggers "Emergency: Revoke App Credentials" in AAP
+- [ ] Vault DB lease is revoked (no `v-root-*` user in PostgreSQL)
+- [ ] Application service is stopped
+- [ ] `http://app.zta.lab:8081/health` returns unhealthy or connection refused
+- [ ] Restore playbook brings the application back with fresh credentials
+- [ ] Total time from attack to revocation is under 30 seconds
+- [ ] (Bonus) Saved search tuned to exclude AAP controller IP

@@ -1,15 +1,15 @@
 ---
-# Section 5: Simulate a brute-force SSH attack against the app server.
+# Section 7 (Optional): Simulate a brute-force SSH attack against the app server.
 #
 # This generates rapid failed SSH login attempts against app.zta.lab,
-# which Splunk detects via a saved search alert (5+ failures in 60s).
-# Splunk then fires a webhook to Event-Driven Ansible, which triggers
+# which the Wazuh agent detects via built-in rule 5712 (SSH brute force).
+# Wazuh then forwards the alert to Event-Driven Ansible, which triggers
 # an automatic credential revocation.
 #
 # Run this from the control/AAP host (or any host with SSH access):
-#   ansible-playbook section5/playbooks/simulate-bruteforce.yml
+#   ansible-playbook section7/playbooks/simulate-bruteforce-wazuh.yml
 
-- name: Simulate Brute-Force Attack on App Server
+- name: Simulate Brute-Force Attack on App Server (Wazuh Detection)
   hosts: automation
   become: false
   gather_facts: false
@@ -33,7 +33,7 @@
       debug:
         msg: |
           ╔════════════════════════════════════════════════════════════════╗
-          ║       ATTACK SIMULATION — BRUTE FORCE SSH                    ║
+          ║       ATTACK SIMULATION — BRUTE FORCE SSH (Wazuh)            ║
           ╠════════════════════════════════════════════════════════════════╣
           ║                                                              ║
           ║  Target:    {{ target_hostname | ljust(46) }}║
@@ -41,13 +41,7 @@
           ║  User:      {{ attack_user | ljust(46) }}║
           ║  Attempts:  {{ (attempt_count | string) | ljust(46) }}║
           ║                                                              ║
-          ║  This will generate {{ attempt_count }} failed SSH login attempts       ║
-          ║  against the app server. Splunk will detect this as a        ║
-          ║  brute-force pattern and fire a webhook alert to             ║
-          ║  Event-Driven Ansible.                                       ║
-          ║                                                              ║
-          ║  EDA will then automatically trigger a job template to       ║
-          ║  revoke the application's database credentials in Vault.     ║
+          ║  Detection: Wazuh agent → rule 5712 → webhook → EDA          ║
           ╚════════════════════════════════════════════════════════════════╝
 
     - name: "Generate {{ attempt_count }} failed SSH login attempts"
@@ -66,32 +60,30 @@
         label: "Attempt {{ item }}/{{ attempt_count }}"
       changed_when: false
 
-    - name: Wait for Splunk to process the events
+    - name: Wait for Wazuh to process the events
       pause:
-        seconds: 20
-        prompt: "Waiting 20 seconds for Splunk to detect the brute-force pattern..."
+        seconds: 15
+        prompt: "Waiting 15 seconds for Wazuh to detect the brute-force pattern..."
 
     - name: Display post-attack status
       debug:
         msg: |
           ╔════════════════════════════════════════════════════════════════╗
-          ║       Attack Simulation Complete                             ║
+          ║       Attack Simulation Complete (Wazuh)                     ║
           ╠════════════════════════════════════════════════════════════════╣
-          ║                                                              ║
-          ║  {{ attempt_count }} failed SSH attempts sent to {{ target_hostname | ljust(24) }}║
           ║                                                              ║
           ║  Expected chain of events:                                   ║
           ║                                                              ║
-          ║    1. Splunk UF on app.zta.lab ships auth logs to indexer    ║
-          ║    2. Splunk saved search detects 5+ failures in 60s         ║
-          ║    3. Splunk webhook alert POSTs to EDA                      ║
+          ║    1. Wazuh agent on app.zta.lab detects failed logins       ║
+          ║    2. Wazuh manager fires rule 5712 (SSH brute force)        ║
+          ║    3. Wazuh integration sends webhook to EDA                 ║
           ║    4. EDA rulebook matches the event                         ║
           ║    5. EDA triggers AAP job: "Revoke App Credentials"         ║
           ║    6. Vault DB lease is revoked                              ║
           ║    7. App loses database access                              ║
           ║                                                              ║
           ║  Check:                                                      ║
-          ║    - Splunk for triggered alerts (Activity → Triggered)      ║
+          ║    - Wazuh dashboard: http://wazuh.zta.lab:5601              ║
           ║    - EDA Controller for rulebook activation events           ║
           ║    - AAP for the triggered revocation job                    ║
           ║    - http://app.zta.lab:8081/health for app health           ║

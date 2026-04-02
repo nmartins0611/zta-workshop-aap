@@ -15,7 +15,7 @@ HBAC rules, Vault policies, and the break-glass recovery path.
 | **Assume breach** | Even if one layer fails, others still protect |
 | **Break-glass recovery** | Every lockdown needs a tested escape hatch |
 | **Least privilege** | Only AAP's AppRole can generate credentials after lockdown |
-| **Audit trail** | Wazuh detects and logs every bypass attempt |
+| **Audit trail** | Splunk detects and logs every bypass attempt |
 
 ## Prerequisites
 
@@ -208,13 +208,19 @@ vault kv get secret/network/arista
 
 ---
 
-## Exercise 6.6 — Apply Wazuh Bypass Detection (Layer 4)
+## Exercise 6.6 — Apply Splunk Bypass Detection (Layer 4)
 
 **Run the bypass detection playbook:**
 
 ```bash
-ansible-playbook -i inventory/hosts.ini setup/ssh_lockdown/lockdown-wazuh-bypass.yml
+ansible-playbook -i inventory/hosts.ini setup/ssh_lockdown/lockdown-splunk-bypass.yml
 ```
+
+This creates two Splunk saved searches that monitor for SSH bypass attempts:
+- `ZTA: SSH Bypass — Login from Non-AAP Source` (successful SSH from untrusted IP)
+- `ZTA: SSH Bypass — Repeated HBAC Denials` (repeated HBAC-denied logins = recon)
+
+Both are configured with webhook alert actions pointing to EDA.
 
 **Test bypass detection:**
 
@@ -223,14 +229,23 @@ ansible-playbook -i inventory/hosts.ini setup/ssh_lockdown/lockdown-wazuh-bypass
 ssh neteng@app.zta.lab
 # HBAC denies the login
 
-# Check Wazuh dashboard for the alert
-# Navigate to http://wazuh.zta.lab:5601
-# Look for rule 100021 (HBAC denied SSH login)
+# Check Splunk for the alert
+# Navigate to http://central.zta.lab:8000
+# Activity → Triggered Alerts
+# Look for "ZTA: SSH Bypass — Repeated HBAC Denials"
+```
+
+You can also search directly:
+
+```
+index=main sourcetype=linux_secure "Permission denied" OR "not allowed"
+| stats count by src_ip, user
+| where count >= 3
 ```
 
 > **ZTA Lesson:** Even when a login is denied, the attempt is detected and
-> logged. Repeated attempts trigger escalated alerts (rule 100024) that
-> forward to EDA for automated response.
+> logged. Repeated attempts trigger escalated alerts that forward to EDA
+> for automated response.
 
 ---
 
@@ -267,5 +282,5 @@ With all four layers active, verify the complete defence chain:
 - [ ] Recovery: AAP jobs succeed after `ipa hbacrule-add-user` fix
 - [ ] Layer 3: Human Vault login cannot sign SSH certificates
 - [ ] Layer 3: Human Vault login CAN read KV secrets
-- [ ] Layer 4: Wazuh alerts fire on HBAC-denied SSH attempts
+- [ ] Layer 4: Splunk alerts fire on HBAC-denied SSH attempts
 - [ ] Full chain: AAP is the only working path to managed hosts

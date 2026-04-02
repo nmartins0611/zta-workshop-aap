@@ -31,7 +31,7 @@ for RHEL 9.x but should work on CentOS Stream 9 or Fedora.
 | VM | Hostname | IP (example) | Role | Min Specs |
 |----|----------|--------------|------|-----------|
 | **Central** | central.zta.lab | 192.168.1.11 | IdM, OPA, Keycloak, SPIRE server, Arista cEOS switches, DB/App containers, Wazuh, Splunk | 8 vCPU, 16 GB RAM, 80 GB disk |
-| **AAP Controller** | aap.zta.lab | 192.168.1.10 | AAP, EDA Controller, SPIRE agent | 4 vCPU, 16 GB RAM, 40 GB disk |
+| **AAP Controller** | control.zta.lab | 192.168.1.10 | AAP, EDA Controller, SPIRE agent | 4 vCPU, 16 GB RAM, 40 GB disk |
 | **Vault** | vault.zta.lab | 192.168.1.12 | HashiCorp Vault | 2 vCPU, 4 GB RAM, 20 GB disk |
 
 Optional VMs (can be consolidated onto central if resources allow):
@@ -478,7 +478,7 @@ curl -s http://central.zta.lab:8000 | head -5
 ssh -p 2001 admin@central.zta.lab show version
 
 # AAP
-curl -sk https://aap.zta.lab/api/v2/ping/
+curl -sk https://control.zta.lab/api/controller/v2/ping/
 ```
 
 ---

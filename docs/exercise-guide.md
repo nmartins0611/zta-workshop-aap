@@ -97,8 +97,8 @@ executing.
 
 | System | URL / Address | Credentials |
 |--------|---------------|-------------|
-| AAP Controller | `https://aap.zta.lab` | *provided by instructor* |
-| EDA Controller | `https://aap.zta.lab` (EDA tab) | *provided by instructor* |
+| AAP Controller | `https://control.zta.lab` | *provided by instructor* |
+| EDA Controller | `https://control.zta.lab` (EDA tab) | *provided by instructor* |
 | IdM (FreeIPA) | `https://central.zta.lab` | admin / ansible123! |
 | OPA | `http://central.zta.lab:8181` | (no auth) |
 | Vault | `http://vault.zta.lab:8200` | admin / ansible123! |
@@ -277,7 +277,7 @@ vault secrets list    # should show database/, secret/, ssh/
 
 ### Exercise 1.2 — Configure AAP Credentials
 
-Log into AAP Controller at `https://aap.zta.lab` and create:
+Log into AAP Controller at `https://control.zta.lab` and create:
 
 | Credential | Type | Key Details |
 |------------|------|-------------|

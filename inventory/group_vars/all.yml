@@ -41,7 +41,7 @@ splunk_hec_token: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
 keycloak_url: "https://keycloak.zta.lab:8543"
 
 # ── AAP Controller (own VM) ─────────────────────────────────────────
-aap_controller_url: "https://aap.zta.lab"
+aap_controller_url: "https://control.zta.lab"
 aap_validate_certs: false
 
 # ── Arista cEOS Switches (containers on central) ──────────────────

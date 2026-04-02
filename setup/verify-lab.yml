@@ -285,7 +285,7 @@
   tasks:
     - name: Check AAP web UI
       uri:
-        url: "https://localhost/api/v2/ping/"
+        url: "https://localhost/api/controller/v2/ping/"
         method: GET
         validate_certs: false
         status_code: [200]

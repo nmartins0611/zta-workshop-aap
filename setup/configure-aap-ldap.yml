@@ -19,7 +19,7 @@
   gather_facts: false
 
   vars:
-    aap_host: "{{ aap_controller_url | default('https://aap.zta.lab') }}"
+    aap_host: "{{ aap_controller_url | default('https://control.zta.lab') }}"
     aap_user: admin
     aap_password: "{{ lookup('env', 'AAP_ADMIN_PASSWORD') | default('ansible123!', true) }}"
     aap_verify_ssl: false
@@ -87,7 +87,7 @@
 
     - name: Verify AAP Controller is reachable
       uri:
-        url: "{{ aap_host }}/api/v2/ping/"
+        url: "{{ aap_host }}/api/controller/v2/ping/"
         method: GET
         validate_certs: "{{ aap_verify_ssl }}"
         status_code: 200
@@ -101,7 +101,7 @@
 
     - name: Get current LDAP settings from AAP
       uri:
-        url: "{{ aap_host }}/api/v2/settings/ldap/"
+        url: "{{ aap_host }}/api/controller/v2/settings/ldap/"
         method: GET
         user: "{{ aap_user }}"
         password: "{{ aap_password }}"
@@ -112,7 +112,7 @@
 
     - name: Configure LDAP authentication in AAP
       uri:
-        url: "{{ aap_host }}/api/v2/settings/ldap/"
+        url: "{{ aap_host }}/api/controller/v2/settings/ldap/"
         method: PATCH
         user: "{{ aap_user }}"
         password: "{{ aap_password }}"
@@ -132,7 +132,7 @@
 
     - name: Test LDAP login with ztauser
       uri:
-        url: "{{ aap_host }}/api/v2/tokens/"
+        url: "{{ aap_host }}/api/controller/v2/tokens/"
         method: POST
         user: ztauser
         password: "{{ idm_ldap_password }}"

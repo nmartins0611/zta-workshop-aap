@@ -109,7 +109,7 @@
     # ── 4. Verify AAP is reachable ─────────────────────────────────────
     - name: Verify AAP Controller is reachable
       uri:
-        url: "{{ aap_host }}/api/v2/ping/"
+        url: "{{ aap_host }}/api/controller/v2/ping/"
         method: GET
         validate_certs: "{{ aap_verify_ssl }}"
         status_code: 200
@@ -122,7 +122,7 @@
     # ── 5. Look up credential type IDs ─────────────────────────────────
     - name: Look up HashiCorp Vault Signed SSH credential type
       uri:
-        url: "{{ aap_host }}/api/v2/credential_types/?name=HashiCorp+Vault+Signed+SSH"
+        url: "{{ aap_host }}/api/controller/v2/credential_types/?name=HashiCorp+Vault+Signed+SSH"
         method: GET
         user: "{{ aap_user }}"
         password: "{{ aap_password }}"
@@ -145,7 +145,7 @@
     # ── 6. Create Vault SSH credential in AAP ──────────────────────────
     - name: Check if ZTA Vault SSH credential already exists
       uri:
-        url: "{{ aap_host }}/api/v2/credentials/?name=ZTA+Vault+SSH+Credential"
+        url: "{{ aap_host }}/api/controller/v2/credentials/?name=ZTA+Vault+SSH+Credential"
         method: GET
         user: "{{ aap_user }}"
         password: "{{ aap_password }}"
@@ -156,7 +156,7 @@
 
     - name: Create ZTA Vault SSH credential
       uri:
-        url: "{{ aap_host }}/api/v2/credentials/"
+        url: "{{ aap_host }}/api/controller/v2/credentials/"
         method: POST
         user: "{{ aap_user }}"
         password: "{{ aap_password }}"

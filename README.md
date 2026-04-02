@@ -10,7 +10,7 @@ and Arista cEOS network infrastructure.
 ```
                             ┌──────────────────┐
                             │   AAP Controller  │
-                            │   aap.zta.lab     │
+                            │  control.zta.lab  │
                             │   EDA Controller  │
                             └────────┬─────────┘
                                      │
@@ -60,8 +60,8 @@ and Arista cEOS network infrastructure.
 | **Gitea** | Git server for GitOps workflows | gitea.zta.lab |
 | **Splunk** | Log aggregation, security analytics | central.zta.lab (container) |
 | **Wazuh** | SIEM, vulnerability scanning, brute-force detection | central.zta.lab (container) |
-| **AAP Controller** | Automation orchestration (Policy Enforcement Point) | aap.zta.lab (own VM) |
-| **EDA Controller** | Event-Driven Ansible (automated incident response) | aap.zta.lab (own VM) |
+| **AAP Controller** | Automation orchestration (Policy Enforcement Point) | control.zta.lab (own VM) |
+| **EDA Controller** | Event-Driven Ansible (automated incident response) | control.zta.lab (own VM) |
 | **Arista cEOS** | 3-switch fabric (spine + 2 leaf), VLANs, ACLs | central.zta.lab (containers) |
 | **PostgreSQL** | Application database | central.zta.lab (RHEL container, 10.30.0.10) |
 | **App Server** | Global Telemetry Platform (Flask) | central.zta.lab (RHEL container, 10.20.0.10) |

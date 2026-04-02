@@ -55,7 +55,7 @@
 
     - name: Verify AAP Controller is reachable
       uri:
-        url: "{{ aap_host }}/api/v2/ping/"
+        url: "{{ aap_host }}/api/controller/v2/ping/"
         method: GET
         validate_certs: "{{ aap_verify_ssl }}"
         status_code: 200
@@ -67,7 +67,7 @@
 
     - name: Configure OPA as the Policy as Code provider
       uri:
-        url: "{{ aap_host }}/api/v2/settings/opa/"
+        url: "{{ aap_host }}/api/controller/v2/settings/opa/"
         method: PATCH
         user: "{{ aap_user }}"
         password: "{{ aap_password }}"

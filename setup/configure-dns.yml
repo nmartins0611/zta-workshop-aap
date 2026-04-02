@@ -134,6 +134,7 @@
 
   vars:
     central_ip: "{{ ansible_default_ipv4.address | default('192.168.1.11') }}"
+    upstream_dns: "{{ upstream_dns_server | default('172.30.0.10') }}"
     rhel_containers:
       - name: db
         hostname: db.zta.lab
@@ -150,17 +151,17 @@
       failed_when: false
       changed_when: false
 
-    - name: Set DNS resolver in running containers
+    - name: Set DNS resolver in running containers (IdM + upstream fallback)
       shell: >-
         podman exec {{ item.item.name }} bash -c
-        'printf "search zta.lab\nnameserver {{ central_ip }}\n" > /etc/resolv.conf'
+        'printf "search zta.lab\nnameserver {{ central_ip }}\nnameserver {{ upstream_dns }}\n" > /etc/resolv.conf'
       loop: "{{ container_state.results }}"
       loop_control:
         label: "{{ item.item.name }}"
       when: item.rc == 0 and item.stdout == 'true'
       changed_when: true
 
-    - name: Verify DNS resolution from containers
+    - name: Verify internal DNS (zta.lab via IdM)
       command: >
         podman exec {{ item.item.name }}
         dig +short central.zta.lab @{{ central_ip }}
@@ -168,7 +169,19 @@
       loop_control:
         label: "{{ item.item.name }}"
       when: item.rc == 0 and item.stdout == 'true'
-      register: container_dns_verify
+      register: container_dns_internal
+      changed_when: false
+      failed_when: false
+
+    - name: Verify external DNS (cdn.redhat.com for repo access)
+      command: >
+        podman exec {{ item.item.name }}
+        dig +short cdn.redhat.com
+      loop: "{{ container_state.results }}"
+      loop_control:
+        label: "{{ item.item.name }}"
+      when: item.rc == 0 and item.stdout == 'true'
+      register: container_dns_external
       changed_when: false
       failed_when: false
 
@@ -180,7 +193,7 @@
           ═══════════════════════════════════════════
           {% for result in container_state.results %}
           {% if result.rc == 0 and result.stdout == 'true' %}
-            {{ result.item.name }} ({{ result.item.hostname }}): DNS → {{ central_ip }} ✓
+            {{ result.item.name }} ({{ result.item.hostname }}): IdM → {{ central_ip }}, upstream → {{ upstream_dns }} ✓
           {% else %}
             {{ result.item.name }} ({{ result.item.hostname }}): Not running — skipped
           {% endif %}

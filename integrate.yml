@@ -362,6 +362,6 @@
           - "    Groups:    zta-admins"
           - ""
           - "  Keycloak: not configured by this playbook"
-          - "    Run integrate-keycloak.yml when ready"
+          - "    Run setup/configure-keycloak.yml when ready"
           - "=========================================================="
       tags: [phase5, validation]

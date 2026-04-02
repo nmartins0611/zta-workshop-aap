@@ -386,7 +386,7 @@ cd /tmp/zta-workshop-aap
 ansible-playbook integrate.yml
 
 # If using Keycloak for OIDC/JWT:
-ansible-playbook integrate-keycloak.yml
+ansible-playbook setup/configure-keycloak.yml
 ```
 
 ### Optional: Splunk log aggregation
@@ -678,7 +678,7 @@ Total time: ~50 minutes (mostly automated).
 | Playbook | Purpose |
 |----------|---------|
 | `integrate.yml` | Wire IdM + OPA + service certs |
-| `integrate-keycloak.yml` | Add Keycloak OIDC + JWT OPA |
+| `setup/configure-keycloak.yml` | Add Keycloak OIDC + JWT OPA |
 
 ---
 

@@ -33,6 +33,7 @@
     container_user: rhel
     container_password: "{{ idm_admin_password }}"
     central_ip: "{{ ansible_default_ipv4.address | default('192.168.1.11') }}"
+    upstream_dns: "{{ upstream_dns_server | default('172.30.0.10') }}"
     containers:
       - name: db
         hostname: db.zta.lab
@@ -172,31 +173,50 @@
     # Phase 5 — Configure DNS (must happen before dnf for repo access)
     # ═══════════════════════════════════════════════════════════════════
 
-    - name: Configure DNS resolver to use IdM
+    - name: Configure DNS resolver (IdM + upstream fallback)
       shell: >-
         podman exec {{ item.name }} bash -c
-        'printf "search zta.lab\nnameserver {{ central_ip }}\n" > /etc/resolv.conf'
+        'printf "search zta.lab\nnameserver {{ central_ip }}\nnameserver {{ upstream_dns }}\n" > /etc/resolv.conf'
       loop: "{{ containers }}"
       loop_control:
         label: "{{ item.name }}"
       changed_when: true
 
-    - name: Verify DNS resolution from containers
+    - name: Verify internal DNS (zta.lab via IdM)
       command: >
         podman exec {{ item.name }}
         dig +short central.zta.lab @{{ central_ip }}
       loop: "{{ containers }}"
       loop_control:
         label: "{{ item.name }}"
-      register: dns_verify
+      register: dns_verify_internal
       changed_when: false
       failed_when: false
 
+    - name: Verify external DNS (cdn.redhat.com for repo access)
+      command: >
+        podman exec {{ item.name }}
+        dig +short cdn.redhat.com
+      loop: "{{ containers }}"
+      loop_control:
+        label: "{{ item.name }}"
+      register: dns_verify_external
+      changed_when: false
+      failed_when: false
+
+    - name: Set external DNS reachable flag
+      set_fact:
+        external_dns_ok: >-
+          {{ dns_verify_external.results | map(attribute='stdout') |
+             select('match', '.+') | list | length == containers | length }}
+
     # ═══════════════════════════════════════════════════════════════════
     # Phase 6 — Install role-specific packages
+    #   Strategy: try direct dnf first. If external DNS is down, fall
+    #   back to downloading RPMs on central and copying them in.
     # ═══════════════════════════════════════════════════════════════════
 
-    - name: Install packages in containers
+    - name: Install packages in containers (online)
       command: >
         podman exec {{ item.name }}
         dnf -y install {{ item.packages | join(' ') }}
@@ -205,6 +225,58 @@
         label: "{{ item.name }}"
       register: pkg_install
       changed_when: "'Complete!' in pkg_install.stdout"
+      when: external_dns_ok | bool
+
+    # ── Offline fallback: download on central, copy in, localinstall ──
+
+    - name: Create RPM staging directories on central
+      file:
+        path: "/tmp/rpms-{{ item.name }}"
+        state: directory
+        mode: '0755'
+      loop: "{{ containers }}"
+      loop_control:
+        label: "{{ item.name }}"
+      when: not (external_dns_ok | bool)
+
+    - name: Download RPMs on central (has RHSM repos)
+      command: >
+        dnf download --resolve --alldeps
+        --destdir /tmp/rpms-{{ item.name }}
+        {{ item.packages | join(' ') }}
+      loop: "{{ containers }}"
+      loop_control:
+        label: "{{ item.name }}"
+      register: rpm_download
+      changed_when: true
+      when: not (external_dns_ok | bool)
+
+    - name: Copy RPMs into containers
+      command: "podman cp /tmp/rpms-{{ item.name }} {{ item.name }}:/tmp/rpms"
+      loop: "{{ containers }}"
+      loop_control:
+        label: "{{ item.name }}"
+      when: not (external_dns_ok | bool)
+
+    - name: Install RPMs locally inside containers (offline)
+      shell: >
+        podman exec {{ item.name }} bash -c
+        'dnf -y localinstall /tmp/rpms/*.rpm && rm -rf /tmp/rpms'
+      loop: "{{ containers }}"
+      loop_control:
+        label: "{{ item.name }}"
+      register: pkg_install_offline
+      changed_when: "'Complete!' in (pkg_install_offline.stdout | default(''))"
+      when: not (external_dns_ok | bool)
+
+    - name: Clean up RPM staging on central
+      file:
+        path: "/tmp/rpms-{{ item.name }}"
+        state: absent
+      loop: "{{ containers }}"
+      loop_control:
+        label: "{{ item.name }}"
+      when: not (external_dns_ok | bool)
 
     # ═══════════════════════════════════════════════════════════════════
     # Phase 7 — Verify SSH and dnf

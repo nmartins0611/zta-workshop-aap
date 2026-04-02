@@ -9,7 +9,7 @@
 #   ansible-playbook -i inventory/hosts.ini setup/redeploy-keycloak.yml \
 #     -e keycloak_external_hostname=keycloak-https-XXXXX.apps.ocpvdev01.rhdp.net
 #
-# After this succeeds, re-run integrate-keycloak.yml to reconfigure the
+# After this succeeds, re-run setup/configure-keycloak.yml to reconfigure the
 # realm, LDAP federation, and OPA policies with the new issuer URL.
 
 - name: Redeploy Keycloak container with updated hostname
@@ -107,5 +107,5 @@
           - "  HTTP:      http://{{ keycloak_external_hostname }}:{{ keycloak_http_port }}"
           - "  Admin:     {{ keycloak_admin_user }}"
           - ""
-          - "  Next step: re-run integrate-keycloak.yml to update realm/LDAP/OPA:"
-          - "    ansible-playbook -i inventory/hosts.ini integrate-keycloak.yml"
+          - "  Next step: re-run setup/configure-keycloak.yml to update realm/LDAP/OPA:"
+          - "    ansible-playbook -i inventory/hosts.ini setup/configure-keycloak.yml"

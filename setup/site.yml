@@ -52,11 +52,12 @@
 #   aap-netbox      — AAP NetBox CMDB integration
 #   aap-eda         — Wazuh → EDA webhook integration
 #   splunk-ship     — Splunk centralized log shipping
+#   keycloak        — Keycloak realm, LDAP federation, OIDC client, JWT OPA policies
 #   aap-creds       — AAP credentials (Vault-sourced)
 #   aap-inventory   — AAP static inventory
 #
 #   ── Group tags (span multiple playbooks) ──
-#   identity        — DNS, IdM enrollment, IdM users, certs, AAP LDAP
+#   identity        — DNS, IdM enrollment, IdM users, certs, AAP LDAP, Keycloak
 #   secrets         — Vault engines + SSH CA
 #   network         — Arista + RHEL containers
 #   app             — DB + App deployment
@@ -169,6 +170,10 @@
 - name: "Configure 11: Splunk centralized log shipping"
   ansible.builtin.import_playbook: integrate-splunk.yml
   tags: [configure, logging, splunk-ship]
+
+- name: "Configure 12: Keycloak realm, IdM LDAP federation, OIDC + JWT policies"
+  ansible.builtin.import_playbook: configure-keycloak.yml
+  tags: [configure, identity, keycloak]
 
 
 # ═════════════════════════════════════════════════════════════════════

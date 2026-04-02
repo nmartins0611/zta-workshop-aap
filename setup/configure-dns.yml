@@ -51,13 +51,30 @@
         record_value: "{{ central_ip }}"
         state: absent
 
-    - name: Set IdM global DNS forwarder for internet resolution
-      shell: |
-        echo '{{ idm_admin_password }}' | kinit admin 2>/dev/null
-        ipa dnsconfig-mod --forwarder=172.30.0.10
+    - name: Authenticate to IdM
+      shell: echo '{{ idm_admin_password }}' | kinit admin
+      changed_when: false
+      no_log: true
+
+    - name: Check current DNS forwarders
+      command: ipa dnsconfig-show --raw
+      register: dns_current
+      changed_when: false
+
+    - name: Set IdM global DNS forwarder to 172.30.0.10
+      command: ipa dnsconfig-mod --forwarder=172.30.0.10
       register: dns_fwd
       changed_when: "'Modified' in dns_fwd.stdout"
-      failed_when: dns_fwd.rc != 0 and 'no modifications' not in dns_fwd.stderr
+      failed_when:
+        - dns_fwd.rc != 0
+        - "'no modifications' not in dns_fwd.stderr"
+      when: "'172.30.0.10' not in dns_current.stdout"
+
+    - name: Verify DNS forwarder is set correctly
+      shell: ipa dnsconfig-show | grep -i forwarder
+      register: dns_verify_fwd
+      changed_when: false
+      failed_when: "'172.30.0.10' not in dns_verify_fwd.stdout"
 
     - name: Add DNS A records for workshop VMs
       redhat.rhel_idm.ipadnsrecord:

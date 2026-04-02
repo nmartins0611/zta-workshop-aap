@@ -9,32 +9,64 @@
 #   Phase 5 — Verify
 #
 # Usage:
-#   ansible-playbook setup/site.yml                        # full deploy (students do Section 1 manually)
-#   ansible-playbook setup/site.yml --tags aap-bootstrap   # also pre-configure AAP (skip Section 1)
-#   ansible-playbook setup/site.yml --tags deploy          # only deploy infrastructure
-#   ansible-playbook setup/site.yml --tags configure       # only configure services
-#   ansible-playbook setup/site.yml --tags network         # only Arista + RHEL containers
-#   ansible-playbook setup/site.yml --tags security        # Wazuh + Splunk + SPIRE
-#   ansible-playbook setup/site.yml --tags verify          # verification only
-#   ansible-playbook setup/site.yml --skip-tags verify     # deploy without verify
+#   ansible-playbook setup/site.yml                                # full deploy
+#   ansible-playbook setup/site.yml --tags deploy                  # only deploy infrastructure
+#   ansible-playbook setup/site.yml --tags configure               # only configure services
+#   ansible-playbook setup/site.yml --tags aap-bootstrap           # also pre-configure AAP
+#   ansible-playbook setup/site.yml --tags wazuh-agents            # just deploy Wazuh agents
+#   ansible-playbook setup/site.yml --tags vault-ssh               # just Vault SSH CA trust
+#   ansible-playbook setup/site.yml --tags security                # Wazuh + Splunk + SPIRE
+#   ansible-playbook setup/site.yml --tags verify                  # verification only
+#   ansible-playbook setup/site.yml --skip-tags verify             # deploy without verify
+#
+# Every playbook has a unique tag (e.g. wazuh-server, wazuh-agents, vault-engines,
+# vault-ssh) so you can target any single step independently.
 #
 # Tag reference:
-#   prereq        — DNS, IdM client enrollment (must run first)
-#   deploy        — All infrastructure deployment tasks
-#   configure     — All service configuration tasks
-#   aap-bootstrap — Pre-configure AAP credentials + inventory (skip for Section 1 exercises)
-#   identity      — DNS, IdM enrollment, IdM users, IdM service certs, AAP LDAP
-#   secrets       — Vault engines, policies, SSH CA trust
-#   network       — Arista cEOS switch fabric, RHEL containers
-#   app           — PostgreSQL database, Flask application
-#   cmdb          — Netbox deploy + seed data
-#   logging       — Splunk
-#   siem          — Wazuh manager, agents, EDA integration
-#   policy        — OPA base policies, AAP Policy as Code gateway
-#   spire         — SPIFFE/SPIRE server + agents
-#   eda           — Wazuh → EDA webhook integration
-#   security      — siem + logging + spire (convenience group)
-#   verify        — Full lab verification
+#   ── Phase tags ──
+#   prereq          — DNS, IdM client enrollment (must run first)
+#   deploy          — All infrastructure deployment tasks
+#   configure       — All service configuration tasks
+#   aap-bootstrap   — Pre-configure AAP credentials + inventory (skip for Section 1)
+#   verify          — Full lab verification
+#
+#   ── Component tags (unique per playbook) ──
+#   dns             — Register workshop VMs in IdM DNS + container resolv.conf
+#   idm-enroll      — Enroll Linux hosts as IdM clients
+#   arista          — Arista cEOS switch fabric
+#   containers      — RHEL containers (DB + App)
+#   db-app          — PostgreSQL database + Flask application
+#   netbox-deploy   — Deploy Netbox CMDB
+#   splunk-deploy   — Deploy Splunk log aggregation
+#   wazuh-server    — Deploy Wazuh SIEM stack
+#   wazuh-agents    — Deploy Wazuh agents on managed hosts
+#   spire           — SPIFFE/SPIRE server and agents
+#   idm-users       — IdM users and groups
+#   idm-certs       — IdM CA-signed TLS certificates
+#   vault-engines   — HashiCorp Vault engines and policies
+#   vault-ssh       — Vault SSH CA trust on RHEL hosts
+#   netbox-seed     — Seed Netbox with workshop data
+#   opa             — OPA base policies
+#   aap-policy      — AAP Policy as Code gateway
+#   aap-ldap        — AAP LDAP authentication
+#   aap-netbox      — AAP NetBox CMDB integration
+#   aap-eda         — Wazuh → EDA webhook integration
+#   splunk-ship     — Splunk centralized log shipping
+#   aap-creds       — AAP credentials (Vault-sourced)
+#   aap-inventory   — AAP static inventory
+#
+#   ── Group tags (span multiple playbooks) ──
+#   identity        — DNS, IdM enrollment, IdM users, certs, AAP LDAP
+#   secrets         — Vault engines + SSH CA
+#   network         — Arista + RHEL containers
+#   app             — DB + App deployment
+#   cmdb            — Netbox deploy + seed + AAP integration
+#   logging         — Splunk deploy + log shipping
+#   siem            — Wazuh server + agents + EDA
+#   policy          — OPA + AAP Policy as Code
+#   security        — siem + logging + spire (convenience group)
+#   aap             — All AAP-related configuration
+#   wazuh           — Wazuh server + agents (both)
 
 
 # ═════════════════════════════════════════════════════════════════════
@@ -48,7 +80,7 @@
 
 - name: "Prereq 2: Enroll Linux hosts as IdM clients"
   ansible.builtin.import_playbook: enroll-idm-clients.yml
-  tags: [prereq, identity, idm]
+  tags: [prereq, identity, idm-enroll]
 
 
 # ═════════════════════════════════════════════════════════════════════
@@ -66,23 +98,23 @@
 
 - name: "Deploy 3: PostgreSQL and Global Telemetry Platform"
   ansible.builtin.import_playbook: deploy-db-app.yml
-  tags: [deploy, app, database]
+  tags: [deploy, app, db-app]
 
 - name: "Deploy 4: Netbox CMDB"
   ansible.builtin.import_playbook: deploy-netbox.yml
-  tags: [deploy, cmdb, netbox]
+  tags: [deploy, cmdb, netbox-deploy]
 
 - name: "Deploy 5: Splunk log aggregation"
   ansible.builtin.import_playbook: deploy-splunk.yml
-  tags: [deploy, logging, splunk, security]
+  tags: [deploy, logging, splunk-deploy, security]
 
 - name: "Deploy 6: Wazuh SIEM stack"
   ansible.builtin.import_playbook: deploy-wazuh.yml
-  tags: [deploy, siem, wazuh, security]
+  tags: [deploy, siem, wazuh, wazuh-server, security]
 
 - name: "Deploy 7: Wazuh agents on managed hosts"
   ansible.builtin.import_playbook: deploy-wazuh-agents.yml
-  tags: [deploy, siem, wazuh, security]
+  tags: [deploy, siem, wazuh, wazuh-agents, security]
 
 - name: "Deploy 8: SPIFFE/SPIRE server and agents"
   ansible.builtin.import_playbook: deploy-spire.yml
@@ -96,23 +128,23 @@
 
 - name: "Configure 1: IdM users and groups"
   ansible.builtin.import_playbook: configure-idm-users.yml
-  tags: [configure, identity, idm]
+  tags: [configure, identity, idm-users]
 
 - name: "Configure 2: IdM CA-signed TLS certificates for services"
   ansible.builtin.import_playbook: configure-idm-certs.yml
-  tags: [configure, identity, certificates]
+  tags: [configure, identity, idm-certs]
 
 - name: "Configure 3: HashiCorp Vault engines and policies"
   ansible.builtin.import_playbook: configure-vault.yml
-  tags: [configure, secrets, vault]
+  tags: [configure, secrets, vault-engines]
 
 - name: "Configure 4: Vault SSH CA trust on all RHEL hosts"
   ansible.builtin.import_playbook: configure-vault-ssh.yml
-  tags: [configure, secrets, vault]
+  tags: [configure, secrets, vault-ssh]
 
 - name: "Configure 5: Seed Netbox with workshop infrastructure"
   ansible.builtin.import_playbook: configure-netbox.yml
-  tags: [configure, cmdb, netbox]
+  tags: [configure, cmdb, netbox-seed]
 
 - name: "Configure 6: OPA base policies"
   ansible.builtin.import_playbook: configure-opa-base.yml
@@ -120,23 +152,23 @@
 
 - name: "Configure 7: AAP Policy as Code gateway"
   ansible.builtin.import_playbook: configure-aap-policy.yml
-  tags: [configure, policy, aap]
+  tags: [configure, policy, aap, aap-policy]
 
 - name: "Configure 8: AAP LDAP authentication"
   ansible.builtin.import_playbook: configure-aap-ldap.yml
-  tags: [configure, identity, aap]
+  tags: [configure, identity, aap, aap-ldap]
 
 - name: "Configure 9: AAP NetBox CMDB integration"
   ansible.builtin.import_playbook: configure-aap-netbox.yml
-  tags: [configure, cmdb, aap, netbox]
+  tags: [configure, cmdb, aap, aap-netbox]
 
 - name: "Configure 10: Wazuh → EDA webhook integration"
   ansible.builtin.import_playbook: configure-wazuh-eda.yml
-  tags: [configure, eda, siem, security]
+  tags: [configure, siem, aap-eda, security]
 
 - name: "Configure 11: Splunk centralized log shipping"
   ansible.builtin.import_playbook: integrate-splunk.yml
-  tags: [configure, logging, splunk]
+  tags: [configure, logging, splunk-ship]
 
 
 # ═════════════════════════════════════════════════════════════════════
@@ -147,11 +179,11 @@
 
 - name: "AAP Bootstrap 1: Create all AAP credentials (Vault-sourced)"
   ansible.builtin.import_playbook: configure-aap-credentials.yml
-  tags: [aap-bootstrap, aap]
+  tags: [aap-bootstrap, aap, aap-creds]
 
 - name: "AAP Bootstrap 2: Create AAP static inventory"
   ansible.builtin.import_playbook: configure-aap-inventory.yml
-  tags: [aap-bootstrap, aap]
+  tags: [aap-bootstrap, aap, aap-inventory]
 
 
 # ═════════════════════════════════════════════════════════════════════

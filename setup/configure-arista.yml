@@ -1,45 +1,72 @@
 ---
-# configure-arista.yml — Push configs to running cEOS switches via Ansible
+# configure-arista.yml — Push startup configs to running cEOS switches
 #
-# Uses arista.eos.eos_config over SSH (network_cli) to apply the full
-# startup configuration to each switch.  No Podman operations, no restarts.
+# Podman/Netavark blocks SSH access to container-mapped ports (even from
+# localhost), so we use `podman exec` to write configs directly into the
+# container filesystem and restart to apply.
+#
+# Why `podman exec tee` instead of `podman cp`:
+#   cEOS mounts /mnt/flash/startup-config as a bind mount.  `podman cp`
+#   tries to unlink and replace the file, which fails ("device or resource
+#   busy").  `tee` writes to the existing inode without replacing it.
 #
 # Prerequisites:
-#   - cEOS containers (ceos1, ceos2, ceos3) are running and reachable on
-#     their SSH ports (2001-2003 on central)
-#   - The [network] inventory group + vars are configured in hosts.ini
+#   - cEOS containers (ceos1, ceos2, ceos3) are running on central
 #   - Switch config files exist in setup/switch-configs/
 #
 # Usage:
 #   ansible-playbook -i inventory/hosts.ini setup/configure-arista.yml
 
 - name: Apply Configuration to Running cEOS Switches
-  hosts: network
+  hosts: zta_services
+  become: true
   gather_facts: false
 
   vars:
     config_dir: "{{ playbook_dir }}/switch-configs"
-    host_config_map:
-      ceos1: sw01
-      ceos2: sw02
-      ceos3: sw03
+    switches:
+      - { name: ceos1, config: sw01, port: 2001 }
+      - { name: ceos2, config: sw02, port: 2002 }
+      - { name: ceos3, config: sw03, port: 2003 }
 
   tasks:
 
-    - name: Push full configuration to switch
-      arista.eos.eos_config:
-        src: "{{ config_dir }}/{{ host_config_map[inventory_hostname] }}/{{ host_config_map[inventory_hostname] }}"
-        replace: config
-      register: config_result
+    - name: Verify cEOS containers are running
+      ansible.builtin.command:
+        cmd: "podman inspect --format {% raw %}'{{.State.Status}}'{% endraw %} {{ item.name }}"
+      loop: "{{ switches }}"
+      loop_control:
+        label: "{{ item.name }}"
+      register: container_status
+      changed_when: false
+      failed_when: "'running' not in container_status.stdout"
 
-    - name: Save running-config to startup-config
-      arista.eos.eos_command:
-        commands:
-          - write memory
-      when: config_result.changed
+    - name: Push startup-config into containers
+      ansible.builtin.shell: >
+        podman exec -i {{ item.name }}
+        tee /mnt/flash/startup-config
+        < {{ config_dir }}/{{ item.config }}/{{ item.config }}
+        > /dev/null
+      loop: "{{ switches }}"
+      loop_control:
+        label: "{{ item.name }}"
+      register: push_results
+
+    - name: Restart switches to apply config
+      ansible.builtin.command: "podman restart {{ item.name }}"
+      loop: "{{ switches }}"
+      loop_control:
+        label: "{{ item.name }}"
+
+    - name: Wait for EOS to boot (30s)
+      ansible.builtin.pause:
+        seconds: 30
+        prompt: "Waiting for cEOS to reload with new startup-config..."
 
     - name: Display summary
       ansible.builtin.debug:
-        msg: >-
-          {{ inventory_hostname }} — config {{ 'applied and saved' if config_result.changed else 'already current' }}
-          (src: {{ host_config_map[inventory_hostname] }})
+        msg: |
+          cEOS switch configs applied via podman exec:
+            ceos1 (spine)     ← sw01
+            ceos2 (leaf/data) ← sw02
+            ceos3 (leaf/app)  ← sw03

@@ -97,79 +97,82 @@
         - svc_member is failed
         - "'already a member' not in (svc_member.msg | default(''))"
 
-    - name: Check existing certificate request status
+    - name: Stop tracking any stuck certmonger requests
       shell: |
-        if ipa-getcert list -f {{ item.cert_dir }}/server.crt 2>/dev/null | grep -q 'status:'; then
-          ipa-getcert list -f {{ item.cert_dir }}/server.crt | grep 'status:' | head -1 | awk '{print $2}'
+        ipa-getcert stop-tracking -f {{ item.cert_dir }}/server.crt 2>/dev/null || true
+      loop: "{{ idm_service_certs }}"
+      loop_control:
+        label: "{{ item.hostname }}"
+      changed_when: false
+
+    - name: Check for existing valid certificates
+      shell: |
+        if [ -f {{ item.cert_dir }}/server.crt ]; then
+          openssl x509 -in {{ item.cert_dir }}/server.crt -noout -checkend 3600 2>/dev/null && echo "VALID" || echo "EXPIRED"
         else
-          echo "NONE"
+          echo "MISSING"
         fi
       loop: "{{ idm_service_certs }}"
       loop_control:
         label: "{{ item.hostname }}"
-      register: cert_status_check
+      register: cert_check
       changed_when: false
 
-    - name: Clean up stuck or rejected certificate requests
-      shell: |
-        ipa-getcert stop-tracking -f {{ item.item.cert_dir }}/server.crt 2>/dev/null || true
-        rm -f {{ item.item.cert_dir }}/server.crt {{ item.item.cert_dir }}/server.key
-      loop: "{{ cert_status_check.results }}"
-      loop_control:
-        label: "{{ item.item.hostname }}"
-      when: item.stdout in ['CA_REJECTED', 'CA_UNREACHABLE', 'NEED_GUIDANCE']
-      changed_when: true
-
-    - name: Obtain Kerberos admin ticket for certmonger
+    - name: Obtain Kerberos admin ticket
       shell: echo '{{ idm_admin_password }}' | kinit admin
       changed_when: false
       no_log: true
 
-    - name: Restart certmonger to pick up fresh credentials
-      systemd:
-        name: certmonger
-        state: restarted
-
-    - name: Request certificates from IdM CA
+    - name: Generate RSA private key
       command: >
-        ipa-getcert request
-        -f {{ item.item.cert_dir }}/server.crt
-        -k {{ item.item.cert_dir }}/server.key
-        -N CN={{ item.item.hostname }}
-        -D {{ item.item.hostname }}
-        -K HTTP/{{ item.item.hostname }}@{{ idm_realm }}
-      loop: "{{ cert_status_check.results }}"
+        openssl genrsa -out {{ item.item.cert_dir }}/server.key 4096
+      loop: "{{ cert_check.results }}"
       loop_control:
         label: "{{ item.item.hostname }}"
-      when: item.stdout != 'MONITORING'
-      register: cert_request
-      changed_when: "'New signing request' in (cert_request.stdout | default(''))"
-      failed_when: false
+      when: item.stdout != 'VALID'
 
-    - name: Wait for certificate issuance
-      shell: |
-        for i in $(seq 1 30); do
-          status=$(ipa-getcert list -f {{ item.item.cert_dir }}/server.crt 2>/dev/null | grep 'status:' | head -1)
-          if echo "$status" | grep -q 'MONITORING'; then
-            echo "ISSUED"
-            exit 0
-          fi
-          if echo "$status" | grep -qE 'CA_REJECTED|NEED_GUIDANCE'; then
-            ipa-getcert list -f {{ item.item.cert_dir }}/server.crt 2>&1
-            echo "REJECTED"
-            exit 1
-          fi
-          sleep 2
-        done
-        ipa-getcert list -f {{ item.item.cert_dir }}/server.crt 2>&1
-        echo "TIMEOUT"
-      loop: "{{ cert_status_check.results }}"
+    - name: Generate certificate signing request
+      command: >
+        openssl req -new
+        -key {{ item.item.cert_dir }}/server.key
+        -out {{ item.item.cert_dir }}/server.csr
+        -subj "/CN={{ item.item.hostname }}"
+      loop: "{{ cert_check.results }}"
       loop_control:
         label: "{{ item.item.hostname }}"
-      when: item.stdout != 'MONITORING'
-      register: cert_wait
-      changed_when: false
-      failed_when: "'TIMEOUT' in (cert_wait.stdout | default('')) or 'REJECTED' in (cert_wait.stdout | default(''))"
+      when: item.stdout != 'VALID'
+
+    - name: Request certificate from IdM CA via ipa cert-request
+      shell: |
+        ipa cert-request {{ item.item.cert_dir }}/server.csr \
+          --principal=HTTP/{{ item.item.hostname }}@{{ idm_realm }} \
+          --certificate-out={{ item.item.cert_dir }}/server.crt
+      loop: "{{ cert_check.results }}"
+      loop_control:
+        label: "{{ item.item.hostname }}"
+      when: item.stdout != 'VALID'
+      register: cert_request
+
+    - name: Clean up CSR files
+      file:
+        path: "{{ item.cert_dir }}/server.csr"
+        state: absent
+      loop: "{{ idm_service_certs }}"
+      loop_control:
+        label: "{{ item.hostname }}"
+
+    - name: Start certmonger tracking for auto-renewal
+      command: >
+        ipa-getcert start-tracking
+        -f {{ item.cert_dir }}/server.crt
+        -k {{ item.cert_dir }}/server.key
+        -K HTTP/{{ item.hostname }}@{{ idm_realm }}
+      loop: "{{ idm_service_certs }}"
+      loop_control:
+        label: "{{ item.hostname }}"
+      register: tracking
+      failed_when: false
+      changed_when: "'already' not in (tracking.stderr | default(''))"
 
     - name: Set certificate file permissions
       file:

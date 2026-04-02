@@ -90,6 +90,15 @@
           - jq
         state: present
 
+    - name: Disable SysRq to prevent cEOS from remounting host filesystem read-only
+      ansible.posix.sysctl:
+        name: kernel.sysrq
+        value: '0'
+        sysctl_file: /etc/sysctl.d/99-no-sysrq.conf
+        reload: true
+        state: present
+      failed_when: false
+
     - name: Pull cEOS image
       containers.podman.podman_image:
         name: "{{ ceos_image }}"
@@ -114,20 +123,27 @@
     # Phase 3 — Clean up any previous deployment
     # ═══════════════════════════════════════════════════════════════════
 
-    - name: Stop and remove existing cEOS containers
-      containers.podman.podman_container:
-        name: "{{ item.name }}"
-        state: absent
+    - name: Force-kill existing cEOS containers (skip graceful EOS shutdown)
+      command: "podman kill {{ item.name }}"
       loop: "{{ switches }}"
       loop_control:
         label: "{{ item.name }}"
       failed_when: false
+      changed_when: false
+
+    - name: Force-remove existing cEOS containers
+      command: "podman rm -f {{ item.name }}"
+      loop: "{{ switches }}"
+      loop_control:
+        label: "{{ item.name }}"
+      failed_when: false
+      changed_when: false
 
     - name: Remove existing podman networks
       command: "podman network rm {{ item }}"
       loop: "{{ podman_networks }}"
       failed_when: false
-      changed_when: true
+      changed_when: false
 
     # ═══════════════════════════════════════════════════════════════════
     # Phase 4 — Create networks
@@ -138,15 +154,35 @@
       loop:
         - management
         - loop
+      register: net_simple
+      failed_when:
+        - net_simple.rc != 0
+        - "'already exists' not in (net_simple.stderr | default(''))"
+      changed_when: net_simple.rc == 0
 
     - name: Create spine-leaf interconnect (net1 — 10.10.0.0/24)
       command: "podman network create --disable-dns --subnet 10.10.0.0/24 --gateway 10.10.0.1 net1"
+      register: net1_create
+      failed_when:
+        - net1_create.rc != 0
+        - "'already exists' not in (net1_create.stderr | default(''))"
+      changed_when: net1_create.rc == 0
 
     - name: Create data-tier network (net2 — 10.30.0.0/24)
       command: "podman network create --disable-dns --subnet 10.30.0.0/24 --gateway 10.30.0.1 net2"
+      register: net2_create
+      failed_when:
+        - net2_create.rc != 0
+        - "'already exists' not in (net2_create.stderr | default(''))"
+      changed_when: net2_create.rc == 0
 
     - name: Create app-tier network (net3 — 10.20.0.0/24)
       command: "podman network create --disable-dns --subnet 10.20.0.0/24 --gateway 10.20.0.1 net3"
+      register: net3_create
+      failed_when:
+        - net3_create.rc != 0
+        - "'already exists' not in (net3_create.stderr | default(''))"
+      changed_when: net3_create.rc == 0
 
     # ═══════════════════════════════════════════════════════════════════
     # Phase 5 — Launch cEOS containers

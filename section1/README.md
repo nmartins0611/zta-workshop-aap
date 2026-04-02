@@ -21,27 +21,24 @@ integrations.
 ## Architecture
 
 ```
-  ┌──────────────────────────────────────────────┐
-  │                AAP Controller                 │
-  │                                               │
-  │  Credentials:                                 │
-  │    - Machine (SSH key / password)             │
-  │    - HashiCorp Vault                          │
-  │    - Arista EOS (network device)               │
-  │    - Gitea source control                     │
-  │                                               │
-  │  Inventory:                                   │
-  │    - Synced from Netbox                       │
-  │                                               │
-  │  Project:                                     │
-  │    - Git → Gitea (gitea.zta.lab:3000)         │
-  │                                               │
-  │  Templates:                                   │
-  │    - Verify ZTA Services                      │
-  │    - Test Vault Integration                   │
-  │    - Test Vault SSH Certificates               │
-  │    - Test OPA Policy Check                    │
-  └──────┬───────────┬──────────┬────────────────┘
+  ┌───────────────────────────────────────────────────┐
+  │                 AAP Controller                     │
+  │                                                   │
+  │  Credentials (all Vault-sourced at runtime):      │
+  │    - Machine    ← Vault KV: secret/machine/rhel   │
+  │    - Arista     ← Vault KV: secret/network/arista │
+  │    - Vault SSH  ← Vault AppRole: ssh/sign/*       │
+  │    - NetBox     ← Custom type (env injection)     │
+  │                                                   │
+  │  Inventory:                                       │
+  │    - Static or synced from Netbox                 │
+  │                                                   │
+  │  Templates:                                       │
+  │    - Verify ZTA Services                          │
+  │    - Test Vault Integration                       │
+  │    - Test Vault SSH Certificates                  │
+  │    - Test OPA Policy Check                        │
+  └──────┬───────────┬──────────┬─────────────────────┘
          │           │          │
     ┌────▼───┐  ┌───▼────┐  ┌─▼──────────┐  ┌────────────┐
     │  IdM   │  │ Vault  │  │   OPA      │  │  Netbox    │
@@ -51,54 +48,189 @@ integrations.
 
 ---
 
-## Exercise 1.1 — Configure AAP Credentials
+## Exercise 1.1 — Configure AAP Credentials (Vault-Sourced)
 
-### Machine Credential
+In a Zero Trust environment, **no secrets are stored in the automation
+platform itself**. All credentials are sourced from HashiCorp Vault at job
+runtime. The only credential with a stored password is the Vault lookup
+credential — it bootstraps the entire trust chain.
+
+```
+  Vault (single source of truth for all secrets)
+    │
+    ├─→ ZTA Vault Credential         ← bootstrap (only stored password)
+    │     │
+    │     ├─→ ZTA Machine Credential  ← password pulled from Vault KV at runtime
+    │     │
+    │     └─→ ZTA Arista Credential   ← username/password pulled from Vault KV
+    │
+    ├─→ ZTA Vault SSH Credential      ← AppRole signs ephemeral SSH certs
+    │
+    └─→ ZTA NetBox Credential         ← API token (custom credential type)
+```
+
+### Step 1 — Verify Vault Secrets Are Populated
+
+Before creating AAP credentials, confirm the secrets exist in Vault:
+
+```bash
+export VAULT_ADDR=http://vault.zta.lab:8200
+vault login -method=userpass username=admin password=ansible123!
+
+# Machine credentials (SSH user for managed hosts)
+vault kv get secret/machine/rhel
+# Expected: password = ansible123!
+
+# Network device credentials (Arista cEOS switches)
+vault kv get secret/network/arista
+# Expected: username = admin, password = admin
+
+# Database admin credentials
+vault kv get secret/db/admin
+# Expected: username = postgres, password = postgres123!
+```
+
+> **ZTA Concept**: Every credential lives in Vault. If Vault is sealed or
+> unreachable, AAP cannot retrieve secrets — jobs fail safe rather than
+> falling back to stored passwords.
+
+---
+
+### Step 2 — Create the Vault Lookup Credential (Bootstrap)
+
+This is the **only credential with a directly stored password**. It
+authenticates to Vault so that all other credentials can pull their
+secrets at runtime.
 
 1. Navigate to **Resources → Credentials → Add**
-2. Name: `ZTA Machine Credential`
-3. Credential Type: `Machine`
-4. Username: `rhel`
-5. Password: from your lab assignment
-6. Privilege Escalation Method: `sudo`
+2. Configure:
 
-### HashiCorp Vault Credential
+| Field | Value |
+|-------|-------|
+| Name | `ZTA Vault Credential` |
+| Credential Type | `HashiCorp Vault Secret Lookup` |
+| Vault Server URL | `http://vault.zta.lab:8200` |
+| Username | `admin` |
+| Password | `ansible123!` |
+| API Version | `v2` |
+
+3. Click **Save**
+
+> **Why userpass?** For the workshop, Vault uses username/password auth.
+> In production, you would use AppRole, TLS certificates, or OIDC — never
+> a static password.
+
+---
+
+### Step 3 — Create the Machine Credential (Vault-Sourced)
+
+This credential authenticates AAP to managed RHEL hosts. Instead of
+storing the password in AAP, it is **looked up from Vault** every time
+a job runs.
 
 1. Navigate to **Resources → Credentials → Add**
-2. Name: `ZTA Vault Credential`
-3. Credential Type: `HashiCorp Vault Secret Lookup`
-4. Vault Server URL: `https://vault.zta.lab:8200`
-5. Username: `admin`
-6. Password: `ansible123!`
-7. API Version: `v2`
+2. Configure the base fields:
 
-### Network Credential
+| Field | Value |
+|-------|-------|
+| Name | `ZTA Machine Credential` |
+| Credential Type | `Machine` |
+| Username | `rhel` |
+| Privilege Escalation Method | `sudo` |
+
+3. **Do NOT type a password.** Instead, click the **key icon** (🔑) next
+   to the **Password** field. This opens the **External Secret Lookup**
+   dialog.
+
+4. Configure the external lookup:
+
+| Field | Value |
+|-------|-------|
+| Credential | `ZTA Vault Credential` |
+| Secret Path | `secret/data/machine/rhel` |
+| Secret Key | `password` |
+
+5. Click **OK** to confirm the lookup
+
+6. Repeat for the **Privilege Escalation Password** field:
+   - Click the **key icon** next to **Privilege Escalation Password**
+   - Credential: `ZTA Vault Credential`
+   - Secret Path: `secret/data/machine/rhel`
+   - Secret Key: `become_password`
+   - Click **OK**
+
+7. Click **Save**
+
+> **What just happened?** The Password and Become Password fields now show
+> a key icon instead of dots. AAP will call Vault's KV API at
+> `secret/data/machine/rhel` when a job launches, retrieve the current
+> password, and inject it into the SSH connection. If you rotate the
+> password in Vault, the next job automatically uses the new value — no
+> AAP changes needed.
+
+**Verify it works:**
+
+```bash
+# Change the password in Vault to confirm AAP reads dynamically
+vault kv put secret/machine/rhel password=ansible123! become_password=ansible123!
+```
+
+---
+
+### Step 4 — Create the Arista Network Credential (Vault-Sourced)
+
+The Arista cEOS switch credentials are already stored in Vault at
+`secret/network/arista` (populated by `setup/configure-vault.yml`).
 
 1. Navigate to **Resources → Credentials → Add**
-2. Name: `ZTA Arista Credential`
-3. Credential Type: `Network`
-4. Username: `admin`
-5. Password: `admin` (or retrieve from Vault: `secret/network/arista`)
+2. Configure the base fields:
 
-### Source Control Credential (Gitea)
+| Field | Value |
+|-------|-------|
+| Name | `ZTA Arista Credential` |
+| Credential Type | `Network` |
 
-1. Navigate to **Resources → Credentials → Add**
-2. Name: `ZTA Gitea Credential`
-3. Credential Type: `Source Control`
-4. Username: your Gitea username
-5. Password: your Gitea password or access token
+3. Click the **key icon** next to **Username**:
 
-### NetBox CMDB Credential
+| Field | Value |
+|-------|-------|
+| Credential | `ZTA Vault Credential` |
+| Secret Path | `secret/data/network/arista` |
+| Secret Key | `username` |
+
+4. Click the **key icon** next to **Password**:
+
+| Field | Value |
+|-------|-------|
+| Credential | `ZTA Vault Credential` |
+| Secret Path | `secret/data/network/arista` |
+| Secret Key | `password` |
+
+5. Click **Save**
+
+> **ZTA Concept**: Even the network device credentials come from Vault.
+> No AAP admin can see the switch password — it is resolved at runtime
+> and never stored in AAP's database.
+
+---
+
+### Step 5 — Create the NetBox CMDB Credential
 
 > **Note**: The `NetBox` credential type is pre-created by the setup playbook
-> (`setup/configure-aap-netbox.yml`). If it is missing, see the manual steps
-> in the box below.
+> (`setup/configure-aap-netbox.yml`). If it is missing, expand the manual
+> steps below.
 
 1. Navigate to **Resources → Credentials → Add**
-2. Name: `ZTA NetBox Credential`
-3. Credential Type: `NetBox`
-4. NetBox URL: `http://netbox.zta.lab:8880`
-5. API Token: `0123456789abcdef0123456789abcdef01234567`
+2. Configure:
+
+| Field | Value |
+|-------|-------|
+| Name | `ZTA NetBox Credential` |
+| Credential Type | `NetBox` |
+| NetBox URL | `http://netbox.zta.lab:8880` |
+| API Token | `0123456789abcdef0123456789abcdef01234567` |
+
+3. Click **Save**
 
 > **How the credential type works**: The `NetBox` credential type injects two
 > environment variables into every job that uses it:
@@ -145,9 +277,59 @@ env:
 ```
 
 5. Click **Save**
-6. Now return to step 1 above to create the credential
+6. Now return to the steps above to create the credential
 
 </details>
+
+---
+
+### Step 6 — Vault SSH Signed Certificate Credential (Instructor Pre-configured)
+
+> **Note**: This credential is pre-created by the instructor using
+> `setup/configure-aap-credentials.yml`. It uses Vault AppRole
+> authentication — not username/password — so it cannot be created
+> through the AAP UI alone.
+
+The `ZTA Vault SSH Credential` enables AAP to request **ephemeral SSH
+certificates** from Vault's SSH CA engine. When a job template uses this
+credential, AAP:
+
+1. Authenticates to Vault via AppRole (role-id + secret-id)
+2. Generates a temporary SSH keypair
+3. Sends the public key to Vault for signing
+4. Receives a time-bound certificate (30 min TTL)
+5. Uses the signed certificate to SSH into the target host
+6. The certificate expires — no persistent keys on disk
+
+```bash
+# Verify the SSH CA is configured
+vault read ssh/config/ca
+# Expected: public_key = ssh-rsa AAAA...
+
+# Verify the signing role exists
+vault read ssh/roles/ssh-signer
+# Expected: allowed_users = rhel,aap-service, ttl = 30m
+```
+
+To see this in action, run **Exercise 1.6 — Test Vault SSH Certificates**.
+
+---
+
+### Credential Summary
+
+| Credential | Type | Secret Source | Vault Path |
+|-----------|------|---------------|------------|
+| ZTA Vault Credential | HashiCorp Vault Lookup | Stored (bootstrap) | — |
+| ZTA Machine Credential | Machine | **Vault KV** (runtime) | `secret/data/machine/rhel` |
+| ZTA Arista Credential | Network | **Vault KV** (runtime) | `secret/data/network/arista` |
+| ZTA NetBox Credential | NetBox (custom) | Stored (API token) | — |
+| ZTA Vault SSH Credential | Vault Signed SSH | **Vault AppRole** | `ssh/sign/ssh-signer` |
+
+> **Key takeaway**: Only the Vault lookup credential and the NetBox token
+> are stored in AAP. The Machine and Arista passwords are **never in
+> AAP's database** — they are fetched from Vault at the moment a job
+> launches. This is the Zero Trust principle of *no standing access*
+> applied to the automation platform itself.
 
 ---
 
@@ -336,7 +518,11 @@ membership in IdM determines what each user can do.
 
 ## Validation Checklist
 
-- [ ] All credentials created in AAP
+- [ ] Vault Credential created (bootstrap — only stored password)
+- [ ] Machine Credential created with Vault KV external lookup (key icon visible)
+- [ ] Arista Credential created with Vault KV external lookup (key icon visible)
+- [ ] NetBox Credential created with custom credential type
+- [ ] Vault SSH Credential present (instructor pre-configured)
 - [ ] Netbox inventory synced with all lab hosts
 - [ ] Gitea project synced successfully
 - [ ] Verify ZTA Services — all services healthy

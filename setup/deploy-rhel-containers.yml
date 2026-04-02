@@ -256,13 +256,9 @@
     # ═══════════════════════════════════════════════════════════════════
 
     - name: Configure DNS resolver to use IdM
-      shell: |
-        podman exec {{ item.name }} bash -c '
-        cat > /etc/resolv.conf <<DNSEOF
-        search zta.lab
-        nameserver {{ central_ip }}
-        DNSEOF
-        '
+      shell: >-
+        podman exec {{ item.name }} bash -c
+        'printf "search zta.lab\nnameserver {{ central_ip }}\n" > /etc/resolv.conf'
       loop: "{{ containers }}"
       loop_control:
         label: "{{ item.name }}"

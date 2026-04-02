@@ -148,6 +148,8 @@
         --privileged
         --restart always
         -v {{ item.data_volume }}:/data:z
+        -v /etc/pki/entitlement:/etc/pki/entitlement:z
+        -v /etc/rhsm:/etc/rhsm:z
         -p {{ item.ssh_port }}:22
         {% for p in item.extra_ports %}
         -p {{ p }}

@@ -5,33 +5,36 @@
 #   Phase 1 — Prerequisites (DNS + IdM enrollment — must resolve before anything)
 #   Phase 2 — Deploy (stand up all infrastructure)
 #   Phase 3 — Configure (wire services together on running infra)
-#   Phase 4 — Verify
+#   Phase 4 — AAP Bootstrap (credentials, inventory — skip if students do Section 1)
+#   Phase 5 — Verify
 #
 # Usage:
-#   ansible-playbook setup/site.yml                    # deploy everything
-#   ansible-playbook setup/site.yml --tags deploy      # only deploy infrastructure
-#   ansible-playbook setup/site.yml --tags configure   # only configure services
-#   ansible-playbook setup/site.yml --tags network     # only Arista + RHEL containers
-#   ansible-playbook setup/site.yml --tags security    # Wazuh + Splunk + SPIRE
-#   ansible-playbook setup/site.yml --tags verify      # verification only
-#   ansible-playbook setup/site.yml --skip-tags verify # deploy without verify
+#   ansible-playbook setup/site.yml                        # full deploy (students do Section 1 manually)
+#   ansible-playbook setup/site.yml --tags aap-bootstrap   # also pre-configure AAP (skip Section 1)
+#   ansible-playbook setup/site.yml --tags deploy          # only deploy infrastructure
+#   ansible-playbook setup/site.yml --tags configure       # only configure services
+#   ansible-playbook setup/site.yml --tags network         # only Arista + RHEL containers
+#   ansible-playbook setup/site.yml --tags security        # Wazuh + Splunk + SPIRE
+#   ansible-playbook setup/site.yml --tags verify          # verification only
+#   ansible-playbook setup/site.yml --skip-tags verify     # deploy without verify
 #
 # Tag reference:
-#   prereq    — DNS, IdM client enrollment (must run first)
-#   deploy    — All infrastructure deployment tasks
-#   configure — All service configuration tasks
-#   identity  — DNS, IdM enrollment, IdM users, AAP LDAP
-#   secrets   — Vault engines, policies, SSH CA trust
-#   network   — Arista cEOS switch fabric, RHEL containers
-#   app       — PostgreSQL database, Flask application
-#   cmdb      — Netbox deploy + seed data
-#   logging   — Splunk
-#   siem      — Wazuh manager, agents, EDA integration
-#   policy    — OPA base policies, AAP Policy as Code gateway
-#   spire     — SPIFFE/SPIRE server + agents
-#   eda       — Wazuh → EDA webhook integration
-#   security  — siem + logging + spire (convenience group)
-#   verify    — Full lab verification
+#   prereq        — DNS, IdM client enrollment (must run first)
+#   deploy        — All infrastructure deployment tasks
+#   configure     — All service configuration tasks
+#   aap-bootstrap — Pre-configure AAP credentials + inventory (skip for Section 1 exercises)
+#   identity      — DNS, IdM enrollment, IdM users, IdM service certs, AAP LDAP
+#   secrets       — Vault engines, policies, SSH CA trust
+#   network       — Arista cEOS switch fabric, RHEL containers
+#   app           — PostgreSQL database, Flask application
+#   cmdb          — Netbox deploy + seed data
+#   logging       — Splunk
+#   siem          — Wazuh manager, agents, EDA integration
+#   policy        — OPA base policies, AAP Policy as Code gateway
+#   spire         — SPIFFE/SPIRE server + agents
+#   eda           — Wazuh → EDA webhook integration
+#   security      — siem + logging + spire (convenience group)
+#   verify        — Full lab verification
 
 
 # ═════════════════════════════════════════════════════════════════════
@@ -95,41 +98,64 @@
   ansible.builtin.import_playbook: configure-idm-users.yml
   tags: [configure, identity, idm]
 
-- name: "Configure 2: HashiCorp Vault engines and policies"
+- name: "Configure 2: IdM CA-signed TLS certificates for services"
+  ansible.builtin.import_playbook: configure-idm-certs.yml
+  tags: [configure, identity, certificates]
+
+- name: "Configure 3: HashiCorp Vault engines and policies"
   ansible.builtin.import_playbook: configure-vault.yml
   tags: [configure, secrets, vault]
 
-- name: "Configure 3: Vault SSH CA trust on all RHEL hosts"
+- name: "Configure 4: Vault SSH CA trust on all RHEL hosts"
   ansible.builtin.import_playbook: configure-vault-ssh.yml
   tags: [configure, secrets, vault]
 
-- name: "Configure 4: Seed Netbox with workshop infrastructure"
+- name: "Configure 5: Seed Netbox with workshop infrastructure"
   ansible.builtin.import_playbook: configure-netbox.yml
   tags: [configure, cmdb, netbox]
 
-- name: "Configure 5: OPA base policies"
+- name: "Configure 6: OPA base policies"
   ansible.builtin.import_playbook: configure-opa-base.yml
   tags: [configure, policy, opa]
 
-- name: "Configure 6: AAP Policy as Code gateway"
+- name: "Configure 7: AAP Policy as Code gateway"
   ansible.builtin.import_playbook: configure-aap-policy.yml
   tags: [configure, policy, aap]
 
-- name: "Configure 7: AAP LDAP authentication"
+- name: "Configure 8: AAP LDAP authentication"
   ansible.builtin.import_playbook: configure-aap-ldap.yml
   tags: [configure, identity, aap]
 
-- name: "Configure 8: AAP NetBox CMDB integration"
+- name: "Configure 9: AAP NetBox CMDB integration"
   ansible.builtin.import_playbook: configure-aap-netbox.yml
   tags: [configure, cmdb, aap, netbox]
 
-- name: "Configure 9: Wazuh → EDA webhook integration"
+- name: "Configure 10: Wazuh → EDA webhook integration"
   ansible.builtin.import_playbook: configure-wazuh-eda.yml
   tags: [configure, eda, siem, security]
 
+- name: "Configure 11: Splunk centralized log shipping"
+  ansible.builtin.import_playbook: integrate-splunk.yml
+  tags: [configure, logging, splunk]
+
 
 # ═════════════════════════════════════════════════════════════════════
-#  PHASE 4 — Verify
+#  PHASE 4 — AAP Bootstrap (optional — skip if students do Section 1)
+#  Pre-creates AAP credentials + inventory so you can jump to Section 2
+#  Only runs when explicitly requested: --tags aap-bootstrap
+# ═════════════════════════════════════════════════════════════════════
+
+- name: "AAP Bootstrap 1: Create all AAP credentials (Vault-sourced)"
+  ansible.builtin.import_playbook: configure-aap-credentials.yml
+  tags: [aap-bootstrap, aap]
+
+- name: "AAP Bootstrap 2: Create AAP static inventory"
+  ansible.builtin.import_playbook: configure-aap-inventory.yml
+  tags: [aap-bootstrap, aap]
+
+
+# ═════════════════════════════════════════════════════════════════════
+#  PHASE 5 — Verify
 # ═════════════════════════════════════════════════════════════════════
 
 - name: "Verify: Full lab deployment"

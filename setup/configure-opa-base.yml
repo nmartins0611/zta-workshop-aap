@@ -47,6 +47,38 @@
         mode: '0644'
       register: gateway_policy
 
+    - name: Deploy identity-based authorisation policy
+      copy:
+        dest: "{{ opa_policy_dir }}/zta_authz.rego"
+        content: |
+          package zta.authz
+
+          import rego.v1
+
+          default allow := false
+
+          allow if {
+            input.user != ""
+            "zta-admins" in input.groups
+          }
+
+          decision := {
+            "allow": allow,
+            "user": input.user,
+            "groups": input.groups,
+          } if {
+            input.user
+          }
+
+          decision := {
+            "allow": false,
+            "reason": "missing user identity",
+          } if {
+            not input.user
+          }
+        mode: '0644'
+      register: authz_policy
+
     - name: Deploy health check policy
       copy:
         dest: "{{ opa_policy_dir }}/health.rego"
@@ -58,7 +90,7 @@
           main := {
             "status": "healthy",
             "version": "1.0",
-            "policies": ["zta_base", "patching", "network", "db_access", "aap_gateway"],
+            "policies": ["zta_base", "zta_authz", "patching", "network", "db_access", "aap_gateway"],
           }
         mode: '0644'
       register: health_policy
@@ -68,7 +100,8 @@
       when: >
         patching_policy.changed or network_policy.changed or
         db_policy.changed or base_policy.changed or
-        gateway_policy.changed or health_policy.changed
+        gateway_policy.changed or authz_policy.changed or
+        health_policy.changed
 
     - name: Wait for OPA health
       uri:

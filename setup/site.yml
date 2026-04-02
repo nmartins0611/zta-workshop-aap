@@ -41,6 +41,7 @@
 #   wazuh-server    — Deploy Wazuh SIEM stack
 #   wazuh-agents    — Deploy Wazuh agents on managed hosts
 #   spire           — SPIFFE/SPIRE server and agents
+#   dashboard       — ZTA Live Topology Dashboard
 #   idm-users       — IdM users and groups
 #   idm-certs       — IdM CA-signed TLS certificates
 #   vault-engines   — HashiCorp Vault engines and policies
@@ -120,6 +121,10 @@
 - name: "Deploy 8: SPIFFE/SPIRE server and agents"
   ansible.builtin.import_playbook: deploy-spire.yml
   tags: [deploy, spire, security]
+
+- name: "Deploy 9: ZTA Live Topology Dashboard"
+  ansible.builtin.import_playbook: deploy-dashboard.yml
+  tags: [deploy, dashboard]
 
 
 # ═════════════════════════════════════════════════════════════════════

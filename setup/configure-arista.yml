@@ -1,57 +1,17 @@
 ---
 # configure-arista.yml — Push configs to running cEOS switches
 #
-# Two-play structure:
-#   1. Enable firewalld on central and open all container-mapped ports so
-#      external hosts (AAP controller, students) can reach the switches.
-#   2. Push full startup configs via arista.eos.eos_config over network_cli.
+# Uses arista.eos.eos_config over SSH (network_cli) to apply the full
+# startup configuration to each switch.
 #
 # Prerequisites:
 #   - cEOS containers (ceos1, ceos2, ceos3) are running on central
+#   - Firewall ports are open (run configure-firewall.yml first)
 #   - The [network] inventory group + vars are configured in hosts.ini
 #   - Switch config files exist in setup/switch-configs/
 #
 # Usage:
 #   ansible-playbook -i inventory/hosts.ini setup/configure-arista.yml
-
-- name: Open Container Ports on Central Firewall
-  hosts: zta_services
-  become: true
-  gather_facts: false
-
-  tasks:
-
-    - name: Ensure firewalld is running
-      ansible.builtin.systemd:
-        name: firewalld
-        state: started
-        enabled: true
-
-    - name: Open container service ports
-      ansible.posix.firewalld:
-        port: "{{ item }}"
-        permanent: true
-        immediate: true
-        state: enabled
-      loop:
-        - 2001-2003/tcp
-        - 6031-6033/tcp
-        - 2022-2023/tcp
-        - 5432/tcp
-        - 8081/tcp
-        - 8000/tcp
-        - 8088-8089/tcp
-        - 9997/tcp
-        - 8180-8181/tcp
-        - 8543/tcp
-
-    - name: Wait for switch SSH ports to be reachable
-      ansible.builtin.wait_for:
-        host: "{{ ansible_host }}"
-        port: "{{ item }}"
-        timeout: 30
-        delay: 2
-      loop: [2001, 2002, 2003]
 
 - name: Apply Configuration to Running cEOS Switches
   hosts: network

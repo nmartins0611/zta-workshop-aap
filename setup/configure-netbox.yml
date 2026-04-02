@@ -116,7 +116,7 @@
     # ── Device Types ──
     nb_device_types:
       - model: RHEL 9 Virtual Machine
-        slug: rhel9-vm
+        slug: rhel-9-virtual-machine
         manufacturer: Red Hat
         part_number: RHEL-9-VM
       - model: Arista cEOS-lab

@@ -189,6 +189,10 @@
       set_fact:
         spire_join_token: "{{ token_result.stdout | regex_search('Token:\\s+(\\S+)', '\\1') | first }}"
 
+    - name: Record this agent's SPIFFE ID (derived from join token)
+      set_fact:
+        spire_agent_id: "spiffe://{{ spire_trust_domain }}/spire/agent/join_token/{{ spire_join_token }}"
+
     - name: Distribute trust bundle
       copy:
         content: "{{ hostvars[groups['zta_services'][0]]['spire_trust_bundle']['content'] | b64decode }}"
@@ -308,28 +312,12 @@
       debug:
         msg: "{{ agent_list.stdout }}"
 
-    - name: Get agent SPIFFE IDs
-      shell: >
-        {{ spire_install_dir }}/bin/spire-server agent list
-        -socketPath {{ spire_server_socket }}
-        | grep -oP 'spiffe://\S+'
-      register: agent_spiffe_ids
-
     # #region agent log
-    - name: "[DEBUG 5a17d8] Show agent_spiffe_ids"
-      debug:
-        var: agent_spiffe_ids
-
-    - name: "[DEBUG 5a17d8] Show agent_list raw"
-      debug:
-        var: agent_list.stdout_lines
-
-    - name: "[DEBUG 5a17d8] Match test per workload"
+    - name: "[DEBUG 5a17d8] Verify hostvars agent IDs for each workload"
       debug:
         msg: >-
           parent_host={{ item.parent_host }}
-          matches={{ agent_spiffe_ids.stdout_lines | select('search', '/host/' + item.parent_host) | list }}
-          all_ids={{ agent_spiffe_ids.stdout_lines }}
+          spire_agent_id={{ hostvars[item.parent_host]['spire_agent_id'] }}
       loop: "{{ spire_workloads }}"
       loop_control:
         label: "{{ item.parent_host }}"
@@ -340,7 +328,7 @@
         {{ spire_install_dir }}/bin/spire-server entry create
         -socketPath {{ spire_server_socket }}
         -spiffeID {{ item.spiffe_id }}
-        -parentID {{ agent_spiffe_ids.stdout_lines | select('search', '/host/' + item.parent_host) | first }}
+        -parentID {{ hostvars[item.parent_host]['spire_agent_id'] }}
         -selector {{ item.selectors | join(' -selector ') }}
       loop: "{{ spire_workloads }}"
       loop_control:

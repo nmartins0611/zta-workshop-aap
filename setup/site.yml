@@ -18,9 +18,8 @@
 #   ansible-playbook setup/site.yml --tags deploy                  # only deploy infrastructure
 #   ansible-playbook setup/site.yml --tags configure               # only configure services
 #   ansible-playbook setup/site.yml --tags aap-bootstrap           # also pre-configure AAP
-#   ansible-playbook setup/site.yml --tags wazuh-agents            # just deploy Wazuh agents
 #   ansible-playbook setup/site.yml --tags vault-ssh               # just Vault SSH CA trust
-#   ansible-playbook setup/site.yml --tags security                # Wazuh + Splunk + SPIRE
+#   ansible-playbook setup/site.yml --tags security                # Splunk + SPIRE
 #   ansible-playbook setup/site.yml --tags verify                  # verification only
 #   ansible-playbook setup/site.yml --skip-tags verify             # deploy without verify
 #
@@ -43,9 +42,9 @@
 #   db-app          — PostgreSQL database + Flask application
 #   netbox-deploy   — Deploy Netbox CMDB
 #   splunk-deploy   — Deploy Splunk log aggregation
-#   wazuh-server    — Deploy Wazuh SIEM stack
-#   wazuh-agents    — Deploy Wazuh agents on managed hosts
 #   spire           — SPIFFE/SPIRE server and agents
+#   (wazuh-server   — Optional: Wazuh SIEM — only for Section 7)
+#   (wazuh-agents   — Optional: Wazuh agents — only for Section 7)
 #   dashboard       — ZTA Live Topology Dashboard
 #   idm-users       — IdM users and groups
 #   idm-certs       — IdM CA-signed TLS certificates
@@ -56,8 +55,8 @@
 #   aap-policy      — AAP Policy as Code gateway
 #   aap-ldap        — AAP LDAP authentication
 #   aap-netbox      — AAP NetBox CMDB integration
-#   aap-eda         — Wazuh → EDA webhook integration
 #   splunk-ship     — Splunk centralized log shipping
+#   (aap-eda        — Optional: Wazuh → EDA webhook — only for Section 7)
 #   keycloak        — Keycloak realm, LDAP federation, OIDC client, JWT OPA policies
 #   aap-creds       — AAP credentials (Vault-sourced)
 #   aap-inventory   — AAP static inventory
@@ -69,11 +68,9 @@
 #   app             — DB + App deployment
 #   cmdb            — Netbox deploy + seed + AAP integration
 #   logging         — Splunk deploy + log shipping
-#   siem            — Wazuh server + agents + EDA
 #   policy          — OPA + AAP Policy as Code
-#   security        — siem + logging + spire (convenience group)
+#   security        — logging + spire (convenience group)
 #   aap             — All AAP-related configuration
-#   wazuh           — Wazuh server + agents (both)
 
 
 # ═════════════════════════════════════════════════════════════════════
@@ -136,19 +133,22 @@
 - ansible.builtin.import_playbook: _reset-errors.yml
   tags: [always]
 
-- name: "Deploy 6: Wazuh SIEM stack"
-  ansible.builtin.import_playbook: deploy-wazuh.yml
-  tags: [deploy, siem, wazuh, wazuh-server, security]
-
-- ansible.builtin.import_playbook: _reset-errors.yml
-  tags: [always]
-
-- name: "Deploy 7: Wazuh agents on managed hosts"
-  ansible.builtin.import_playbook: deploy-wazuh-agents.yml
-  tags: [deploy, siem, wazuh, wazuh-agents, security]
-
-- ansible.builtin.import_playbook: _reset-errors.yml
-  tags: [always]
+# ── Wazuh (Optional — only needed for Section 7) ──────────────────
+# Uncomment if running the optional Wazuh-based incident response section.
+#
+# - name: "Deploy 6: Wazuh SIEM stack"
+#   ansible.builtin.import_playbook: deploy-wazuh.yml
+#   tags: [deploy, siem, wazuh, wazuh-server, security]
+#
+# - ansible.builtin.import_playbook: _reset-errors.yml
+#   tags: [always]
+#
+# - name: "Deploy 7: Wazuh agents on managed hosts"
+#   ansible.builtin.import_playbook: deploy-wazuh-agents.yml
+#   tags: [deploy, siem, wazuh, wazuh-agents, security]
+#
+# - ansible.builtin.import_playbook: _reset-errors.yml
+#   tags: [always]
 
 - name: "Deploy 8: SPIFFE/SPIRE server and agents"
   ansible.builtin.import_playbook: deploy-spire.yml
@@ -233,12 +233,13 @@
 - ansible.builtin.import_playbook: _reset-errors.yml
   tags: [always]
 
-- name: "Configure 10: Wazuh → EDA webhook integration"
-  ansible.builtin.import_playbook: configure-wazuh-eda.yml
-  tags: [configure, siem, aap-eda, security]
-
-- ansible.builtin.import_playbook: _reset-errors.yml
-  tags: [always]
+# ── Wazuh EDA (Optional — only needed for Section 7) ──────────────
+# - name: "Configure 10: Wazuh → EDA webhook integration"
+#   ansible.builtin.import_playbook: configure-wazuh-eda.yml
+#   tags: [configure, siem, aap-eda, security]
+#
+# - ansible.builtin.import_playbook: _reset-errors.yml
+#   tags: [always]
 
 - name: "Configure 11: Splunk centralized log shipping"
   ansible.builtin.import_playbook: integrate-splunk.yml

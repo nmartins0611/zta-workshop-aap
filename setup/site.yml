@@ -2,6 +2,7 @@
 # site.yml — Deploy the entire ZTA Workshop lab in one run
 #
 # Structure:
+#   Phase 0 — Bootstrap Central (IdM, OPA, Podman networks, cEOS, firewall)
 #   Phase 1 — Prerequisites (DNS + IdM enrollment — must resolve before anything)
 #   Phase 2 — Deploy (stand up all infrastructure)
 #   Phase 3 — Configure (wire services together on running infra)
@@ -28,6 +29,7 @@
 #
 # Tag reference:
 #   ── Phase tags ──
+#   bootstrap       — Central host setup (IdM, OPA, cEOS, firewall) — run once
 #   prereq          — DNS, IdM client enrollment (must run first)
 #   deploy          — All infrastructure deployment tasks
 #   configure       — All service configuration tasks
@@ -35,6 +37,7 @@
 #   verify          — Full lab verification
 #
 #   ── Component tags (unique per playbook) ──
+#   deploy-central  — IdM server, OPA, Podman networks, cEOS switches
 #   firewall        — Enable firewalld + open all workshop ports on central
 #   dns             — Register workshop VMs in IdM DNS + container resolv.conf
 #   idm-enroll      — Enroll Linux hosts as IdM clients
@@ -75,16 +78,29 @@
 
 
 # ═════════════════════════════════════════════════════════════════════
-#  PHASE 1 — Prerequisites
-#  Firewall, DNS + IdM enrollment so all hosts can resolve and authenticate
+#  PHASE 0 — Bootstrap Central
+#  IdM, OPA, Podman networks, cEOS switches, firewall
 # ═════════════════════════════════════════════════════════════════════
 
-- name: "Prereq 0: Enable firewalld and open all workshop ports on central"
-  ansible.builtin.import_playbook: configure-firewall.yml
-  tags: [prereq, firewall]
+- name: "Bootstrap 1: Deploy central — IdM, OPA, Podman networks, cEOS switches"
+  ansible.builtin.import_playbook: deploy-central.yml
+  tags: [bootstrap, deploy-central]
 
 - ansible.builtin.import_playbook: _reset-errors.yml
   tags: [always]
+
+- name: "Bootstrap 2: Enable firewalld and open all workshop ports on central"
+  ansible.builtin.import_playbook: configure-firewall.yml
+  tags: [bootstrap, prereq, firewall]
+
+- ansible.builtin.import_playbook: _reset-errors.yml
+  tags: [always]
+
+
+# ═════════════════════════════════════════════════════════════════════
+#  PHASE 1 — Prerequisites
+#  DNS + IdM enrollment so all hosts can resolve and authenticate
+# ═════════════════════════════════════════════════════════════════════
 
 - name: "Prereq 1: Register workshop VMs in IdM DNS"
   ansible.builtin.import_playbook: configure-dns.yml

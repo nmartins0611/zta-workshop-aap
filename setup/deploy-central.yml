@@ -1,0 +1,315 @@
+---
+# deploy-central.yml — Bootstrap central as the workshop infrastructure host
+#
+# Installs and configures:
+#   - Base packages (podman, git, jq, python modules, etc.)
+#   - Podman container networks for the switch fabric and services
+#   - FreeIPA (IdM) server with integrated DNS
+#   - OPA (Open Policy Agent) container
+#   - Arista cEOS switch containers (ceos1, ceos2, ceos3)
+#
+# This playbook is idempotent: it detects existing installations and skips
+# steps that have already been completed.
+#
+# Prerequisites:
+#   - central.zta.lab has a RHEL 9.x base install
+#   - central has at least 16 GB RAM and 50 GB disk
+#   - /etc/hostname is set to central.zta.lab
+#   - The management interface has a static IP (192.168.1.11/24)
+#
+# Services exposed after completion:
+#   - IdM web UI:     https://central.zta.lab/ipa
+#   - IdM Kerberos:   central.zta.lab:88
+#   - IdM LDAP/S:     central.zta.lab:389/636
+#   - OPA API:        http://central.zta.lab:8181
+#   - cEOS SSH:       central.zta.lab:2001-2003
+#   - cEOS eAPI:      central.zta.lab:6031-6033
+#
+# Usage:
+#   ansible-playbook -i inventory/hosts.ini setup/deploy-central.yml
+
+- name: Deploy Central — Workshop Infrastructure Host
+  hosts: zta_services
+  become: true
+  gather_facts: true
+
+  vars:
+    central_fqdn: "{{ idm_hostname }}"
+    central_ip: "{{ ansible_default_ipv4.address | default('192.168.1.11') }}"
+    upstream_dns: "{{ upstream_dns_server | default('8.8.8.8') }}"
+
+    ceos_image: quay.io/nmartins/ceoslab-rh
+    ceos_memory: 4g
+    switch_config_dir: "{{ playbook_dir }}/switch-configs"
+
+    podman_networks:
+      - net1
+      - net2
+      - net3
+      - loop
+      - management
+
+    ceos_switches:
+      - name: ceos1
+        config: sw01
+        ssh_port: 2001
+        eapi_port: 6031
+        networks: [loop, net1, net3]
+      - name: ceos2
+        config: sw02
+        ssh_port: 2002
+        eapi_port: 6032
+        networks: [loop, net1, net2]
+      - name: ceos3
+        config: sw03
+        ssh_port: 2003
+        eapi_port: 6033
+        networks: [loop, net2, net3]
+
+  tasks:
+
+    # ═══════════════════════════════════════════════════════════════════
+    # Phase 1 — Base Packages
+    # ═══════════════════════════════════════════════════════════════════
+
+    - name: "Phase 1 | Install base packages"
+      ansible.builtin.dnf:
+        name:
+          - podman
+          - python3-podman
+          - python3-pip
+          - python3-dns
+          - python3-netaddr
+          - git
+          - jq
+          - curl
+          - openssl
+          - firewalld
+          - sshpass
+        state: present
+
+    - name: "Phase 1 | Install required Ansible collections"
+      ansible.builtin.command:
+        cmd: "ansible-galaxy collection install {{ item }} --force"
+      loop:
+        - community.general
+        - ansible.posix
+        - ansible.netcommon
+        - arista.eos
+        - redhat.rhel_idm
+      changed_when: false
+
+    # ═══════════════════════════════════════════════════════════════════
+    # Phase 2 — Hostname & Networking
+    # ═══════════════════════════════════════════════════════════════════
+
+    - name: "Phase 2 | Set hostname"
+      ansible.builtin.hostname:
+        name: "{{ central_fqdn }}"
+
+    - name: "Phase 2 | Ensure /etc/hosts has central entry"
+      ansible.builtin.lineinfile:
+        path: /etc/hosts
+        regexp: '.*central\.zta\.lab.*'
+        line: "{{ central_ip }}  {{ central_fqdn }} central"
+        state: present
+
+    # ═══════════════════════════════════════════════════════════════════
+    # Phase 3 — FreeIPA (IdM) Server
+    # ═══════════════════════════════════════════════════════════════════
+
+    - name: "Phase 3 | Check if IdM is already installed"
+      ansible.builtin.stat:
+        path: /etc/ipa/default.conf
+      register: ipa_installed
+
+    - name: "Phase 3 | Install IdM server packages"
+      ansible.builtin.dnf:
+        name:
+          - ipa-server
+          - ipa-server-dns
+          - ipa-server-trust-ad
+        state: present
+      when: not ipa_installed.stat.exists
+
+    - name: "Phase 3 | Install IdM server (unattended)"
+      ansible.builtin.command:
+        cmd: >
+          ipa-server-install
+            --realm={{ idm_realm }}
+            --domain={{ idm_domain }}
+            --ds-password='{{ idm_dm_password }}'
+            --admin-password='{{ idm_admin_password }}'
+            --hostname={{ central_fqdn }}
+            --setup-dns
+            --forwarder={{ upstream_dns }}
+            --no-ntp
+            --unattended
+      when: not ipa_installed.stat.exists
+      register: ipa_install
+      changed_when: ipa_install.rc == 0
+
+    - name: "Phase 3 | Verify IdM services are running"
+      ansible.builtin.command: ipactl status
+      register: ipa_status
+      changed_when: false
+      failed_when: "'RUNNING' not in ipa_status.stdout"
+
+    - name: "Phase 3 | Obtain Kerberos admin ticket"
+      ansible.builtin.shell: echo '{{ idm_admin_password }}' | kinit admin
+      changed_when: false
+
+    # ═══════════════════════════════════════════════════════════════════
+    # Phase 4 — Podman Container Networks
+    # ═══════════════════════════════════════════════════════════════════
+
+    - name: "Phase 4 | Check existing Podman networks"
+      ansible.builtin.command: podman network ls --format '{{ '{{' }}.Name{{ '}}' }}'
+      register: existing_networks
+      changed_when: false
+
+    - name: "Phase 4 | Create Podman networks"
+      ansible.builtin.command: "podman network create {{ item }}"
+      loop: "{{ podman_networks }}"
+      when: item not in existing_networks.stdout_lines
+      register: network_create
+
+    # ═══════════════════════════════════════════════════════════════════
+    # Phase 5 — OPA (Open Policy Agent)
+    # ═══════════════════════════════════════════════════════════════════
+
+    - name: "Phase 5 | Check if OPA container exists"
+      ansible.builtin.command: podman inspect --format '{% raw %}{{.State.Status}}{% endraw %}' {{ opa_container_name }}
+      register: opa_state
+      failed_when: false
+      changed_when: false
+
+    - name: "Phase 5 | Create OPA policy directory"
+      ansible.builtin.file:
+        path: "{{ opa_policy_dir }}"
+        state: directory
+        mode: '0755'
+
+    - name: "Phase 5 | Deploy OPA container"
+      ansible.builtin.command: >
+        podman run -d
+          --name={{ opa_container_name }}
+          --restart=always
+          -p 8181:8181
+          -v {{ opa_policy_dir }}:/policies:z
+          docker.io/openpolicyagent/opa:latest
+          run --server --addr=0.0.0.0:8181 /policies
+      when: opa_state.rc != 0
+
+    - name: "Phase 5 | Ensure OPA container is running"
+      ansible.builtin.command: podman start {{ opa_container_name }}
+      when: opa_state.rc == 0 and 'running' not in opa_state.stdout
+      register: opa_start
+      changed_when: opa_start.rc == 0
+
+    # ═══════════════════════════════════════════════════════════════════
+    # Phase 6 — Arista cEOS Switches
+    # ═══════════════════════════════════════════════════════════════════
+
+    - name: "Phase 6 | Pull cEOS image"
+      ansible.builtin.command: podman pull {{ ceos_image }}
+      register: pull_result
+      changed_when: "'Copying' in pull_result.stderr or 'Copying' in pull_result.stdout"
+
+    - name: "Phase 6 | Check if switch containers exist"
+      ansible.builtin.command: "podman inspect --format '{% raw %}{{.State.Status}}{% endraw %}' {{ item.name }}"
+      loop: "{{ ceos_switches }}"
+      loop_control:
+        label: "{{ item.name }}"
+      register: switch_states
+      failed_when: false
+      changed_when: false
+
+    - name: "Phase 6 | Deploy cEOS containers"
+      ansible.builtin.command: >
+        podman run -d
+          --network management
+          --memory={{ ceos_memory }}
+          --name={{ item.item.name }}
+          --privileged
+          -v {{ switch_config_dir }}/{{ item.item.config }}/{{ item.item.config }}:/mnt/flash/startup-config
+          -e INTFTYPE=eth
+          -e ETBA=1
+          -e SKIP_ZEROTOUCH_BARRIER_IN_SYSDBINIT=1
+          -e CEOS=1
+          -e EOS_PLATFORM=ceoslab
+          -e container=podman
+          -p {{ item.item.ssh_port }}:22/tcp
+          -p {{ item.item.eapi_port }}:6030
+          {{ ceos_image }}
+          /sbin/init
+          systemd.setenv=INTFTYPE=eth
+          systemd.setenv=ETBA=1
+          systemd.setenv=SKIP_ZEROTOUCH_BARRIER_IN_SYSDBINIT=1
+          systemd.setenv=CEOS=1
+          systemd.setenv=EOS_PLATFORM=ceoslab
+          systemd.setenv=container=podman
+      loop: "{{ switch_states.results }}"
+      loop_control:
+        label: "{{ item.item.name }}"
+      when: item.rc != 0
+
+    - name: "Phase 6 | Attach additional networks to switches"
+      ansible.builtin.command: "podman network connect {{ net }} {{ item.0.name }}"
+      loop: "{{ ceos_switches | subelements('networks') }}"
+      loop_control:
+        label: "{{ item.0.name }} → {{ net }}"
+      vars:
+        net: "{{ item.1 }}"
+      register: net_connect
+      failed_when:
+        - net_connect.rc != 0
+        - "'already connected' not in (net_connect.stderr | default(''))"
+      changed_when: net_connect.rc == 0
+
+    - name: "Phase 6 | Ensure switch containers are running"
+      ansible.builtin.command: "podman start {{ item.name }}"
+      loop: "{{ ceos_switches }}"
+      loop_control:
+        label: "{{ item.name }}"
+      register: switch_start
+      changed_when: "'already' not in (switch_start.stderr | default(''))"
+      failed_when: false
+
+    - name: "Phase 6 | Wait for switches to initialise (60s)"
+      ansible.builtin.pause:
+        seconds: 60
+        prompt: "Waiting for cEOS switches to load startup-config..."
+      when: switch_states.results | selectattr('rc', 'ne', 0) | list | length > 0
+
+    # ═══════════════════════════════════════════════════════════════════
+    # Summary
+    # ═══════════════════════════════════════════════════════════════════
+
+    - name: Display deployment summary
+      ansible.builtin.debug:
+        msg: |
+          ╔════════════════════════════════════════════════════════════════╗
+          ║       Central Host — Deployment Complete                     ║
+          ╠════════════════════════════════════════════════════════════════╣
+          ║                                                              ║
+          ║  IdM (FreeIPA):                                              ║
+          ║    Web UI:   https://{{ central_fqdn }}/ipa{{ ' ' * (30 - central_fqdn | length) }}║
+          ║    Realm:    {{ idm_realm | ljust(46) }}║
+          ║    Domain:   {{ idm_domain | ljust(46) }}║
+          ║    Admin:    admin / {{ idm_admin_password | ljust(34) }}║
+          ║                                                              ║
+          ║  OPA (Open Policy Agent):                                    ║
+          ║    API:      http://{{ central_fqdn }}:8181{{ ' ' * (25 - central_fqdn | length) }}║
+          ║                                                              ║
+          ║  Arista cEOS Switches:                                       ║
+          ║    ceos1 (spine):      SSH :2001  eAPI :6031                 ║
+          ║    ceos2 (leaf/data):  SSH :2002  eAPI :6032                 ║
+          ║    ceos3 (leaf/app):   SSH :2003  eAPI :6033                 ║
+          ║    Credentials:        admin / admin                         ║
+          ║                                                              ║
+          ║  Podman Networks:                                            ║
+          ║    management, net1, net2, net3, loop                        ║
+          ║                                                              ║
+          ║  Next: run configure-firewall.yml → then site.yml            ║
+          ╚════════════════════════════════════════════════════════════════╝

@@ -304,6 +304,7 @@
             --hostname={{ central_fqdn }}
             --https-port=8443
             --http-enabled=true
+            --health-enabled=true
       when: keycloak_state.rc != 0
 
     - name: "Phase 6 | Ensure Keycloak container is running"

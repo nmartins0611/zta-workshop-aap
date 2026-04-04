@@ -72,6 +72,11 @@
     # Phase 1 — Base Packages
     # ═══════════════════════════════════════════════════════════════════
 
+    - name: "Phase 1 | Set SELinux to permissive (required for cEOS containers)"
+      ansible.posix.selinux:
+        policy: targeted
+        state: permissive
+
     - name: "Phase 1 | Install base packages"
       ansible.builtin.dnf:
         name:
@@ -159,6 +164,25 @@
       ansible.builtin.shell: echo '{{ idm_admin_password }}' | kinit admin
       changed_when: false
 
+    - name: "Phase 3 | Restrict IdM DNS (named) to host IP only"
+      ansible.builtin.lineinfile:
+        path: /etc/named/ipa-options-ext.conf
+        line: '{{ item }}'
+        create: true
+        mode: '0640'
+        owner: root
+        group: named
+      loop:
+        - "listen-on { 127.0.0.1; {{ central_ip }}; };"
+        - "listen-on-v6 { ::1; };"
+      register: named_listen
+
+    - name: "Phase 3 | Restart named after listen address change"
+      ansible.builtin.service:
+        name: named
+        state: restarted
+      when: named_listen.changed
+
     # ═══════════════════════════════════════════════════════════════════
     # Phase 4 — Podman Container Networks
     # ═══════════════════════════════════════════════════════════════════
@@ -169,7 +193,7 @@
       changed_when: false
 
     - name: "Phase 4 | Create Podman networks"
-      ansible.builtin.command: "podman network create --disable-dns {{ item }}"
+      ansible.builtin.command: "podman network create {{ item }}"
       loop: "{{ podman_networks }}"
       when: item not in existing_networks.stdout_lines
       register: network_create
@@ -228,14 +252,10 @@
     - name: "Phase 6 | Deploy cEOS containers"
       ansible.builtin.command: >
         podman run -d
+          --privileged
           --network management
           --memory={{ ceos_memory }}
           --name={{ item.item.name }}
-          --cap-add=NET_ADMIN
-          --cap-add=NET_RAW
-          --cap-add=SYS_ADMIN
-          --cap-add=AUDIT_WRITE
-          --security-opt label=disable
           -v {{ switch_config_dir }}/{{ item.item.config }}/{{ item.item.config }}:/mnt/flash/startup-config
           -e INTFTYPE=eth
           -e ETBA=1

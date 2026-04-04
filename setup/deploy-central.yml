@@ -6,6 +6,7 @@
 #   - Podman container networks for the switch fabric and services
 #   - FreeIPA (IdM) server with integrated DNS
 #   - OPA (Open Policy Agent) container
+#   - Keycloak (Red Hat Build of Keycloak) OIDC provider
 #   - Arista cEOS switch containers (ceos1, ceos2, ceos3)
 #
 # This playbook is idempotent: it detects existing installations and skips
@@ -22,6 +23,7 @@
 #   - IdM Kerberos:   central.zta.lab:88
 #   - IdM LDAP/S:     central.zta.lab:389/636
 #   - OPA API:        http://central.zta.lab:8181
+#   - Keycloak:       https://central.zta.lab:8543
 #   - cEOS SSH:       central.zta.lab:2001-2003
 #   - cEOS eAPI:      central.zta.lab:6031-6033
 #
@@ -37,6 +39,14 @@
     central_fqdn: "{{ idm_hostname }}"
     central_ip: "{{ ansible_default_ipv4.address | default('192.168.1.11') }}"
     upstream_dns: "{{ upstream_dns_server | default('8.8.8.8') }}"
+
+    keycloak_image: registry.redhat.io/rhbk/keycloak-rhel9:24
+    keycloak_container_name: keycloak
+    keycloak_admin_user: admin
+    keycloak_admin_password: "{{ idm_admin_password }}"
+    keycloak_http_port: 8180
+    keycloak_https_port: 8543
+    keycloak_certs_dir: /opt/keycloak/certs
 
     ceos_image: quay.io/nmartins/ceoslab-rh
     ceos_memory: 4g
@@ -232,15 +242,96 @@
       changed_when: opa_start.rc == 0
 
     # ═══════════════════════════════════════════════════════════════════
-    # Phase 6 — Arista cEOS Switches
+    # Phase 6 — Keycloak (Red Hat Build of Keycloak)
     # ═══════════════════════════════════════════════════════════════════
 
-    - name: "Phase 6 | Pull cEOS image"
+    - name: "Phase 6 | Create Keycloak certificate directory"
+      ansible.builtin.file:
+        path: "{{ keycloak_certs_dir }}"
+        state: directory
+        mode: '0755'
+
+    - name: "Phase 6 | Check for existing Keycloak TLS certificate"
+      ansible.builtin.stat:
+        path: "{{ keycloak_certs_dir }}/server.crt"
+      register: keycloak_cert
+
+    - name: "Phase 6 | Generate self-signed TLS certificate for Keycloak"
+      ansible.builtin.command: >
+        openssl req -x509 -newkey rsa:4096
+          -keyout {{ keycloak_certs_dir }}/server.key
+          -out {{ keycloak_certs_dir }}/server.crt
+          -sha256 -days 365 -nodes
+          -subj '/CN={{ central_fqdn }}'
+          -addext 'subjectAltName=DNS:{{ central_fqdn }}'
+      when: not keycloak_cert.stat.exists
+
+    - name: "Phase 6 | Set Keycloak certificate permissions"
+      ansible.builtin.file:
+        path: "{{ keycloak_certs_dir }}/{{ item }}"
+        mode: '0644'
+      loop:
+        - server.crt
+        - server.key
+      when: not keycloak_cert.stat.exists
+
+    - name: "Phase 6 | Pull RHBK image"
+      ansible.builtin.command: podman pull {{ keycloak_image }}
+      register: keycloak_pull
+      changed_when: "'Copying' in keycloak_pull.stderr or 'Copying' in keycloak_pull.stdout"
+
+    - name: "Phase 6 | Check if Keycloak container exists"
+      ansible.builtin.command: podman inspect --format '{% raw %}{{.State.Status}}{% endraw %}' {{ keycloak_container_name }}
+      register: keycloak_state
+      failed_when: false
+      changed_when: false
+
+    - name: "Phase 6 | Deploy Keycloak container"
+      ansible.builtin.command: >
+        podman run -d
+          --name={{ keycloak_container_name }}
+          -p {{ keycloak_http_port }}:8080
+          -p {{ keycloak_https_port }}:8443
+          -e KEYCLOAK_ADMIN={{ keycloak_admin_user }}
+          -e KEYCLOAK_ADMIN_PASSWORD={{ keycloak_admin_password }}
+          -e KC_HOSTNAME={{ central_fqdn }}
+          -e KC_HTTPS_CERTIFICATE_FILE=/opt/certs/server.crt
+          -e KC_HTTPS_CERTIFICATE_KEY_FILE=/opt/certs/server.key
+          -e KC_HTTP_ENABLED=true
+          -v {{ keycloak_certs_dir }}:/opt/certs:Z
+          {{ keycloak_image }}
+          start
+            --hostname={{ central_fqdn }}
+            --https-port=8443
+            --http-enabled=true
+      when: keycloak_state.rc != 0
+
+    - name: "Phase 6 | Ensure Keycloak container is running"
+      ansible.builtin.command: podman start {{ keycloak_container_name }}
+      when: keycloak_state.rc == 0 and 'running' not in keycloak_state.stdout
+      register: keycloak_start
+      changed_when: keycloak_start.rc == 0
+
+    - name: "Phase 6 | Wait for Keycloak to become healthy (up to 90s)"
+      ansible.builtin.uri:
+        url: "https://localhost:{{ keycloak_https_port }}/health/ready"
+        validate_certs: false
+        status_code: [200]
+      register: keycloak_health
+      until: keycloak_health.status == 200
+      retries: 18
+      delay: 5
+
+    # ═══════════════════════════════════════════════════════════════════
+    # Phase 7 — Arista cEOS Switches
+    # ═══════════════════════════════════════════════════════════════════
+
+    - name: "Phase 7 | Pull cEOS image"
       ansible.builtin.command: podman pull {{ ceos_image }}
       register: pull_result
       changed_when: "'Copying' in pull_result.stderr or 'Copying' in pull_result.stdout"
 
-    - name: "Phase 6 | Check if switch containers exist"
+    - name: "Phase 7 | Check if switch containers exist"
       ansible.builtin.command: "podman inspect --format '{% raw %}{{.State.Status}}{% endraw %}' {{ item.name }}"
       loop: "{{ ceos_switches }}"
       loop_control:
@@ -249,7 +340,7 @@
       failed_when: false
       changed_when: false
 
-    - name: "Phase 6 | Deploy cEOS containers"
+    - name: "Phase 7 | Deploy cEOS containers"
       ansible.builtin.command: >
         podman run -d
           --privileged
@@ -278,7 +369,7 @@
         label: "{{ item.item.name }}"
       when: item.rc != 0
 
-    - name: "Phase 6 | Attach additional networks to switches"
+    - name: "Phase 7 | Attach additional networks to switches"
       ansible.builtin.command: "podman network connect {{ net }} {{ item.0.name }}"
       loop: "{{ ceos_switches | subelements('networks') }}"
       loop_control:
@@ -291,7 +382,7 @@
         - "'already connected' not in (net_connect.stderr | default(''))"
       changed_when: net_connect.rc == 0
 
-    - name: "Phase 6 | Ensure switch containers are running"
+    - name: "Phase 7 | Ensure switch containers are running"
       ansible.builtin.command: "podman start {{ item.name }}"
       loop: "{{ ceos_switches }}"
       loop_control:
@@ -299,30 +390,43 @@
       register: switch_start
       changed_when: switch_start.rc == 0
 
-    - name: "Phase 6 | Wait for switches to initialise (60s)"
+    - name: "Phase 7 | Wait for switches to initialise (60s)"
       ansible.builtin.pause:
         seconds: 60
         prompt: "Waiting for cEOS switches to load startup-config..."
       when: switch_states.results | selectattr('rc', 'ne', 0) | list | length > 0
 
     # ═══════════════════════════════════════════════════════════════════
-    # Phase 7 — Systemd Services (auto-start on reboot)
+    # Phase 8 — Systemd Services (auto-start on reboot)
     # ═══════════════════════════════════════════════════════════════════
 
-    - name: "Phase 7 | Generate systemd service for OPA"
+    - name: "Phase 8 | Generate systemd service for OPA"
       containers.podman.podman_generate_systemd:
         name: "{{ opa_container_name }}"
         dest: /etc/systemd/system/
         restart_policy: always
         new: false
 
-    - name: "Phase 7 | Enable OPA systemd service"
+    - name: "Phase 8 | Enable OPA systemd service"
       ansible.builtin.systemd:
         name: "container-{{ opa_container_name }}"
         enabled: true
         daemon_reload: true
 
-    - name: "Phase 7 | Generate systemd services for cEOS switches"
+    - name: "Phase 8 | Generate systemd service for Keycloak"
+      containers.podman.podman_generate_systemd:
+        name: "{{ keycloak_container_name }}"
+        dest: /etc/systemd/system/
+        restart_policy: always
+        new: false
+
+    - name: "Phase 8 | Enable Keycloak systemd service"
+      ansible.builtin.systemd:
+        name: "container-{{ keycloak_container_name }}"
+        enabled: true
+        daemon_reload: true
+
+    - name: "Phase 8 | Generate systemd services for cEOS switches"
       containers.podman.podman_generate_systemd:
         name: "{{ item.name }}"
         dest: /etc/systemd/system/
@@ -332,7 +436,7 @@
       loop_control:
         label: "{{ item.name }}"
 
-    - name: "Phase 7 | Enable cEOS systemd services"
+    - name: "Phase 8 | Enable cEOS systemd services"
       ansible.builtin.systemd:
         name: "container-{{ item.name }}"
         enabled: true
@@ -361,6 +465,11 @@
           ║  OPA (Open Policy Agent):                                    ║
           ║    API:      http://{{ central_fqdn }}:8181{{ ' ' * (25 - central_fqdn | length) }}║
           ║                                                              ║
+          ║  Keycloak (RHBK):                                           ║
+          ║    Console:  https://{{ central_fqdn }}:{{ keycloak_https_port }}{{ ' ' * (24 - central_fqdn | length) }}║
+          ║    HTTP:     http://{{ central_fqdn }}:{{ keycloak_http_port }}{{ ' ' * (25 - central_fqdn | length) }}║
+          ║    Admin:    {{ keycloak_admin_user }} / {{ keycloak_admin_password }}{{ ' ' * (34 - keycloak_admin_user | length - keycloak_admin_password | length) }}║
+          ║                                                              ║
           ║  Arista cEOS Switches:                                       ║
           ║    ceos1 (spine):      SSH :2001  eAPI :6031                 ║
           ║    ceos2 (leaf/data):  SSH :2002  eAPI :6032                 ║
@@ -371,8 +480,8 @@
           ║    management, net1, net2, net3, loop                        ║
           ║                                                              ║
           ║  Systemd services (auto-start on reboot):                    ║
-          ║    container-opa, container-ceos1,                           ║
-          ║    container-ceos2, container-ceos3                          ║
+          ║    container-opa, container-keycloak,                        ║
+          ║    container-ceos1, container-ceos2, container-ceos3         ║
           ║                                                              ║
           ║  Next: run configure-firewall.yml → then site.yml            ║
           ╚════════════════════════════════════════════════════════════════╝

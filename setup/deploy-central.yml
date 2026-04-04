@@ -231,7 +231,11 @@
           --network management
           --memory={{ ceos_memory }}
           --name={{ item.item.name }}
-          --privileged
+          --cap-add=NET_ADMIN
+          --cap-add=NET_RAW
+          --cap-add=SYS_ADMIN
+          --cap-add=AUDIT_WRITE
+          --security-opt label=disable
           -v {{ switch_config_dir }}/{{ item.item.config }}/{{ item.item.config }}:/mnt/flash/startup-config
           -e INTFTYPE=eth
           -e ETBA=1

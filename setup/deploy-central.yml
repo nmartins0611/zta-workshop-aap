@@ -169,7 +169,7 @@
       changed_when: false
 
     - name: "Phase 4 | Create Podman networks"
-      ansible.builtin.command: "podman network create {{ item }}"
+      ansible.builtin.command: "podman network create --disable-dns {{ item }}"
       loop: "{{ podman_networks }}"
       when: item not in existing_networks.stdout_lines
       register: network_create

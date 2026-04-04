@@ -38,7 +38,7 @@
     central_ip: "{{ ansible_default_ipv4.address | default('192.168.1.11') }}"
     upstream_dns: "{{ upstream_dns_server | default('8.8.8.8') }}"
 
-    ceos_image: quay.io/nmartins/ceoslab-rh
+    ceos_image: quay.io/nmartins/ceos-4-35
     ceos_memory: 4g
     switch_config_dir: "{{ playbook_dir }}/switch-configs"
 

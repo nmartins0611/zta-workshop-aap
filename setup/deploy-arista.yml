@@ -27,7 +27,7 @@
   gather_facts: true
 
   vars:
-    ceos_image: quay.io/nmartins/ceoslab-rh
+    ceos_image: quay.io/nmartins/ceos-4-35
     config_local: "{{ playbook_dir }}/switch-configs"
     config_dir: /tmp/setup
     ceos_memory: 2g

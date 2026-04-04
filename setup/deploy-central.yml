@@ -301,7 +301,6 @@
       ansible.builtin.systemd:
         name: "container-{{ opa_container_name }}"
         enabled: true
-        state: started
         daemon_reload: true
 
     - name: "Phase 7 | Generate systemd services for cEOS switches"
@@ -318,7 +317,6 @@
       ansible.builtin.systemd:
         name: "container-{{ item.name }}"
         enabled: true
-        state: started
         daemon_reload: true
       loop: "{{ ceos_switches }}"
       loop_control:

@@ -29,5 +29,6 @@ management api http-commands
 !
 management ssh
    idle-timeout 120
+   no shutdown
 !
 end

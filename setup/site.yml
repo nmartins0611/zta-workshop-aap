@@ -122,14 +122,7 @@
 #  Stand up all infrastructure — nothing is wired together yet
 # ═════════════════════════════════════════════════════════════════════
 
-- name: "Deploy 1: Apply Arista cEOS switch configs"
-  ansible.builtin.import_playbook: configure-arista.yml
-  tags: [deploy, network, arista]
-
-- ansible.builtin.import_playbook: _reset-errors.yml
-  tags: [always]
-
-- name: "Deploy 2: RHEL containers (DB + App)"
+- name: "Deploy 1: RHEL containers (DB + App)"
   ansible.builtin.import_playbook: deploy-rhel-containers.yml
   tags: [deploy, network, containers]
 

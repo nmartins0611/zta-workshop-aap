@@ -333,12 +333,31 @@
     # ═══════════════════════════════════════════════════════════════════
 
     - name: Connect containers to data-plane networks
-      command: "podman network connect {{ item.data_network }} {{ item.name }} --ip {{ item.data_ip }}"
+      command: "podman network connect {{ item.data_network }} {{ item.name }}"
       loop: "{{ containers }}"
       loop_control:
-        label: "{{ item.name }} → {{ item.data_network }} ({{ item.data_ip }})"
+        label: "{{ item.name }} → {{ item.data_network }}"
       register: net_connect
       failed_when: net_connect.rc != 0 and 'already' not in (net_connect.stderr | default(''))
+
+    - name: Discover data-plane interface inside each container
+      shell: >-
+        podman exec {{ item.name }}
+        ip -o link show | awk -F': ' '{print $2}' | grep -v lo | tail -1
+      loop: "{{ containers }}"
+      loop_control:
+        label: "{{ item.name }}"
+      register: data_ifaces
+      changed_when: false
+
+    - name: Configure data-plane IP on containers
+      shell: |
+        podman exec {{ item.item.name }} ip addr flush dev {{ item.stdout | trim }}
+        podman exec {{ item.item.name }} ip addr add {{ item.item.data_ip }}/24 dev {{ item.stdout | trim }}
+        podman exec {{ item.item.name }} ip link set {{ item.stdout | trim }} up
+      loop: "{{ data_ifaces.results }}"
+      loop_control:
+        label: "{{ item.item.name }}: {{ item.item.data_ip }}/24 on {{ item.stdout | trim }}"
 
     - name: Add route to peer data-plane network inside containers
       command: >

@@ -283,6 +283,44 @@
       when: switch_states.results | selectattr('rc', 'ne', 0) | list | length > 0
 
     # ═══════════════════════════════════════════════════════════════════
+    # Phase 7 — Systemd Services (auto-start on reboot)
+    # ═══════════════════════════════════════════════════════════════════
+
+    - name: "Phase 7 | Generate systemd service for OPA"
+      containers.podman.podman_generate_systemd:
+        name: "{{ opa_container_name }}"
+        dest: /etc/systemd/system/
+        restart_policy: always
+        new: false
+
+    - name: "Phase 7 | Enable OPA systemd service"
+      ansible.builtin.systemd:
+        name: "container-{{ opa_container_name }}"
+        enabled: true
+        state: started
+        daemon_reload: true
+
+    - name: "Phase 7 | Generate systemd services for cEOS switches"
+      containers.podman.podman_generate_systemd:
+        name: "{{ item.name }}"
+        dest: /etc/systemd/system/
+        restart_policy: always
+        new: false
+      loop: "{{ ceos_switches }}"
+      loop_control:
+        label: "{{ item.name }}"
+
+    - name: "Phase 7 | Enable cEOS systemd services"
+      ansible.builtin.systemd:
+        name: "container-{{ item.name }}"
+        enabled: true
+        state: started
+        daemon_reload: true
+      loop: "{{ ceos_switches }}"
+      loop_control:
+        label: "{{ item.name }}"
+
+    # ═══════════════════════════════════════════════════════════════════
     # Summary
     # ═══════════════════════════════════════════════════════════════════
 
@@ -310,6 +348,10 @@
           ║                                                              ║
           ║  Podman Networks:                                            ║
           ║    management, net1, net2, net3, loop                        ║
+          ║                                                              ║
+          ║  Systemd services (auto-start on reboot):                    ║
+          ║    container-opa, container-ceos1,                           ║
+          ║    container-ceos2, container-ceos3                          ║
           ║                                                              ║
           ║  Next: run configure-firewall.yml → then site.yml            ║
           ╚════════════════════════════════════════════════════════════════╝

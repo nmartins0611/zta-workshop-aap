@@ -335,9 +335,9 @@
           ║                                                              ║
           ║  IdM (FreeIPA):                                              ║
           ║    Web UI:   https://{{ central_fqdn }}/ipa{{ ' ' * (30 - central_fqdn | length) }}║
-          ║    Realm:    {{ idm_realm | ljust(46) }}║
-          ║    Domain:   {{ idm_domain | ljust(46) }}║
-          ║    Admin:    admin / {{ idm_admin_password | ljust(34) }}║
+          ║    Realm:    {{ idm_realm }}{{ ' ' * (46 - idm_realm | length) }}║
+          ║    Domain:   {{ idm_domain }}{{ ' ' * (46 - idm_domain | length) }}║
+          ║    Admin:    admin / {{ idm_admin_password }}{{ ' ' * (34 - idm_admin_password | length) }}║
           ║                                                              ║
           ║  OPA (Open Policy Agent):                                    ║
           ║    API:      http://{{ central_fqdn }}:8181{{ ' ' * (25 - central_fqdn | length) }}║

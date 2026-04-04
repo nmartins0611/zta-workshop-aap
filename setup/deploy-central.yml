@@ -277,8 +277,7 @@
       loop_control:
         label: "{{ item.name }}"
       register: switch_start
-      changed_when: "'already' not in (switch_start.stderr | default(''))"
-      failed_when: false
+      changed_when: switch_start.rc == 0
 
     - name: "Phase 6 | Wait for switches to initialise (60s)"
       ansible.builtin.pause:

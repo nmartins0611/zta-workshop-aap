@@ -202,11 +202,44 @@
       register: existing_networks
       changed_when: false
 
-    - name: "Phase 4 | Create Podman networks"
-      ansible.builtin.command: "podman network create {{ item }}"
-      loop: "{{ podman_networks }}"
+    - name: "Phase 4 | Create management and loop networks (no explicit subnet)"
+      ansible.builtin.command: "podman network create --disable-dns {{ item }}"
+      loop:
+        - management
+        - loop
       when: item not in existing_networks.stdout_lines
-      register: network_create
+      register: net_simple
+      failed_when:
+        - net_simple.rc != 0
+        - "'already exists' not in (net_simple.stderr | default(''))"
+      changed_when: net_simple.rc == 0
+
+    - name: "Phase 4 | Create spine-leaf interconnect (net1 — 10.10.0.0/24)"
+      ansible.builtin.command: "podman network create --disable-dns --subnet 10.10.0.0/24 --gateway 10.10.0.1 net1"
+      when: "'net1' not in existing_networks.stdout_lines"
+      register: net1_create
+      failed_when:
+        - net1_create.rc | default(0) != 0
+        - "'already exists' not in (net1_create.stderr | default(''))"
+      changed_when: net1_create.rc | default(1) == 0
+
+    - name: "Phase 4 | Create data-tier network (net2 — 10.30.0.0/24)"
+      ansible.builtin.command: "podman network create --disable-dns --subnet 10.30.0.0/24 --gateway 10.30.0.1 net2"
+      when: "'net2' not in existing_networks.stdout_lines"
+      register: net2_create
+      failed_when:
+        - net2_create.rc | default(0) != 0
+        - "'already exists' not in (net2_create.stderr | default(''))"
+      changed_when: net2_create.rc | default(1) == 0
+
+    - name: "Phase 4 | Create app-tier network (net3 — 10.20.0.0/24)"
+      ansible.builtin.command: "podman network create --disable-dns --subnet 10.20.0.0/24 --gateway 10.20.0.1 net3"
+      when: "'net3' not in existing_networks.stdout_lines"
+      register: net3_create
+      failed_when:
+        - net3_create.rc | default(0) != 0
+        - "'already exists' not in (net3_create.stderr | default(''))"
+      changed_when: net3_create.rc | default(1) == 0
 
     # ═══════════════════════════════════════════════════════════════════
     # Phase 5 — OPA (Open Policy Agent)

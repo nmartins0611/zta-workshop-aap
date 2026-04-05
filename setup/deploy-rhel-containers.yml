@@ -119,6 +119,9 @@
     - name: Build SSH-enabled RHEL image
       command: >
         podman build
+        --network host
+        -v /etc/pki/entitlement:/etc/pki/entitlement:z
+        -v /etc/rhsm:/etc/rhsm:z
         -t rhel-ssh:latest
         -f /opt/rhel-containers/Containerfile
         /opt/rhel-containers/

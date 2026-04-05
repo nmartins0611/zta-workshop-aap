@@ -1,5 +1,21 @@
 # Section 1 — Configure ZTA Components & AAP Integration
 
+> **2-Hour Workshop Delivery Guide**
+>
+> | Exercise | Status | Est. Time |
+> |----------|--------|-----------|
+> | 1.1 — Configure AAP Credentials | **Core** | 10 min |
+> | 1.2 — Configure Inventory & Project | **Core** | 5 min |
+> | 1.3 — Create Job Templates | **Core** | 3 min |
+> | 1.4 — Verify All ZTA Services | **Core** | 2 min |
+> | 1.5 — Test Vault Dynamic Credentials | **Core** | 3 min |
+> | 1.6 — Test Vault SSH Signed Certificates | **Core** | 3 min |
+> | 1.7 — Test OPA Policy Decisions | **Core** | 2 min |
+> | 1.8 — Certificate Trust Chain Debugging | **Extended** | 25 min |
+>
+> For a **2-hour workshop**, complete exercises **1.1–1.7** (~25 min).
+> Skip exercise 1.8 unless you have extra time or are running a longer format.
+
 ## Objective
 
 Configure Ansible Automation Platform and connect it to the Zero Trust
@@ -531,6 +547,8 @@ membership in IdM determines what each user can do.
 - [ ] OPA Policy — correct allow/deny for each scenario
 
 ---
+
+# Extended Exercises (Longer Formats Only)
 
 # Exercise 1.8 — Certificate Trust Chain Debugging (Hands-On)
 

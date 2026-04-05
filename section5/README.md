@@ -1,5 +1,21 @@
 # Section 5 — Automated Incident Response: Brute Force → Splunk → EDA → Vault Revocation
 
+> **2-Hour Workshop Delivery Guide**
+>
+> | Exercise | Status | Est. Time |
+> |----------|--------|-----------|
+> | 5.1 — Create the AAP Job Templates | **Core** | 3 min |
+> | 5.2 — Configure Splunk Saved Search & Alert | **Core** | 5 min |
+> | 5.3 — Configure EDA Rulebook | **Core** | 3 min |
+> | 5.4 — Verify the Application Is Healthy | **Core** | 2 min |
+> | 5.5 — Launch the Brute-Force Attack | **Core** | 3 min |
+> | 5.6 — Watch the Automated Response | **Core** | 5 min |
+> | 5.7 — Restore the Application | **Core** | 3 min |
+> | 5.8 — Splunk Alert Tuning | **Extended** | 10 min |
+>
+> For a **2-hour workshop**, complete exercises **5.1–5.7** (~25 min).
+> Exercise 5.8 (alert tuning) is a bonus exercise if time permits.
+
 ## Objective
 
 Demonstrate automated incident response in a Zero Trust architecture. A
@@ -273,6 +289,10 @@ curl -s http://app.zta.lab:8081/health
 ```
 
 ---
+
+---
+
+# Extended Exercises (Longer Formats Only)
 
 ## Exercise 5.8 — Splunk Alert Tuning (Hands-On)
 

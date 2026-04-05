@@ -1,5 +1,25 @@
 # Section 2 — Deploy Application with Short-Lived Database Credentials
 
+> **2-Hour Workshop Delivery Guide**
+>
+> | Exercise | Status | Est. Time |
+> |----------|--------|-----------|
+> | 2.1 — Create the Job Templates | **Core** | 3 min |
+> | 2.2 — Build the Deployment Workflow | **Core** | 5 min |
+> | 2.3 — Attempt Deployment as Wrong User (DENIED) | **Core** | 5 min |
+> | 2.4 — Examine the Policy | **Core** | 5 min |
+> | 2.5 — Deploy as the Correct User (ALLOWED) | **Core** | 5 min |
+> | 2.6 — Observe Credential Expiry | **Core** | 5 min |
+> | 2.7 — Set Up Credential Rotation | **Extended** | 5 min |
+> | 2.8 — Wire Up Gitea Webhook | **Extended** | 10 min |
+> | 2.9 — Firewall Micro-segmentation Debugging | **Extended** | 20 min |
+> | 2.10 — Vault Policy Path Debugging | **Extended** | 20 min |
+> | 2.11 — SELinux Container Context Debugging | **Extended** | 20 min |
+>
+> For a **2-hour workshop**, complete exercises **2.1–2.6** (~30 min).
+> Exercises 2.7–2.8 are optional enrichment. Exercises 2.9–2.11 are
+> hands-on break/fix labs for longer formats only.
+
 ## Objective
 
 Deploy the **Global Telemetry Platform** application using short-lived database
@@ -183,6 +203,10 @@ This demonstrates Zero Trust: credentials are ephemeral. If not rotated,
 access is automatically removed.
 
 ---
+
+---
+
+# Extended Exercises (Longer Formats Only)
 
 ## Exercise 2.7 — Set Up Credential Rotation (Optional)
 

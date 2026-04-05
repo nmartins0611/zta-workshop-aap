@@ -108,12 +108,13 @@ checks whether the user can launch the template, and the **inner ring**
 (in-playbook) validates the SPIFFE workload identity, user group, VLAN range,
 and action.
 
-### Section 5 — Automated Incident Response (Wazuh → EDA → Vault)
+### Section 5 — Automated Incident Response (Splunk → EDA → Vault)
 
-Simulate a brute-force SSH attack on the app server. **Wazuh** detects the
-attack, sends an alert to **Event-Driven Ansible**, which automatically
-triggers an AAP job to **revoke the application's database credentials** in
-Vault — isolating the application from sensitive data in under 30 seconds.
+Simulate a brute-force SSH attack on the app server. **Splunk** detects the
+attack via a saved search alert and sends a webhook to **Event-Driven Ansible**
+(EDA), which automatically triggers an AAP job to **revoke the application's
+database credentials** in Vault — isolating the application from sensitive data
+in under 30 seconds.
 
 ---
 

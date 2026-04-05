@@ -345,6 +345,7 @@
       ansible.builtin.command: >
         podman run -d
           --privileged
+          --restart=always
           --network management
           --memory={{ ceos_memory }}
           --name={{ item.item.name }}

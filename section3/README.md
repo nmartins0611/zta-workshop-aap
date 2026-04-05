@@ -1,5 +1,20 @@
 # Section 3 — AAP Policy as Code: Platform-Gated Patching
 
+> **2-Hour Workshop Delivery Guide**
+>
+> | Exercise | Status | Est. Time |
+> |----------|--------|-----------|
+> | 3.1 — Create the Job Template | **Core** | 2 min |
+> | 3.2 — Attempt as Wrong User (BLOCKED BY AAP) | **Core** | 5 min |
+> | 3.3 — Fix the Access | **Core** | 3 min |
+> | 3.4 — Apply the Patch Successfully | **Core** | 3 min |
+> | 3.5 — Verify the Patch Was Applied | **Core** | 3 min |
+> | 3.6 — Test Other Scenarios | **Core** | 5 min |
+> | Section 3B — Manual OPA Rego Policy Authoring | **Extended** | 30 min |
+>
+> For a **2-hour workshop**, complete exercises **3.1–3.6** (~20 min).
+> Section 3B is a deep-dive hands-on lab for longer formats only.
+
 ## Objective
 
 Demonstrate how AAP **Policy as Code** prevents unauthorised users from even
@@ -222,6 +237,8 @@ enforced by policy.
 - [ ] `appdev` cannot launch patching templates (separation of duties)
 
 ---
+
+# Extended Exercises (Longer Formats Only)
 
 # Section 3B — Manual OPA Rego Policy Authoring (Hands-On)
 

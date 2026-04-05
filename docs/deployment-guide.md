@@ -517,8 +517,8 @@ setup), pre-create these in the AAP UI:
 
 ### EDA Configuration
 
-1. In the EDA Controller, import the rulebook `section5/eda/wazuh-credential-revoke.yml`
-2. Create a **Rulebook Activation** named "Wazuh Brute Force Response"
+1. In the EDA Controller, import the rulebook `section5/eda/splunk-credential-revoke.yml`
+2. Create a **Rulebook Activation** named "Splunk Brute Force Response"
 3. Set restart policy to "On failure"
 4. Enable the activation (starts listening on port 5000)
 
@@ -530,32 +530,69 @@ setup), pre-create these in the AAP UI:
 
 Run through this checklist the day of the workshop:
 
-- [ ] All VMs are up and reachable
+**Infrastructure**
+
+- [ ] All VMs are up and reachable (central, control, vault, netbox)
 - [ ] IdM, Keycloak, OPA running on central (`ipactl status`)
 - [ ] DNS resolves all `*.zta.lab` names (`dig app.zta.lab`)
 - [ ] Workshop IdM users and groups exist (`ipa user-find --sizelimit=0`)
+
+**Secrets & Certificates**
+
 - [ ] Vault unsealed and healthy (`vault status`)
 - [ ] Vault engines configured (`vault secrets list`)
 - [ ] RHEL hosts trust Vault SSH CA (`TrustedUserCAKeys` configured)
+
+**Network & Compute**
+
 - [ ] Arista cEOS switches respond (`ssh -p 2001 admin@central.zta.lab`)
 - [ ] DB and App containers running (`podman ps` on central)
 - [ ] PostgreSQL accepting connections
 - [ ] Application NOT yet deployed with credentials (Section 2 handles this)
-- [ ] Netbox API accessible with data
-- [ ] OPA policies loaded (`curl .../v1/policies | python3 -m json.tool`)
+
+**CMDB & Policy**
+
+- [ ] Netbox API accessible with data (`curl http://netbox.zta.lab:8880/api/status/`)
+- [ ] OPA policies loaded (`curl http://central.zta.lab:8181/v1/policies | python3 -m json.tool`)
 - [ ] AAP Policy as Code configured (OPA gateway)
 - [ ] AAP LDAP auth working (log in as `ztauser`)
-- [ ] SPIRE server + agents running
-- [ ] Wazuh agents reporting to manager
-- [ ] Wazuh → EDA webhook integration active
-- [ ] EDA rulebook activation running
+
+**Logging & SIEM (Splunk — Wazuh is excluded)**
+
+- [ ] Splunk running on central (`curl http://central.zta.lab:8000`)
+- [ ] Splunk receiving logs (`index=main sourcetype=linux_secure` returns results)
+- [ ] `integrate-splunk.yml` has been run (Universal Forwarder shipping logs)
+
+**Event-Driven Automation**
+
+- [ ] EDA rulebook activation running (`splunk-credential-revoke.yml`)
+- [ ] EDA listening on port 5000 (`curl http://control.zta.lab:5000/endpoint`)
+
+**Final Verification**
+
 - [ ] `verify-lab.yml` passes all checks
+- [ ] Walk through Sections 1, 2, 3, 5 exercise flow mentally (confirm prerequisites)
 
-### Prepare Hands-On Break/Fix Exercises
+### 2-Hour Workshop — Section & Timing Reminder
 
-If you plan to use the hands-on failure/fix exercises (Section 3B, Section 6,
-etc.), **do NOT run the break playbooks in advance**. Run each one
-immediately before the corresponding exercise during the workshop.
+| Time | Activity |
+|------|----------|
+| 0:00 | Intro / Architecture overview (10 min) |
+| 0:10 | Section 1: Configure ZTA Components — exercises 1.1–1.7 (25 min) |
+| 0:35 | Section 2: Deploy App with Short-Lived Credentials — exercises 2.1–2.6 (30 min) |
+| 1:05 | Section 3: AAP Policy as Code — exercises 3.1–3.6 (20 min) |
+| 1:25 | Break (5 min) |
+| 1:30 | Section 5: Incident Response (Splunk → EDA → Vault) — exercises 5.1–5.7 (25 min) |
+| 1:55 | Wrap-up / Q&A (5 min) |
+
+Sections 4, 6, 7 and all break/fix exercises (1.8, 2.9–2.11, 3B) are
+skipped in the 2-hour format. Mention them as "further reading" at wrap-up.
+
+### Prepare Hands-On Break/Fix Exercises (Extended Format Only)
+
+If you are running a **longer format** that includes break/fix exercises,
+**do NOT run the break playbooks in advance**. Run each one immediately
+before the corresponding exercise during the workshop.
 
 | Exercise | Break Playbook | Fix Playbook (safety net) |
 |----------|---------------|--------------------------|
@@ -565,8 +602,26 @@ immediately before the corresponding exercise during the workshop.
 | 2.11 — SELinux Contexts | `section2/playbooks/break-selinux.yml` | `section2/playbooks/fix-selinux.yml` |
 | 3B — OPA Rego Authoring | `section3/playbooks/break-opa-policy.yml` | `section3/playbooks/fix-opa-policy.yml` |
 | 4.5 — Arista ACL | `section4/playbooks/break-acl.yml` | `section4/playbooks/fix-acl.yml` |
-| 5.7 — Wazuh Rule Tuning | (manual — no break playbook needed) | — |
+| 5.8 — Splunk Alert Tuning | (manual — no break playbook needed) | — |
 | 6.3 — SSH Lockdown | `section6/playbooks/break-hbac.yml` | `section6/playbooks/fix-hbac.yml` |
+
+### Safety Net: Reset Lab State
+
+If something goes wrong during the workshop, use the solve playbooks to
+restore a working state for the affected section:
+
+```bash
+ansible-playbook setup/validation/solve-section1.yml
+ansible-playbook setup/validation/solve-section2.yml
+ansible-playbook setup/validation/solve-section3.yml
+# Section 5 restore is built into the exercise flow (restore-app-credentials.yml)
+```
+
+To validate that all sections are in the correct state:
+
+```bash
+ansible-playbook setup/validation/check-all.yml
+```
 
 ---
 

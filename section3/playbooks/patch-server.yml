@@ -134,7 +134,7 @@
           ║       Patching Complete                                  ║
           ╠════════════════════════════════════════════════════════════╣
           ║                                                          ║
-          ║  Host:     {{ ansible_fqdn | ljust(46) }}║
+          ║  Host:     {{ (inventory_hostname ~ '.' ~ idm_domain) | ljust(46) }}║
           ║  Updates:  {{ (patch_result.results | default([]) | length | string + ' packages') | ljust(46) }}║
           ║  Reboot:   {{ ('Required' if needs_restarting.rc | default(0) != 0 else 'Not required') | ljust(46) }}║
           ║                                                          ║

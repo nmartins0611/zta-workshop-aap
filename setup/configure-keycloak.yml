@@ -655,7 +655,7 @@
       tags: [phase7, certificates]
 
     - name: "Phase 7 | Grant central host permission to manage service certs"
-      command: "ipa service-add-host HTTP/{{ item.hostname }}@{{ idm_realm }} --hosts={{ ansible_fqdn }}"
+      command: "ipa service-add-host HTTP/{{ item.hostname }}@{{ idm_realm }} --hosts={{ inventory_hostname ~ '.' ~ idm_domain }}"
       loop: "{{ idm_service_certs }}"
       register: svc_host
       changed_when: svc_host.rc == 0

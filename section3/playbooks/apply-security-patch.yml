@@ -118,7 +118,7 @@
           ║       Security Patch Applied                             ║
           ╠════════════════════════════════════════════════════════════╣
           ║                                                          ║
-          ║  Host:      {{ ansible_fqdn | ljust(44) }}║
+          ║  Host:      {{ (inventory_hostname ~ '.' ~ idm_domain) | ljust(44) }}║
           ║  Patch:     {{ patch_version | ljust(44) }}║
           ║  OS:        {{ ansible_distribution }} {{ ansible_distribution_version | ljust(32) }}║
           ║                                                          ║

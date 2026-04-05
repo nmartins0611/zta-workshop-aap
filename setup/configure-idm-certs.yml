@@ -141,7 +141,7 @@
         name: "HTTP/{{ item.hostname }}@{{ idm_realm }}"
         host:
           - "{{ item.hostname }}"
-          - "{{ ansible_fqdn }}"
+          - "{{ inventory_hostname ~ '.' ~ idm_domain }}"
         action: member
         state: present
       loop: "{{ idm_service_certs }}"

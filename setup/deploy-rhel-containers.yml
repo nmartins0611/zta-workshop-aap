@@ -346,7 +346,7 @@
     - name: Discover data-plane interface inside each container
       shell: >-
         podman exec {{ item.name }}
-        ip -o link show | awk -F': ' '{print $2}' | grep -v lo | tail -1
+        ip -o link show | awk -F': ' '{print $2}' | grep -v lo | tail -1 | sed 's/@.*//'
       loop: "{{ containers }}"
       loop_control:
         label: "{{ item.name }}"

@@ -486,18 +486,18 @@
           ║         Wazuh SIEM — Deployment Complete                     ║
           ╠════════════════════════════════════════════════════════════════╣
           ║                                                              ║
-          ║  Dashboard:    http://{{ ansible_default_ipv4.address }}:5601{{ ' ' * (23 - ansible_default_ipv4.address | length) }}║
-          ║  Manager API:  https://{{ ansible_default_ipv4.address }}:55000{{ ' ' * (21 - ansible_default_ipv4.address | length) }}║
-          ║  Indexer API:  https://{{ ansible_default_ipv4.address }}:9200{{ ' ' * (22 - ansible_default_ipv4.address | length) }}║
+          ║  Dashboard:    http://{{ ansible_host }}:5601{{ ' ' * (23 - ansible_host | length) }}║
+          ║  Manager API:  https://{{ ansible_host }}:55000{{ ' ' * (21 - ansible_host | length) }}║
+          ║  Indexer API:  https://{{ ansible_host }}:9200{{ ' ' * (22 - ansible_host | length) }}║
           ║                                                              ║
           ║  Dashboard login:                                            ║
           ║    Username:     admin                                       ║
           ║    Password:     admin                              ║
           ║                                                              ║
           ║  Agent ports:                                                ║
-          ║    Connection:   {{ ansible_default_ipv4.address }}:1514 (TCP){{ ' ' * (22 - ansible_default_ipv4.address | length) }}║
-          ║    Enrollment:   {{ ansible_default_ipv4.address }}:1515 (TCP){{ ' ' * (22 - ansible_default_ipv4.address | length) }}║
-          ║    Syslog:       {{ ansible_default_ipv4.address }}:514  (UDP){{ ' ' * (22 - ansible_default_ipv4.address | length) }}║
+          ║    Connection:   {{ ansible_host }}:1514 (TCP){{ ' ' * (22 - ansible_host | length) }}║
+          ║    Enrollment:   {{ ansible_host }}:1515 (TCP){{ ' ' * (22 - ansible_host | length) }}║
+          ║    Syslog:       {{ ansible_host }}:514  (UDP){{ ' ' * (22 - ansible_host | length) }}║
           ║                                                              ║
           ║  Credentials:                                                ║
           ║    API user:     {{ wazuh_api_user }}{{ ' ' * (41 - wazuh_api_user | length) }}║

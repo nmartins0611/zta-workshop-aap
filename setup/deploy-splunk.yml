@@ -319,10 +319,10 @@
           ║         Splunk Enterprise — Deployment Complete               ║
           ╠════════════════════════════════════════════════════════════════╣
           ║                                                              ║
-          ║  Web UI:     http://{{ ansible_default_ipv4.address }}:8000{{ ' ' * 23 }}║
-          ║  HEC:        https://{{ ansible_default_ipv4.address }}:8088{{ ' ' * 22 }}║
-          ║  Mgmt API:   https://{{ ansible_default_ipv4.address }}:8089{{ ' ' * 22 }}║
-          ║  Forwarder:  {{ ansible_default_ipv4.address }}:9997{{ ' ' * 27 }}║
+          ║  Web UI:     http://{{ ansible_host }}:8000{{ ' ' * 23 }}║
+          ║  HEC:        https://{{ ansible_host }}:8088{{ ' ' * 22 }}║
+          ║  Mgmt API:   https://{{ ansible_host }}:8089{{ ' ' * 22 }}║
+          ║  Forwarder:  {{ ansible_host }}:9997{{ ' ' * 27 }}║
           ║                                                              ║
           ║  Credentials:                                                ║
           ║    Username:  admin                                          ║

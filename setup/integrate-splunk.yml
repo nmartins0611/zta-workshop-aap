@@ -684,8 +684,8 @@
           ║        Splunk Integration — Complete                                 ║
           ╠════════════════════════════════════════════════════════════════════════╣
           ║                                                                      ║
-          ║  Splunk UI:  http://{{ ansible_default_ipv4.address }}:8000                            ║
-          ║  HEC:        https://{{ ansible_default_ipv4.address }}:8088                           ║
+          ║  Splunk UI:  http://{{ ansible_host }}:8000                            ║
+          ║  HEC:        https://{{ ansible_host }}:8088                           ║
           ║                                                                      ║
           ║  Indexes:                                                            ║
           ║    zta_syslog   — Linux host auth / system logs                      ║

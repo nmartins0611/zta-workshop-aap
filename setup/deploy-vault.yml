@@ -20,8 +20,8 @@
     vault_image: "docker.io/hashicorp/vault:1.17"
     vault_data_dir: /opt/vault-data
     vault_service_name: container-vault
-    vault_api_addr: "http://{{ ansible_default_ipv4.address }}:8200"
-    vault_cluster_addr: "http://{{ ansible_default_ipv4.address }}:8201"
+    vault_api_addr: "http://{{ ansible_host }}:8200"
+    vault_cluster_addr: "http://{{ ansible_host }}:8201"
     vault_key_shares: 5
     vault_key_threshold: 3
 
@@ -299,7 +299,7 @@
           ║         HashiCorp Vault — Deployment Complete                 ║
           ╠════════════════════════════════════════════════════════════════╣
           ║                                                              ║
-          ║  UI / API:   http://{{ ansible_default_ipv4.address }}:8200{{ ' ' * 23 }}║
+          ║  UI / API:   http://{{ ansible_host }}:8200{{ ' ' * 23 }}║
           ║                                                              ║
           ║  Root Token: {{ vault_keys.root_token[:20] }}...{{ ' ' * 26 }}║
           ║  (full token in {{ vault_data_dir }}/init-keys.json){{ ' ' * 6 }}║
@@ -318,7 +318,7 @@
           ║  Logs:       journalctl -u {{ vault_service_name }}║
           ║                                                              ║
           ║  CLI usage:                                                  ║
-          ║    export VAULT_ADDR=http://{{ ansible_default_ipv4.address }}:8200{{ ' ' * 15 }}║
+          ║    export VAULT_ADDR=http://{{ ansible_host }}:8200{{ ' ' * 15 }}║
           ║    export VAULT_TOKEN=<root_token>                           ║
           ║    vault status                                              ║
           ║    vault kv get secret/zta/test                              ║

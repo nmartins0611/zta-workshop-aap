@@ -126,7 +126,7 @@
         zone_name: "{{ idm_domain }}"
         record_name: dashboard
         record_type: A
-        record_value: "{{ ansible_default_ipv4.address }}"
+        record_value: "{{ ansible_host }}"
         state: present
         validate_certs: false
       failed_when: false
@@ -159,7 +159,7 @@
           ║     ZTA Live Topology Dashboard — Deployed                   ║
           ╠════════════════════════════════════════════════════════════════╣
           ║                                                              ║
-          ║  URL:       http://{{ ansible_default_ipv4.address }}:{{ dashboard_port }}{{ ' ' * (28 - ansible_default_ipv4.address | length) }}║
+          ║  URL:       http://{{ ansible_host }}:{{ dashboard_port }}{{ ' ' * (28 - ansible_host | length) }}║
           ║  DNS:       http://dashboard.zta.lab:{{ dashboard_port }}                ║
           ║  API:       http://dashboard.zta.lab:{{ dashboard_port }}/api/status     ║
           ║                                                              ║

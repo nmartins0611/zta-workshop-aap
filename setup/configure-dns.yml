@@ -133,7 +133,7 @@
   gather_facts: true
 
   vars:
-    central_ip: "{{ ansible_default_ipv4.address | default('192.168.1.11') }}"
+    central_ip: "{{ ansible_host | default('192.168.1.11') }}"
     upstream_dns: "{{ upstream_dns_server | default('172.30.0.10') }}"
     rhel_containers:
       - name: db

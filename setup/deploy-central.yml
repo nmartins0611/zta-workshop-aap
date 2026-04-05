@@ -37,7 +37,7 @@
 
   vars:
     central_fqdn: "{{ idm_hostname }}"
-    central_ip: "{{ ansible_default_ipv4.address | default('192.168.1.11') }}"
+    central_ip: "{{ ansible_host | default('192.168.1.11') }}"
     upstream_dns: "{{ upstream_dns_server | default('8.8.8.8') }}"
 
     keycloak_image: registry.redhat.io/rhbk/keycloak-rhel9:24

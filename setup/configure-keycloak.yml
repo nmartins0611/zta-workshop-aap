@@ -20,7 +20,7 @@
     idm_base_dn: "dc={{ idm_domain.split('.') | join(',dc=') }}"
     idm_users_dn: "cn=users,cn=accounts,{{ idm_base_dn }}"
     idm_groups_dn: "cn=groups,cn=accounts,{{ idm_base_dn }}"
-    idm_server_ip: "{{ ansible_default_ipv4.address }}"
+    idm_server_ip: "{{ ansible_host }}"
     idm_service_certs:
       - hostname: "wazuh.{{ idm_domain }}"
         cert_dir: /opt/certs/wazuh

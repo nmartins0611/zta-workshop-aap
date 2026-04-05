@@ -32,7 +32,7 @@
     rhel_image: registry.access.redhat.com/ubi9/ubi-init:latest
     container_user: rhel
     container_password: "{{ idm_admin_password }}"
-    central_ip: "{{ ansible_default_ipv4.address | default('192.168.1.11') }}"
+    central_ip: "{{ ansible_host | default('192.168.1.11') }}"
     upstream_dns: "{{ upstream_dns_server | default('172.30.0.10') }}"
     containers:
       - name: db

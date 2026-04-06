@@ -1,0 +1,139 @@
+---
+# configure-aap-project.yml — Create the AAP project and execution
+# environment for the ZTA workshop lab.
+#
+# Creates:
+#   1. ZTA Workshop EE             — Custom execution environment (cEOS + RHEL)
+#   2. ZTA Workshop Project        — SCM project pointing at Gitea
+#
+# Prerequisites:
+#   - AAP Controller is installed and reachable
+#   - Gitea is deployed and the zta-workshop-aap repo exists
+#   - ansible.controller collection available
+#
+# Usage:
+#   ansible-playbook -i inventory/hosts.ini setup/configure-aap-project.yml
+#   ansible-playbook -i inventory/hosts.ini setup/configure-aap-project.yml --tags ee
+#   ansible-playbook -i inventory/hosts.ini setup/configure-aap-project.yml --tags project
+#
+# Tags:
+#   ee       — Execution environment only
+#   project  — SCM project only
+
+- name: Create AAP Project and Execution Environment for ZTA Workshop
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  vars:
+    aap_host: "{{ aap_controller_url | default('https://control.zta.lab') }}"
+    aap_user: admin
+    aap_password: "{{ lookup('env', 'AAP_ADMIN_PASSWORD') | default('ansible123!', true) }}"
+    aap_verify_ssl: false
+    aap_organization: Default
+
+    ee_name: ZTA Workshop EE
+    ee_image: quay.io/nmartins/ceoslab-rh
+
+    project_name: ZTA Workshop
+    project_scm_url: http://localhost:3000/gitea/zta-workshop-aap.git
+
+  module_defaults:
+    group/ansible.controller.controller:
+      controller_host: "{{ aap_host }}"
+      controller_username: "{{ aap_user }}"
+      controller_password: "{{ aap_password }}"
+      validate_certs: "{{ aap_verify_ssl }}"
+
+  tasks:
+
+    # ══════════════════════════════════════════════════════════════════════
+    #  Verify prerequisites
+    # ══════════════════════════════════════════════════════════════════════
+
+    - name: Verify AAP Controller is reachable
+      uri:
+        url: "{{ aap_host }}/api/controller/v2/ping/"
+        method: GET
+        validate_certs: "{{ aap_verify_ssl }}"
+        status_code: 200
+      register: aap_ping
+      tags: [always]
+
+    - name: Display AAP version
+      debug:
+        msg: "AAP Controller {{ aap_ping.json.version }} detected"
+      tags: [always]
+
+    # ══════════════════════════════════════════════════════════════════════
+    #  1. Execution Environment — Custom EE with cEOS + RHEL collections
+    # ══════════════════════════════════════════════════════════════════════
+
+    - name: Create ZTA Workshop Execution Environment
+      ansible.controller.execution_environment:
+        name: "{{ ee_name }}"
+        description: "Custom EE with Arista cEOS, RHEL, and network collections for ZTA workshop"
+        image: "{{ ee_image }}"
+        pull: missing
+        organization: "{{ aap_organization }}"
+        state: present
+      tags: [ee]
+
+    # ══════════════════════════════════════════════════════════════════════
+    #  2. Project — SCM project pointing at Gitea
+    # ══════════════════════════════════════════════════════════════════════
+
+    - name: Create ZTA Workshop Project
+      ansible.controller.project:
+        name: "{{ project_name }}"
+        description: "ZTA Workshop — playbooks, inventories, and roles from Gitea"
+        organization: "{{ aap_organization }}"
+        scm_type: git
+        scm_url: "{{ project_scm_url }}"
+        scm_branch: main
+        scm_clean: true
+        scm_update_on_launch: true
+        default_environment: "{{ ee_name }}"
+        state: present
+      tags: [project]
+
+    - name: Wait for initial project sync to complete
+      ansible.controller.project:
+        name: "{{ project_name }}"
+        organization: "{{ aap_organization }}"
+        wait: true
+        timeout: 120
+        state: present
+      tags: [project]
+
+    # ══════════════════════════════════════════════════════════════════════
+    #  Summary
+    # ══════════════════════════════════════════════════════════════════════
+
+    - name: Display configuration summary
+      tags: [always]
+      debug:
+        msg: |
+          ╔═══════════════════════════════════════════════════════════════════╗
+          ║       AAP Project & EE — Configuration Complete                  ║
+          ╠═══════════════════════════════════════════════════════════════════╣
+          ║                                                                 ║
+          ║  ┌───┬──────────────────────────┬──────────────────────────────┐║
+          ║  │ # │ Resource                 │ Details                      │║
+          ║  ├───┼──────────────────────────┼──────────────────────────────┤║
+          ║  │ 1 │ Execution Environment    │ {{ ee_name }}{{ ' ' * (29 - ee_name | length) }}│║
+          ║  │   │   Image                  │ {{ ee_image }}{{ ' ' * (29 - ee_image | length) }}│║
+          ║  │ 2 │ Project                  │ {{ project_name }}{{ ' ' * (29 - project_name | length) }}│║
+          ║  │   │   SCM URL                │ (see below)                  │║
+          ║  │   │   Branch                 │ main                         │║
+          ║  │   │   Update on launch       │ yes                          │║
+          ║  └───┴──────────────────────────┴──────────────────────────────┘║
+          ║                                                                 ║
+          ║  SCM URL: {{ project_scm_url }}{{ ' ' * (55 - project_scm_url | length) }}║
+          ║  Default EE: {{ ee_name }}{{ ' ' * (53 - ee_name | length) }}║
+          ║                                                                 ║
+          ║  The project syncs from Gitea on every job launch.              ║
+          ║  All job templates using this project will automatically        ║
+          ║  run inside the {{ ee_name }} execution environment.{{ ' ' * (27 - ee_name | length) }}║
+          ║                                                                 ║
+          ╚═══════════════════════════════════════════════════════════════════╝

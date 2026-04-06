@@ -62,6 +62,7 @@
 #   splunk-ship     — Splunk centralized log shipping
 #   (aap-eda        — Optional: Wazuh → EDA webhook — only for Section 7)
 #   keycloak        — Keycloak realm, LDAP federation, OIDC client, JWT OPA policies
+#   aap-project     — AAP project + execution environment
 #   aap-creds       — AAP credentials (Vault-sourced)
 #   aap-inventory   — AAP static inventory
 #
@@ -279,14 +280,21 @@
 #  Only runs when explicitly requested: --tags aap-bootstrap
 # ═════════════════════════════════════════════════════════════════════
 
-- name: "AAP Bootstrap 1: Create all AAP credentials (Vault-sourced)"
+- name: "AAP Bootstrap 1: Create AAP project and execution environment"
+  ansible.builtin.import_playbook: configure-aap-project.yml
+  tags: [aap-bootstrap, aap, aap-project]
+
+- ansible.builtin.import_playbook: _reset-errors.yml
+  tags: [always]
+
+- name: "AAP Bootstrap 2: Create all AAP credentials (Vault-sourced)"
   ansible.builtin.import_playbook: configure-aap-credentials.yml
   tags: [aap-bootstrap, aap, aap-creds]
 
 - ansible.builtin.import_playbook: _reset-errors.yml
   tags: [always]
 
-- name: "AAP Bootstrap 2: Create AAP static inventory"
+- name: "AAP Bootstrap 3: Create AAP static inventory"
   ansible.builtin.import_playbook: configure-aap-inventory.yml
   tags: [aap-bootstrap, aap, aap-inventory]
 

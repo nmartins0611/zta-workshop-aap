@@ -420,6 +420,7 @@
   hosts: zta_services
   become: true
   gather_facts: false
+  tags: wazuh_splunk
 
   vars:
     wazuh_data_dir: /opt/wazuh-data

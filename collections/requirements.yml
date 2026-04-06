@@ -9,3 +9,4 @@ collections:
   - name: netbox.netbox
   - name: containers.podman
   - name: ansible.controller
+  - name: ansible.posix

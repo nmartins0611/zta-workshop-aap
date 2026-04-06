@@ -14,17 +14,17 @@
       - hostname: central
         ip: "{{ hostvars['central']['ansible_host'] }}"
       - hostname: control
-        ip: "{{ hostvars['control']['ansible_host'] }}"
+        ip: "192.168.1.10"
       - hostname: vault
-        ip: "{{ hostvars['vault']['ansible_host'] }}"
+        ip: "192.168.1.12"
       - hostname: netbox
-        ip: "{{ central_ip }}"
+        ip: "192.168.1.15"
       - hostname: app
         ip: "{{ hostvars['app']['ansible_host'] }}"
       - hostname: db
         ip: "{{ hostvars['db']['ansible_host'] }}"
       - hostname: aap
-        ip: "{{ hostvars['control']['ansible_host'] }}"
+        ip: "192.168.1.10"
       # ── Services on central (containers) ──
       - hostname: keycloak
         ip: "{{ central_ip }}"
@@ -33,7 +33,7 @@
       - hostname: splunk
         ip: "{{ central_ip }}"
       - hostname: wazuh
-        ip: "{{ hostvars['wazuh']['ansible_host'] }}"
+        ip: "192.168.1.13"
       - hostname: ceos1
         ip: "{{ central_ip }}"
       - hostname: ceos2

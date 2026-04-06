@@ -638,7 +638,7 @@
           Authorization: "Splunk {{ splunk_hec_token }}"
         body_format: json
         body:
-          event: "Integration test — {{ item.index }} — {{ ansible_date_time.iso8601 }}"
+          event: "Integration test — {{ item.index }} — {{ now(utc=true, fmt='%Y-%m-%dT%H:%M:%SZ') }}"
           sourcetype: "{{ item.sourcetype }}"
           source: "ansible-integration-test"
           index: "{{ item.index }}"

@@ -217,6 +217,21 @@
       loop_control:
         label: "{{ item.0.name }} → {{ item.1 }}"
 
+    - name: Fix DNAT rules — keep only management network port forwarding
+      ansible.builtin.shell: |
+        MGMT_IP=$(podman inspect {{ item.name }} \
+          --format '{%raw%}{{(index .NetworkSettings.Networks "management").IPAddress}}{%endraw%}')
+        for port in {{ item.ssh_port }} {{ item.eapi_port }}; do
+          iptables -t nat -S | grep -E "dport ${port}\b.*DNAT" | grep -v "${MGMT_IP}" | \
+            sed 's/^-A/-D/' | while IFS= read -r rule; do
+              eval iptables -t nat "$rule" 2>/dev/null || true
+            done
+        done
+      loop: "{{ switches }}"
+      loop_control:
+        label: "{{ item.name }}"
+      changed_when: true
+
     # ═══════════════════════════════════════════════════════════════════
     # Phase 7 — Wait for EOS to boot
     # ═══════════════════════════════════════════════════════════════════

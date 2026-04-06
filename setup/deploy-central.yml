@@ -384,6 +384,13 @@
         - "'already connected' not in (net_connect.stderr | default(''))"
       changed_when: net_connect.rc == 0
 
+    - name: "Phase 7 | Restart switches to fix DNAT rule ordering after network attach"
+      ansible.builtin.command: "podman restart {{ item.name }}"
+      loop: "{{ ceos_switches }}"
+      loop_control:
+        label: "{{ item.name }}"
+      changed_when: true
+
     - name: "Phase 7 | Ensure switch containers are running"
       ansible.builtin.command: "podman start {{ item.name }}"
       loop: "{{ ceos_switches }}"

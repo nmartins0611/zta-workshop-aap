@@ -220,6 +220,13 @@
       loop_control:
         label: "{{ item.0.name }} → {{ item.1 }}"
 
+    - name: Restart switches to fix DNAT rule ordering after network attach
+      ansible.builtin.command: "podman restart {{ item.name }}"
+      loop: "{{ switches }}"
+      loop_control:
+        label: "{{ item.name }}"
+      changed_when: true
+
     # ═══════════════════════════════════════════════════════════════════
     # Phase 7 — Wait for EOS to boot
     # ═══════════════════════════════════════════════════════════════════

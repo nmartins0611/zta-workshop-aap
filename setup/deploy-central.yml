@@ -30,7 +30,14 @@
 # Usage:
 #   ansible-playbook -i inventory/hosts.ini setup/deploy-central.yml
 #   ansible-playbook -i inventory/hosts.ini setup/deploy-central.yml --skip-tags arista
+#   ansible-playbook -i inventory/hosts.ini setup/deploy-central.yml --skip-tags keycloak
+#   ansible-playbook -i inventory/hosts.ini setup/deploy-central.yml --skip-tags arista,keycloak
 #   ansible-playbook -i inventory/hosts.ini setup/deploy-central.yml --tags arista
+#   ansible-playbook -i inventory/hosts.ini setup/deploy-central.yml --tags keycloak
+#
+# Red Hat registry credentials (needed for Keycloak RHBK image pull):
+#   -e rh_registry_username=<your-rh-user> -e rh_registry_password=<your-rh-token>
+#   Or pre-login on the host: podman login registry.redhat.io
 
 - name: Deploy Central — Workshop Infrastructure Host
   hosts: zta_services
@@ -42,7 +49,11 @@
     central_ip: "{{ ansible_host | default('192.168.1.11') }}"
     upstream_dns: "{{ upstream_dns_server | default('8.8.8.8') }}"
 
-    keycloak_image: registry.redhat.io/rhbk/keycloak-rhel9:24
+    rh_registry: registry.redhat.io
+    rh_registry_user: "{{ rh_registry_username | default('') }}"
+    rh_registry_pass: "{{ rh_registry_password | default('') }}"
+
+    keycloak_image: "{{ rh_registry }}/rhbk/keycloak-rhel9:24"
     keycloak_container_name: keycloak
     keycloak_admin_user: admin
     keycloak_admin_password: "{{ idm_admin_password }}"
@@ -244,85 +255,106 @@
 
     # ═══════════════════════════════════════════════════════════════════
     # Phase 6 — Keycloak (Red Hat Build of Keycloak)
+    #   Tag: keycloak — skip with --skip-tags keycloak
     # ═══════════════════════════════════════════════════════════════════
 
-    - name: "Phase 6 | Create Keycloak certificate directory"
-      ansible.builtin.file:
-        path: "{{ keycloak_certs_dir }}"
-        state: directory
-        mode: '0755'
+    - name: "Phase 6 | Deploy Keycloak (RHBK)"
+      tags: [keycloak]
+      block:
+        - name: "Phase 6 | Create Keycloak certificate directory"
+          ansible.builtin.file:
+            path: "{{ keycloak_certs_dir }}"
+            state: directory
+            mode: '0755'
 
-    - name: "Phase 6 | Check for existing Keycloak TLS certificate"
-      ansible.builtin.stat:
-        path: "{{ keycloak_certs_dir }}/server.crt"
-      register: keycloak_cert
+        - name: "Phase 6 | Check for existing Keycloak TLS certificate"
+          ansible.builtin.stat:
+            path: "{{ keycloak_certs_dir }}/server.crt"
+          register: keycloak_cert
 
-    - name: "Phase 6 | Generate self-signed TLS certificate for Keycloak"
-      ansible.builtin.command: >
-        openssl req -x509 -newkey rsa:4096
-          -keyout {{ keycloak_certs_dir }}/server.key
-          -out {{ keycloak_certs_dir }}/server.crt
-          -sha256 -days 365 -nodes
-          -subj '/CN={{ central_fqdn }}'
-          -addext 'subjectAltName=DNS:{{ central_fqdn }}'
-      when: not keycloak_cert.stat.exists
+        - name: "Phase 6 | Generate self-signed TLS certificate for Keycloak"
+          ansible.builtin.command: >
+            openssl req -x509 -newkey rsa:4096
+              -keyout {{ keycloak_certs_dir }}/server.key
+              -out {{ keycloak_certs_dir }}/server.crt
+              -sha256 -days 365 -nodes
+              -subj '/CN={{ central_fqdn }}'
+              -addext 'subjectAltName=DNS:{{ central_fqdn }}'
+          when: not keycloak_cert.stat.exists
 
-    - name: "Phase 6 | Set Keycloak certificate permissions"
-      ansible.builtin.file:
-        path: "{{ keycloak_certs_dir }}/{{ item }}"
-        mode: '0644'
-      loop:
-        - server.crt
-        - server.key
-      when: not keycloak_cert.stat.exists
+        - name: "Phase 6 | Set Keycloak certificate permissions"
+          ansible.builtin.file:
+            path: "{{ keycloak_certs_dir }}/{{ item }}"
+            mode: '0644'
+          loop:
+            - server.crt
+            - server.key
+          when: not keycloak_cert.stat.exists
 
-    - name: "Phase 6 | Pull RHBK image"
-      ansible.builtin.command: podman pull {{ keycloak_image }}
-      register: keycloak_pull
-      changed_when: "'Copying' in keycloak_pull.stderr or 'Copying' in keycloak_pull.stdout"
+        - name: "Phase 6 | Check if RHBK image is already present"
+          ansible.builtin.command: podman image exists {{ keycloak_image }}
+          register: keycloak_image_check
+          failed_when: false
+          changed_when: false
 
-    - name: "Phase 6 | Check if Keycloak container exists"
-      ansible.builtin.command: podman inspect --format '{% raw %}{{.State.Status}}{% endraw %}' {{ keycloak_container_name }}
-      register: keycloak_state
-      failed_when: false
-      changed_when: false
+        - name: "Phase 6 | Login to {{ rh_registry }}"
+          ansible.builtin.command: >
+            podman login {{ rh_registry }}
+              --username={{ rh_registry_user }}
+              --password={{ rh_registry_pass }}
+          no_log: true
+          when:
+            - keycloak_image_check.rc != 0
+            - rh_registry_user | length > 0
 
-    - name: "Phase 6 | Deploy Keycloak container"
-      ansible.builtin.command: >
-        podman run -d
-          --name={{ keycloak_container_name }}
-          -p {{ keycloak_http_port }}:8080
-          -p {{ keycloak_https_port }}:8443
-          -e KEYCLOAK_ADMIN={{ keycloak_admin_user }}
-          -e KEYCLOAK_ADMIN_PASSWORD={{ keycloak_admin_password }}
-          -e KC_HOSTNAME={{ central_fqdn }}
-          -e KC_HTTPS_CERTIFICATE_FILE=/opt/certs/server.crt
-          -e KC_HTTPS_CERTIFICATE_KEY_FILE=/opt/certs/server.key
-          -e KC_HTTP_ENABLED=true
-          -v {{ keycloak_certs_dir }}:/opt/certs:Z
-          {{ keycloak_image }}
-          start
-            --hostname={{ central_fqdn }}
-            --https-port=8443
-            --http-enabled=true
-            --health-enabled=true
-      when: keycloak_state.rc != 0
+        - name: "Phase 6 | Pull RHBK image"
+          ansible.builtin.command: podman pull {{ keycloak_image }}
+          register: keycloak_pull
+          changed_when: "'Copying' in keycloak_pull.stderr or 'Copying' in keycloak_pull.stdout"
+          when: keycloak_image_check.rc != 0
 
-    - name: "Phase 6 | Ensure Keycloak container is running"
-      ansible.builtin.command: podman start {{ keycloak_container_name }}
-      when: keycloak_state.rc == 0 and 'running' not in keycloak_state.stdout
-      register: keycloak_start
-      changed_when: keycloak_start.rc == 0
+        - name: "Phase 6 | Check if Keycloak container exists"
+          ansible.builtin.command: podman inspect --format '{% raw %}{{.State.Status}}{% endraw %}' {{ keycloak_container_name }}
+          register: keycloak_state
+          failed_when: false
+          changed_when: false
 
-    - name: "Phase 6 | Wait for Keycloak to become healthy (up to 90s)"
-      ansible.builtin.uri:
-        url: "https://localhost:{{ keycloak_https_port }}/health/ready"
-        validate_certs: false
-        status_code: [200]
-      register: keycloak_health
-      until: keycloak_health.status == 200
-      retries: 18
-      delay: 5
+        - name: "Phase 6 | Deploy Keycloak container"
+          ansible.builtin.command: >
+            podman run -d
+              --name={{ keycloak_container_name }}
+              -p {{ keycloak_http_port }}:8080
+              -p {{ keycloak_https_port }}:8443
+              -e KEYCLOAK_ADMIN={{ keycloak_admin_user }}
+              -e KEYCLOAK_ADMIN_PASSWORD={{ keycloak_admin_password }}
+              -e KC_HOSTNAME={{ central_fqdn }}
+              -e KC_HTTPS_CERTIFICATE_FILE=/opt/certs/server.crt
+              -e KC_HTTPS_CERTIFICATE_KEY_FILE=/opt/certs/server.key
+              -e KC_HTTP_ENABLED=true
+              -v {{ keycloak_certs_dir }}:/opt/certs:Z
+              {{ keycloak_image }}
+              start
+                --hostname={{ central_fqdn }}
+                --https-port=8443
+                --http-enabled=true
+                --health-enabled=true
+          when: keycloak_state.rc != 0
+
+        - name: "Phase 6 | Ensure Keycloak container is running"
+          ansible.builtin.command: podman start {{ keycloak_container_name }}
+          when: keycloak_state.rc == 0 and 'running' not in keycloak_state.stdout
+          register: keycloak_start
+          changed_when: keycloak_start.rc == 0
+
+        - name: "Phase 6 | Wait for Keycloak to become healthy (up to 90s)"
+          ansible.builtin.uri:
+            url: "https://localhost:{{ keycloak_https_port }}/health/ready"
+            validate_certs: false
+            status_code: [200]
+          register: keycloak_health
+          until: keycloak_health.status == 200
+          retries: 18
+          delay: 5
 
     # ═══════════════════════════════════════════════════════════════════
     # Phase 7 — Arista cEOS Switches
@@ -444,18 +476,21 @@
         enabled: true
         daemon_reload: true
 
-    - name: "Phase 8 | Generate systemd service for Keycloak"
-      containers.podman.podman_generate_systemd:
-        name: "{{ keycloak_container_name }}"
-        dest: /etc/systemd/system/
-        restart_policy: always
-        new: false
+    - name: "Phase 8 | Keycloak systemd service"
+      tags: [keycloak]
+      block:
+        - name: "Phase 8 | Generate systemd service for Keycloak"
+          containers.podman.podman_generate_systemd:
+            name: "{{ keycloak_container_name }}"
+            dest: /etc/systemd/system/
+            restart_policy: always
+            new: false
 
-    - name: "Phase 8 | Enable Keycloak systemd service"
-      ansible.builtin.systemd:
-        name: "container-{{ keycloak_container_name }}"
-        enabled: true
-        daemon_reload: true
+        - name: "Phase 8 | Enable Keycloak systemd service"
+          ansible.builtin.systemd:
+            name: "container-{{ keycloak_container_name }}"
+            enabled: true
+            daemon_reload: true
 
     - name: "Phase 8 | cEOS systemd services and DNAT fix"
       tags: [arista]

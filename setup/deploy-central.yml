@@ -99,6 +99,15 @@
         policy: targeted
         state: permissive
 
+    - name: "Phase 1 | Disable SysRq to prevent cEOS from remounting host filesystem read-only"
+      ansible.posix.sysctl:
+        name: kernel.sysrq
+        value: '0'
+        sysctl_file: /etc/sysctl.d/99-no-sysrq.conf
+        reload: true
+        state: present
+      failed_when: false
+
     - name: "Phase 1 | Install base packages"
       ansible.builtin.dnf:
         name:
@@ -297,6 +306,13 @@
           failed_when: false
           changed_when: false
 
+        - name: "Phase 6 | Check for existing {{ rh_registry }} auth"
+          ansible.builtin.command: podman login --get-login {{ rh_registry }}
+          register: rh_registry_auth_check
+          failed_when: false
+          changed_when: false
+          when: keycloak_image_check.rc != 0
+
         - name: "Phase 6 | Login to {{ rh_registry }}"
           ansible.builtin.command: >
             podman login {{ rh_registry }}
@@ -305,7 +321,19 @@
           no_log: true
           when:
             - keycloak_image_check.rc != 0
+            - rh_registry_auth_check.rc != 0
             - rh_registry_user | length > 0
+
+        - name: "Phase 6 | Fail if {{ rh_registry }} auth is unavailable"
+          ansible.builtin.fail:
+            msg: >-
+              RHBK image not cached and no {{ rh_registry }} credentials available.
+              Either pre-login on the host (podman login {{ rh_registry }}) or pass
+              -e rh_registry_username=<user> -e rh_registry_password=<token>
+          when:
+            - keycloak_image_check.rc != 0
+            - rh_registry_auth_check.rc != 0
+            - rh_registry_user | length == 0
 
         - name: "Phase 6 | Pull RHBK image"
           ansible.builtin.command: podman pull {{ keycloak_image }}

@@ -16,5 +16,5 @@ class Config:
         return (
             f"host={cls.DB_HOST} port={cls.DB_PORT} "
             f"dbname={cls.DB_NAME} user={cls.DB_USER} "
-            f"password={cls.DB_PASSWORD}"
+            f"password={cls.DB_PASSWORD} connect_timeout=3"
         )

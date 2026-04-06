@@ -20,9 +20,9 @@
       - hostname: netbox
         ip: "192.168.1.15"
       - hostname: app
-        ip: "{{ hostvars['app']['ansible_host'] }}"
+        ip: "192.168.1.11"
       - hostname: db
-        ip: "{{ hostvars['db']['ansible_host'] }}"
+        ip: "192.168.1.11"
       - hostname: aap
         ip: "192.168.1.10"
       # ── Services on central (containers) ──

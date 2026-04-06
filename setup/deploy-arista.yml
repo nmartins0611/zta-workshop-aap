@@ -4,9 +4,8 @@
 # Topology:
 #   ceos1 (spine) ── net1 ── ceos2 (leaf — data-tier)
 #     │                        │
-#     │── net3 ── ceos3 ──── net2 ──┘
-#     │       (leaf — app-tier)
-#     └── loop (loopback network)
+#     └── net3 ── ceos3 ──── net2 ──┘
+#             (leaf — app-tier)
 #
 # Data-plane networks:
 #   net2 = 10.30.0.0/24  (data-tier) — DB container at 10.30.0.10
@@ -54,7 +53,6 @@
       - net1
       - net2
       - net3
-      - loop
 
     switches:
       - name: ceos1
@@ -62,19 +60,19 @@
         config_src: "{{ config_dir }}/sw01/sw01"
         ssh_port: 2001
         eapi_port: 6031
-        networks: [loop, net1, net3]
+        networks: [net1, net3]
       - name: ceos2
         role: leaf
         config_src: "{{ config_dir }}/sw02/sw02"
         ssh_port: 2002
         eapi_port: 6032
-        networks: [loop, net1, net2]
+        networks: [net1, net2]
       - name: ceos3
         role: leaf
         config_src: "{{ config_dir }}/sw03/sw03"
         ssh_port: 2003
         eapi_port: 6033
-        networks: [loop, net2, net3]
+        networks: [net2, net3]
 
   tasks:
     # ═══════════════════════════════════════════════════════════════════
@@ -149,11 +147,10 @@
     # Phase 4 — Create networks
     # ═══════════════════════════════════════════════════════════════════
 
-    - name: Create podman networks (management, loop — no explicit subnet)
+    - name: Create podman management network (no explicit subnet)
       command: "podman network create --disable-dns {{ item }}"
       loop:
         - management
-        - loop
       register: net_simple
       failed_when:
         - net_simple.rc != 0
@@ -219,13 +216,6 @@
       loop: "{{ switches | subelements('networks') }}"
       loop_control:
         label: "{{ item.0.name }} → {{ item.1 }}"
-
-    - name: Restart switches to fix DNAT rule ordering after network attach
-      ansible.builtin.command: "podman restart {{ item.name }}"
-      loop: "{{ switches }}"
-      loop_control:
-        label: "{{ item.name }}"
-      changed_when: true
 
     # ═══════════════════════════════════════════════════════════════════
     # Phase 7 — Wait for EOS to boot

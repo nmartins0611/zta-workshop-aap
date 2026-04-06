@@ -11,12 +11,12 @@ ip routing
 interface Management0
    no shutdown
 !
-interface Ethernet2
+interface Ethernet1
    no switchport
    ip address 10.10.0.1/24
    no shutdown
 !
-interface Ethernet3
+interface Ethernet2
    no switchport
    ip address 10.20.0.254/24
    no shutdown

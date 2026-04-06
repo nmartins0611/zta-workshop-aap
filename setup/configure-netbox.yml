@@ -213,10 +213,10 @@
           - name: Management0
             type: virtual
             ip: false
-          - name: Ethernet2
+          - name: Ethernet1
             type: "1000base-t"
             ip: 10.10.0.1/24
-          - name: Ethernet3
+          - name: Ethernet2
             type: "1000base-t"
             ip: 10.20.0.254/24
 
@@ -230,10 +230,10 @@
           - name: Management0
             type: virtual
             ip: false
-          - name: Ethernet2
+          - name: Ethernet1
             type: "1000base-t"
             ip: 10.10.0.2/24
-          - name: Ethernet3
+          - name: Ethernet2
             type: "1000base-t"
             ip: 10.30.0.1/24
 
@@ -247,7 +247,7 @@
           - name: Management0
             type: virtual
             ip: false
-          - name: Ethernet3
+          - name: Ethernet2
             type: "1000base-t"
             ip: 10.20.0.1/24
 

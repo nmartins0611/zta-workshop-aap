@@ -53,28 +53,27 @@
     switch_config_dir: "{{ playbook_dir }}/switch-configs"
 
     podman_networks:
+      - management
       - net1
       - net2
       - net3
-      - loop
-      - management
 
     ceos_switches:
       - name: ceos1
         config: sw01
         ssh_port: 2001
         eapi_port: 6031
-        networks: [loop, net1, net3]
+        networks: [net1, net3]
       - name: ceos2
         config: sw02
         ssh_port: 2002
         eapi_port: 6032
-        networks: [loop, net1, net2]
+        networks: [net1, net2]
       - name: ceos3
         config: sw03
         ssh_port: 2003
         eapi_port: 6033
-        networks: [loop, net2, net3]
+        networks: [net2, net3]
 
   tasks:
 
@@ -384,13 +383,6 @@
         - "'already connected' not in (net_connect.stderr | default(''))"
       changed_when: net_connect.rc == 0
 
-    - name: "Phase 7 | Restart switches to fix DNAT rule ordering after network attach"
-      ansible.builtin.command: "podman restart {{ item.name }}"
-      loop: "{{ ceos_switches }}"
-      loop_control:
-        label: "{{ item.name }}"
-      changed_when: true
-
     - name: "Phase 7 | Ensure switch containers are running"
       ansible.builtin.command: "podman start {{ item.name }}"
       loop: "{{ ceos_switches }}"
@@ -486,7 +478,7 @@
           ║    Credentials:        admin / admin                         ║
           ║                                                              ║
           ║  Podman Networks:                                            ║
-          ║    management, net1, net2, net3, loop                        ║
+          ║    management, net1, net2, net3                               ║
           ║                                                              ║
           ║  Systemd services (auto-start on reboot):                    ║
           ║    container-opa, container-keycloak,                        ║

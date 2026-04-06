@@ -590,22 +590,22 @@
           ║                                                                  ║
           ║  Devices ({{ nb_devices | length }}):                                                    ║
           {% for dev in nb_devices %}
-          ║    {{ (dev.name + dev.interfaces[0].ip + dev.role) }}║
+          ║    {{ '%-24s %-18s %s' | format(dev.name, dev.interfaces | selectattr('ip') | map(attribute='ip') | first | default('no-ip'), dev.role) }}║
           {% endfor %}
           ║                                                                  ║
           ║  VLANs ({{ nb_vlans | length }}):                                                     ║
           {% for vlan in nb_vlans %}
-          ║    {{ ('VLAN ' + vlan.vid | string + ' — ' + vlan.name + ' (' + vlan.description + ')') }}║
+          ║    {{ 'VLAN %s — %s (%s)' | format(vlan.vid, vlan.name, vlan.description) }}║
           {% endfor %}
           ║                                                                  ║
           ║  IP Prefixes ({{ nb_prefixes | length }}):                                                ║
           {% for pfx in nb_prefixes %}
-          ║    {{ (pfx.prefix + ' — ' + pfx.description) }}║
+          ║    {{ pfx.prefix ~ ' — ' ~ pfx.description }}║
           {% endfor %}
           ║                                                                  ║
           ║  Services ({{ nb_services | length }}):                                                  ║
           {% for svc in nb_services %}
-          ║    {{ (svc.device + svc.name) }}║
+          ║    {{ '%-24s %s' | format(svc.device, svc.name) }}║
           {% endfor %}
           ║                                                                  ║
           ║  Tags:     {{ nb_tags | map(attribute='name') | join(', ') }}║

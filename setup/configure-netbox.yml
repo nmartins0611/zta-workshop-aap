@@ -542,7 +542,6 @@
         netbox_token: "{{ nb_token }}"
         data:
           prefix: "{{ item.prefix }}"
-          site: "{{ site_name }}"
           status: "{{ item.status }}"
           description: "{{ item.description }}"
           is_pool: "{{ item.is_pool | default(false) }}"

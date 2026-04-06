@@ -27,13 +27,24 @@
 #   - cEOS SSH:       central.zta.lab:2001-2003
 #   - cEOS eAPI:      central.zta.lab:6031-6033
 #
+# Tags (one per phase, combinable):
+#   base        — Phase 1: SELinux, sysrq, packages, collections
+#   networking  — Phase 2: hostname, /etc/hosts
+#   idm         — Phase 3: FreeIPA server install & DNS
+#   podman      — Phase 4: container networks
+#   opa         — Phase 5 + systemd: Open Policy Agent
+#   keycloak    — Phase 6 + systemd: Red Hat Build of Keycloak
+#   arista      — Phase 7 + systemd: cEOS switches & DNAT fix
+#   systemd     — Phase 8: all systemd unit generation/enablement
+#
 # Usage:
 #   ansible-playbook -i inventory/hosts.ini setup/deploy-central.yml
 #   ansible-playbook -i inventory/hosts.ini setup/deploy-central.yml --skip-tags arista
-#   ansible-playbook -i inventory/hosts.ini setup/deploy-central.yml --skip-tags keycloak
-#   ansible-playbook -i inventory/hosts.ini setup/deploy-central.yml --skip-tags arista,keycloak
+#   ansible-playbook -i inventory/hosts.ini setup/deploy-central.yml --skip-tags keycloak,arista
+#   ansible-playbook -i inventory/hosts.ini setup/deploy-central.yml --skip-tags idm
 #   ansible-playbook -i inventory/hosts.ini setup/deploy-central.yml --tags arista
 #   ansible-playbook -i inventory/hosts.ini setup/deploy-central.yml --tags keycloak
+#   ansible-playbook -i inventory/hosts.ini setup/deploy-central.yml --tags opa,podman
 #
 # Red Hat registry credentials (needed for Keycloak RHBK image pull):
 #   -e rh_registry_username=<your-rh-user> -e rh_registry_password=<your-rh-token>
@@ -95,11 +106,13 @@
     # ═══════════════════════════════════════════════════════════════════
 
     - name: "Phase 1 | Set SELinux to permissive (required for cEOS containers)"
+      tags: [base]
       ansible.posix.selinux:
         policy: targeted
         state: permissive
 
     - name: "Phase 1 | Disable SysRq to prevent cEOS from remounting host filesystem read-only"
+      tags: [base]
       ansible.posix.sysctl:
         name: kernel.sysrq
         value: '0'
@@ -109,6 +122,7 @@
       failed_when: false
 
     - name: "Phase 1 | Install base packages"
+      tags: [base]
       ansible.builtin.dnf:
         name:
           - podman
@@ -125,6 +139,7 @@
         state: present
 
     - name: "Phase 1 | Install required Ansible collections"
+      tags: [base]
       ansible.builtin.command:
         cmd: "ansible-galaxy collection install {{ item }} --force"
       loop:
@@ -140,10 +155,12 @@
     # ═══════════════════════════════════════════════════════════════════
 
     - name: "Phase 2 | Set hostname"
+      tags: [networking]
       ansible.builtin.hostname:
         name: "{{ central_fqdn }}"
 
     - name: "Phase 2 | Ensure /etc/hosts has central entry"
+      tags: [networking]
       ansible.builtin.lineinfile:
         path: /etc/hosts
         regexp: '.*central\.zta\.lab.*'
@@ -155,11 +172,13 @@
     # ═══════════════════════════════════════════════════════════════════
 
     - name: "Phase 3 | Check if IdM is already installed"
+      tags: [idm]
       ansible.builtin.stat:
         path: /etc/ipa/default.conf
       register: ipa_installed
 
     - name: "Phase 3 | Install IdM server packages"
+      tags: [idm]
       ansible.builtin.dnf:
         name:
           - ipa-server
@@ -169,6 +188,7 @@
       when: not ipa_installed.stat.exists
 
     - name: "Phase 3 | Install IdM server (unattended)"
+      tags: [idm]
       ansible.builtin.command:
         cmd: >
           ipa-server-install
@@ -186,16 +206,19 @@
       changed_when: ipa_install.rc == 0
 
     - name: "Phase 3 | Verify IdM services are running"
+      tags: [idm]
       ansible.builtin.command: ipactl status
       register: ipa_status
       changed_when: false
       failed_when: "'RUNNING' not in ipa_status.stdout"
 
     - name: "Phase 3 | Obtain Kerberos admin ticket"
+      tags: [idm]
       ansible.builtin.shell: echo '{{ idm_admin_password }}' | kinit admin
       changed_when: false
 
     - name: "Phase 3 | Restrict IdM DNS (named) to host IP only"
+      tags: [idm]
       ansible.builtin.lineinfile:
         path: /etc/named/ipa-options-ext.conf
         line: '{{ item }}'
@@ -209,6 +232,7 @@
       register: named_listen
 
     - name: "Phase 3 | Restart named after listen address change"
+      tags: [idm]
       ansible.builtin.service:
         name: named
         state: restarted
@@ -219,11 +243,13 @@
     # ═══════════════════════════════════════════════════════════════════
 
     - name: "Phase 4 | Check existing Podman networks"
+      tags: [podman]
       ansible.builtin.command: podman network ls --format '{{ '{{' }}.Name{{ '}}' }}'
       register: existing_networks
       changed_when: false
 
     - name: "Phase 4 | Create Podman networks"
+      tags: [podman]
       ansible.builtin.command: "podman network create {{ item }}"
       loop: "{{ podman_networks }}"
       when: item not in existing_networks.stdout_lines
@@ -234,18 +260,21 @@
     # ═══════════════════════════════════════════════════════════════════
 
     - name: "Phase 5 | Check if OPA container exists"
+      tags: [opa]
       ansible.builtin.command: podman inspect --format '{% raw %}{{.State.Status}}{% endraw %}' {{ opa_container_name }}
       register: opa_state
       failed_when: false
       changed_when: false
 
     - name: "Phase 5 | Create OPA policy directory"
+      tags: [opa]
       ansible.builtin.file:
         path: "{{ opa_policy_dir }}"
         state: directory
         mode: '0755'
 
     - name: "Phase 5 | Deploy OPA container"
+      tags: [opa]
       ansible.builtin.command: >
         podman run -d
           --name={{ opa_container_name }}
@@ -257,6 +286,7 @@
       when: opa_state.rc != 0
 
     - name: "Phase 5 | Ensure OPA container is running"
+      tags: [opa]
       ansible.builtin.command: podman start {{ opa_container_name }}
       when: opa_state.rc == 0 and 'running' not in opa_state.stdout
       register: opa_start
@@ -492,6 +522,7 @@
     # ═══════════════════════════════════════════════════════════════════
 
     - name: "Phase 8 | Generate systemd service for OPA"
+      tags: [opa, systemd]
       containers.podman.podman_generate_systemd:
         name: "{{ opa_container_name }}"
         dest: /etc/systemd/system/
@@ -499,13 +530,14 @@
         new: false
 
     - name: "Phase 8 | Enable OPA systemd service"
+      tags: [opa, systemd]
       ansible.builtin.systemd:
         name: "container-{{ opa_container_name }}"
         enabled: true
         daemon_reload: true
 
     - name: "Phase 8 | Keycloak systemd service"
-      tags: [keycloak]
+      tags: [keycloak, systemd]
       block:
         - name: "Phase 8 | Generate systemd service for Keycloak"
           containers.podman.podman_generate_systemd:
@@ -521,7 +553,7 @@
             daemon_reload: true
 
     - name: "Phase 8 | cEOS systemd services and DNAT fix"
-      tags: [arista]
+      tags: [arista, systemd]
       block:
         - name: "Phase 8 | Generate systemd services for cEOS switches"
           containers.podman.podman_generate_systemd:
@@ -589,6 +621,7 @@
     # ═══════════════════════════════════════════════════════════════════
 
     - name: Display deployment summary
+      tags: always
       ansible.builtin.debug:
         msg: |
           ╔════════════════════════════════════════════════════════════════╗

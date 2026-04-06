@@ -265,6 +265,7 @@
 - name: "Phase 4 — Arista switch syslog → Wazuh + Splunk"
   hosts: network
   gather_facts: false
+  tags: arista_syslog
 
   tasks:
     - name: Configure syslog on Arista switches

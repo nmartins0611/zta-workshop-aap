@@ -284,7 +284,7 @@ Log into the **automation controller** (AAP 2.6) at `https://control.zta.lab` an
 | Credential | Type | Key Details |
 |------------|------|-------------|
 | ZTA Machine Credential | Machine | Username: `rhel`, sudo |
-| ZTA Vault Credential | HashiCorp Vault Secret Lookup | URL: `http://vault.zta.lab:8200`, admin / ansible123! |
+| ZTA Vault Credential | HashiCorp Vault Secret Lookup | URL: `http://vault.zta.lab:8200` (Vault IP if needed), **Path to Auth:** `userpass`, admin / ansible123! |
 | ZTA Vault SSH Credential | HashiCorp Vault Signed SSH | URL: `http://vault.zta.lab:8200`, AppRole (Role ID + Secret ID from instructor) |
 | ZTA Arista Credential | Network | Username: `admin`, Password: `admin` |
 | ZTA Gitea Credential | Source Control | Gitea username + password |
@@ -293,6 +293,11 @@ Log into the **automation controller** (AAP 2.6) at `https://control.zta.lab` an
 > **Note**: The `NetBox` credential type is pre-created by the setup playbook.
 > If missing, create it under **Administration → Credential Types** — see
 > `section1/README.md` Exercise 1.1 for the full Input/Injector YAML.
+
+> **KV lookup paths (AAP 2.6):** For Machine and Arista credentials that source
+> secrets from Vault, use lookup paths **`secret/machine/rhel`** and
+> **`secret/network/arista`** — not `secret/data/...` — so the controller does
+> not double the `data` segment for KV v2. See `section1/README.md` Step 3–4.
 
 **Vault SSH Signed Certificate Flow:** When a job template runs, AAP
 authenticates to Vault via AppRole, sends its public key to Vault's SSH CA,

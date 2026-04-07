@@ -497,10 +497,12 @@ setup), pre-create these in the **automation controller** UI:
 | Name | Type | Details |
 |------|------|---------|
 | ZTA Machine Credential | Machine | User: `rhel`, sudo enabled, linked to Vault SSH cert |
-| ZTA Vault Credential | HashiCorp Vault | URL: `http://vault.zta.lab:8200`, userpass: `admin`/`ansible123!` |
+| ZTA Vault Credential | HashiCorp Vault Secret Lookup | URL: `http://vault.zta.lab:8200` (or Vault **IP** if controller pods cannot resolve the name), **default auth path / Path to Auth:** `userpass`, `admin`/`ansible123!` |
 | ZTA Vault SSH Credential | HashiCorp Vault Signed SSH | URL: `http://vault.zta.lab:8200`, AppRole auth |
 | ZTA Arista Credential | Network | User: `admin`, Pass: `admin` |
 | ZTA Gitea Credential | Source Control | Gitea user + password |
+
+`setup/configure-aap-credentials.yml` wires Machine/Arista lookups with KV paths **`secret/machine/rhel`** and **`secret/network/arista`** (AAP 2.6 KV v2 — avoid `secret/data/...` in the lookup metadata, which duplicates the `data` segment). Direct Vault HTTP writes in that playbook still use `/v1/secret/data/...` as required by the API.
 
 ### Vault AppRole naming and impact
 

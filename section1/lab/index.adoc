@@ -70,9 +70,10 @@ In the **automation controller**, open **Credentials** (under *Access* or *Autom
 | Field | Value
 | Name | `ZTA Vault Credential`
 | Type | HashiCorp Vault Secret Lookup
-| Vault URL | `http://vault.zta.lab:8200`
+| Vault URL | `http://vault.zta.lab:8200` (Vault IP if pods cannot resolve the name)
 | Username | `admin`
 | Password | `ansible123!`
+| Path to Auth | `userpass`
 | API Version | v2
 |===
 
@@ -87,10 +88,15 @@ This credential exists so AAP can **authenticate to Vault** and resolve other cr
 Create a **Machine** credential:
 
 * Username: `rhel`; privilege escalation: `sudo`.
-* **Password**: use external lookup → Credential `ZTA Vault Credential`, path `secret/data/machine/rhel`, key `password`.
+* **Password**: external lookup → `ZTA Vault Credential`, path `secret/machine/rhel` (or backend `secret`, path `machine/rhel`), key `password`.
 * **Become password**: same path, key `become_password`.
 
 Do not store the SSH password in AAP.
+
+[IMPORTANT]
+====
+AAP 2.6 KV v2 lookups: use `secret/machine/rhel`, not `secret/data/machine/rhel` — the controller adds the `data` segment. Using `secret/data/...` can produce `…/secret/data/data/…` (404). The secret is still `vault kv get secret/machine/rhel` on the Vault CLI.
+====
 
 [TIP]
 .Just-in-time access
@@ -100,7 +106,7 @@ Each job run **re-fetches** credentials from Vault. That aligns with **just-in-t
 
 === Step 4 — Create `ZTA Arista Credential` (KV lookup)
 
-**Network** credential. Use lookups from `secret/data/network/arista` for `username` and `password` keys.
+**Network** credential. Use lookups from `secret/network/arista` for `username` and `password` keys (same KV v2 path rules as above).
 
 === Step 5 — Create `ZTA NetBox Credential`
 
@@ -123,8 +129,8 @@ vault read ssh/roles/ssh-signer
 |===
 | Credential | Type | Source
 | ZTA Vault Credential | Vault lookup | Stored bootstrap password
-| ZTA Machine | Machine | KV `secret/data/machine/rhel`
-| ZTA Arista | Network | KV `secret/data/network/arista`
+| ZTA Machine | Machine | KV lookup `secret/machine/rhel`
+| ZTA Arista | Network | KV lookup `secret/network/arista`
 | ZTA NetBox | NetBox | Token in credential
 | ZTA Vault SSH | Vault Signed SSH | AppRole + CA role `ssh-signer`
 |===

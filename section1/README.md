@@ -127,9 +127,10 @@ secrets at runtime.
 |-------|-------|
 | Name | `ZTA Vault Credential` |
 | Credential Type | `HashiCorp Vault Secret Lookup` |
-| Vault Server URL | `http://vault.zta.lab:8200` |
+| Vault Server URL | `http://vault.zta.lab:8200` (use the Vault **IP** if automation pods cannot resolve `vault.zta.lab`) |
 | Username | `admin` |
 | Password | `ansible123!` |
+| Path to Auth / Default authentication path | `userpass` |
 | API Version | `v2` |
 
 3. Click **Save**
@@ -165,7 +166,7 @@ a job runs.
 | Field | Value |
 |-------|-------|
 | Credential | `ZTA Vault Credential` |
-| Secret Path | `secret/data/machine/rhel` |
+| Secret Path | `secret/machine/rhel` — or **Name of Secret Backend** `secret` and **Path to Secret** `machine/rhel` if the UI splits them |
 | Secret Key | `password` |
 
 5. Click **OK** to confirm the lookup
@@ -173,15 +174,20 @@ a job runs.
 6. Repeat for the **Privilege Escalation Password** field:
    - Click the **key icon** next to **Privilege Escalation Password**
    - Credential: `ZTA Vault Credential`
-   - Secret Path: `secret/data/machine/rhel`
+   - Secret Path: `secret/machine/rhel` (same as above)
    - Secret Key: `become_password`
    - Click **OK**
 
 7. Click **Save**
 
+> **AAP 2.6 + KV v2:** Do **not** enter `secret/data/machine/rhel` in the lookup
+> path — the controller already adds the `data` segment for API v2, and a
+> `data` in the path produces a broken URL (`…/secret/data/data/…`). The
+> secret still **lives** at the usual Vault path (`vault kv get secret/machine/rhel` → `secret/data/machine/rhel` under the hood).
+
 > **What just happened?** The Password and Become Password fields now show
-> a key icon instead of dots. AAP will call Vault's KV API at
-> `secret/data/machine/rhel` when a job launches, retrieve the current
+> a key icon instead of dots. AAP will call Vault's KV API for mount
+> `secret`, path `machine/rhel` when a job launches, retrieve the current
 > password, and inject it into the SSH connection. If you rotate the
 > password in Vault, the next job automatically uses the new value — no
 > AAP changes needed.
@@ -213,7 +219,7 @@ The Arista cEOS switch credentials are already stored in Vault at
 | Field | Value |
 |-------|-------|
 | Credential | `ZTA Vault Credential` |
-| Secret Path | `secret/data/network/arista` |
+| Secret Path | `secret/network/arista` — or backend `secret`, path `network/arista` if split |
 | Secret Key | `username` |
 
 4. Click the **key icon** next to **Password**:
@@ -221,7 +227,7 @@ The Arista cEOS switch credentials are already stored in Vault at
 | Field | Value |
 |-------|-------|
 | Credential | `ZTA Vault Credential` |
-| Secret Path | `secret/data/network/arista` |
+| Secret Path | `secret/network/arista` (same as above) |
 | Secret Key | `password` |
 
 5. Click **Save**
@@ -338,8 +344,8 @@ To see this in action, run **Exercise 1.6 — Test Vault SSH Certificates**.
 | Credential | Type | Secret Source | Vault Path |
 |-----------|------|---------------|------------|
 | ZTA Vault Credential | HashiCorp Vault Lookup | Stored (bootstrap) | — |
-| ZTA Machine Credential | Machine | **Vault KV** (runtime) | `secret/data/machine/rhel` |
-| ZTA Arista Credential | Network | **Vault KV** (runtime) | `secret/data/network/arista` |
+| ZTA Machine Credential | Machine | **Vault KV** (runtime) | AAP lookup: `secret/machine/rhel` (Vault stores at `secret/data/machine/rhel`) |
+| ZTA Arista Credential | Network | **Vault KV** (runtime) | AAP lookup: `secret/network/arista` |
 | ZTA NetBox Credential | NetBox (custom) | Stored (API token) | — |
 | ZTA Vault SSH Credential | Vault Signed SSH | **Vault AppRole** | `ssh/sign/ssh-signer` |
 

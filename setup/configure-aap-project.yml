@@ -36,7 +36,7 @@
     ee_image: quay.io/nmartins/ceoslab-rh
 
     project_name: ZTA Workshop
-    project_scm_url: http://localhost:3000/gitea/zta-workshop-aap.git
+    project_scm_url: http://gitea:3000/gitea/zta-workshop-aap.git
 
   module_defaults:
     group/ansible.controller.controller:

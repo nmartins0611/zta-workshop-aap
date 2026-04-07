@@ -1,0 +1,118 @@
+= Section 3 — AAP Policy as Code: platform-gated patching
+:toc: left
+:toclevels: 3
+:icons: font
+:idprefix:
+:idseparator: -
+
+Companion to `section3/README.md`. Demonstrates **AAP → OPA gateway** blocking launches before playbooks run.
+
+include::../../docs/lab/common-environment.adoc[]
+
+== Overview
+
+Template name contains **Patch** → `aap.gateway` requires `patch-admins`. Wrong users never start the playbook.
+
+[IMPORTANT]
+.Platform enforcement vs playbook checks
+====
+In Section 2, OPA ran **inside** the workflow. Here, **AAP itself** asks OPA before starting the job. That is **Policy as Code on the automation platform**: even a playbook with *no* internal `uri` call to OPA cannot bypass the gate, because the **PEP (AAP)** refuses to enqueue the run. This models **separation of duties**—only `patch-admins` may even *attempt* patching templates—and shrinks insider “I’ll run ansible by hand” if your production design wires the same gateway for all changes.
+====
+
+|===
+| Template pattern | Required group (gateway)
+| Patch | `patch-admins`
+| VLAN / Network | `network-admins`
+| Deploy, Database, Credential | `app-deployers`
+| Verify, Test, Check | Any authenticated user
+|===
+
+[TIP]
+.Why template names matter
+====
+The gateway policy uses **resource metadata** (here, template name substrings) as a coarse **risk classifier**. Production policies often add **inventory tags, execution environments, survey variables, or SAML claims**—the idea is the same: **encode risk in attributes** the PDP can evaluate consistently, not in tribal knowledge about “who is allowed to click what.”
+====
+
+== Exercise 3.1 — Job template
+
+|===
+| Name | Apply Security Patch
+| Playbook | `section3/playbooks/apply-security-patch.yml`
+| Inventory | ZTA Lab Inventory
+| Credential | ZTA Machine Credential
+| Survey | `target_host` (default `app`)
+|===
+
+**Important:** name must include "Patch" for the lab gateway rule.
+
+[TIP]
+.Auditability
+====
+Denied launches still generate **AAP audit events**—useful when investigating “who tried to patch during the freeze window?” In ZTA, **every decision should leave evidence**, whether allow or deny.
+====
+
+== Exercise 3.2 — Blocked launch
+
+As `neteng`, launch template → AAP denies at platform level (playbook never runs).
+
+[TIP]
+.Stronger than hiding buttons
+====
+Traditional RBAC might hide templates or rely on operator discipline. **Policy as Code** makes denial **explicit and uniform**—the PDP answer can be the same for UI, API, and integrated CI—reducing **policy drift** between teams and making exceptions visible in Git-tracked Rego rather than tribal knowledge.
+====
+
+== Exercise 3.3 — Fix access
+
+* Use `ztauser`, or
+* `ipa group-add-member patch-admins --users=neteng`
+
+[TIP]
+.Identity lifecycle, not ticket forever
+====
+Granting `patch-admins` in IdM is how the organisation says “this identity may initiate high-risk automation.” Revoking the group later **closes the gate** without redeploying AAP—**continuous authorisation** tied to the directory.
+====
+
+== Exercise 3.4 — Successful patch
+
+As `ztauser`, patch `app`. Expect banner, SSH hardening, password policy, audit rules (playbook output).
+
+[TIP]
+.Hardening as code
+====
+Once launch is authorised, the playbook still applies **defensive configuration** (banner, `sshd`, password quality, audit). ZTA is not only gates at the edge—it includes **measurable security posture** on endpoints, ideally still delivered *through* the same controlled automation channel.
+====
+
+== Exercise 3.5 — Verify on host
+
+[source,bash]
+----
+ssh -p 2023 rhel@central.zta.lab
+sudo sshd -T | grep -E 'permitrootlogin|maxauthtries|permitemptypasswords'
+----
+
+[TIP]
+.Verify outcomes, not intentions
+====
+Spot-checking `sshd -T` and audit rules proves **the control landed**. Zero Trust operations depend on **observable state** (what the host actually enforces), not only on “the job was green.”
+====
+
+== Exercise 3.6 — Other scenarios
+
+* `appdev` cannot launch patch template.
+* Remove `neteng` from `patch-admins` if added; confirm deny again.
+
+[TIP]
+.Separation of duties
+====
+`appdev` can deploy (Section 2) but must **not** silently patch servers—that is a different risk class. Mapping **different IdM groups** to **different template families** encodes **SoD** in machine-readable policy instead of org-chart prose only.
+====
+
+== Validation checklist
+
+* [ ] Platform deny for unauthorised user
+* [ ] Success for `patch-admins`
+* [ ] Banner and hardening visible on target
+
+== Extended: Section 3B — OPA Rego authoring
+
+include::includes/section-3b-rego.adoc[]

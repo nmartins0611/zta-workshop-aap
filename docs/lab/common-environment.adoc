@@ -1,0 +1,87 @@
+// Shared lab reference — include from section labs: include::../../docs/lab/common-environment.adoc[]
+// Path from sectionN/lab/index.adoc is ../../docs/lab/common-environment.adoc
+
+[NOTE]
+.How to read these labs (Zero Trust)
+====
+In NIST SP 800-207 terms, **Ansible Automation Platform (AAP)** is the *Policy Enforcement Point (PEP)*: operational change flows *through* it. **Open Policy Agent (OPA)** is a *Policy Decision Point (PDP)*: it answers allow/deny from **identity** (IdM), **state** (NetBox), and **context** encoded in Rego. **Vault** supplies *short-lived, least-privilege* secrets instead of long-lived passwords in CMDBs or disks. **SPIFFE/SPIRE** (later sections) binds actions to a *verified workload*, not only a human username.
+
+**Why that matters:** Zero Trust assumes breach and removes implicit trust. You will repeatedly see *verify then act*, *deny by default*, *least privilege*, and *auditability*—not as buzzwords but as concrete gates in the automation path.
+====
+
+[#lab-common-environment]
+== Lab environment reference
+
+These hostnames assume workshop DNS (`*.zta.lab`) is configured. Replace with instructor-provided values if different.
+
+.Access information
+[cols="2,2,3",options="header"]
+|===
+| System | URL / address | Credentials
+
+| AAP Controller
+| `https://control.zta.lab`
+| As provided by instructor
+
+| EDA Controller
+| `https://control.zta.lab` (EDA UI / deployment)
+| As provided by instructor
+
+| IdM (FreeIPA)
+| `https://central.zta.lab`
+| `admin` / `ansible123!`
+
+| OPA
+| `http://central.zta.lab:8181`
+| No auth (lab)
+
+| Vault
+| `http://vault.zta.lab:8200`
+| `admin` / `ansible123!` (or userpass as documented)
+
+| NetBox
+| `http://netbox.zta.lab:8880`
+| API token as documented / instructor
+
+| Gitea
+| `http://gitea.zta.lab:3000`
+| As provided by instructor
+
+| Splunk
+| `http://splunk.zta.lab:8000` or `http://central.zta.lab:8000`
+| As configured during setup
+
+| Wazuh Dashboard
+| `http://wazuh.zta.lab:5601`
+| As provided by instructor
+
+| Application (Global Telemetry Platform)
+| `http://app.zta.lab:8081`
+| No auth (dashboard)
+|===
+
+.Primary scenario accounts (IdM)
+[cols="2,2,3",options="header"]
+|===
+| Username | Groups | Role in exercises
+
+| `ztauser`
+| `zta-admins`, `patch-admins`, `app-deployers`
+| General admin — can patch and deploy
+
+| `netadmin`
+| `zta-admins`, `network-admins`
+| Network admin — VLAN exercises
+
+| `appdev`
+| `app-deployers`
+| App developer — deployment pipeline
+
+| `neteng`
+| _(none)_
+| Often denied (wrong user scenarios)
+|===
+
+All IdM user passwords for workshop accounts: `ansible123!`
+
+For full org charts (infrastructure, DevOps, security, applications teams) see `docs/exercise-guide.md` or the repository root `README.md`.

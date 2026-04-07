@@ -1,5 +1,7 @@
 # Section 4 — SPIFFE-Verified, RBAC-Controlled Network VLAN Management
 
+**AsciiDoc lab:** [`lab/index.adoc`](lab/index.adoc)
+
 ## Objective
 
 Demonstrate **defence in depth** for network automation: a VLAN change must be

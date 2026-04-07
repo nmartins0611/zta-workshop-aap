@@ -1,5 +1,7 @@
 # Section 3 — AAP Policy as Code: Platform-Gated Patching
 
+**AsciiDoc lab:** [`lab/index.adoc`](lab/index.adoc)
+
 > **2-Hour Workshop Delivery Guide**
 >
 > | Exercise | Status | Est. Time |

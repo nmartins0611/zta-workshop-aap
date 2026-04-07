@@ -1,5 +1,7 @@
 # Section 7 (Optional) — Wazuh SIEM: Automated Incident Response with Host-Based Detection
 
+**AsciiDoc lab:** [`lab/index.adoc`](lab/index.adoc)
+
 > **This section is optional.** Section 5 covers the same incident response
 > workflow using Splunk. This section demonstrates an alternative approach
 > using Wazuh as the SIEM/HIDS, with agent-based detection instead of

@@ -1,5 +1,7 @@
 # Section 1 — Configure ZTA Components & AAP Integration
 
+**AsciiDoc lab:** [`lab/index.adoc`](lab/index.adoc)
+
 > **2-Hour Workshop Delivery Guide**
 >
 > | Exercise | Status | Est. Time |

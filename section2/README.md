@@ -1,5 +1,7 @@
 # Section 2 — Deploy Application with Short-Lived Database Credentials
 
+**AsciiDoc lab:** [`lab/index.adoc`](lab/index.adoc)
+
 > **2-Hour Workshop Delivery Guide**
 >
 > | Exercise | Status | Est. Time |

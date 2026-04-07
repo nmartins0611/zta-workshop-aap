@@ -196,12 +196,16 @@ ansible-playbook setup/verify-lab.yml
 
 ### 7. Start the workshop
 
+Section guides (Markdown): `sectionN/README.md`. **AsciiDoc lab handouts:** `sectionN/lab/index.adoc` (index of all: `docs/lab/index.adoc`).
+
 ```
 section1/README.md   — Configure & Verify
 section2/README.md   — Deploy App with Short-Lived Credentials
 section3/README.md   — AAP Policy as Code: Patching
 section4/README.md   — SPIFFE-Verified VLAN Management
 section5/README.md   — Automated Incident Response (EDA)
+section6/README.md   — SSH Lockdown & Break-Glass (optional advanced)
+section7/README.md   — Wazuh EDA path (optional)
 ```
 
 ---

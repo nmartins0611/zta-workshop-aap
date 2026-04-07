@@ -1,5 +1,7 @@
 # Section 5 — Automated Incident Response: Brute Force → Splunk → EDA → Vault Revocation
 
+**AsciiDoc lab:** [`lab/index.adoc`](lab/index.adoc)
+
 > **2-Hour Workshop Delivery Guide**
 >
 > | Exercise | Status | Est. Time |

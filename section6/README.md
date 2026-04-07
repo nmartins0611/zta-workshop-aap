@@ -1,5 +1,7 @@
 # Section 6 — SSH Lockdown & Break-Glass Recovery
 
+**AsciiDoc lab:** [`lab/index.adoc`](lab/index.adoc)
+
 ## Objective
 
 Apply defence-in-depth SSH lockdown layers and then **recover from a

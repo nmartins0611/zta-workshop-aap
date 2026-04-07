@@ -1,0 +1,57 @@
+=== Exercise 2.7 — Credential rotation (optional)
+
+Schedule **Rotate DB Credentials** (e.g. every 5 minutes) to refresh Vault leases and restart the app.
+
+[TIP]
+.Continuous authorisation in practice
+====
+Rotation ties **availability** to **ongoing permission to run automation**: if someone loses access to AAP or Vault policies tighten, renewal jobs fail *loudly* instead of leaving a decade-old password in a config file.
+====
+
+=== Exercise 2.8 — Gitea webhook (optional)
+
+Enable workflow webhook; register URL/key in Gitea; push to trigger pipeline.
+
+[TIP]
+.GitOps trigger, same gates
+====
+A webhook does **not** bypass Zero Trust—it only changes *who clicks Launch*. The same workflow, OPA checks, and Vault paths still run, which is how you avoid **unauthenticated CI** becoming a backdoor.
+====
+
+=== Exercise 2.9 — Firewall debugging (hands-on)
+
+*Instructor:* `ansible-playbook section2/playbooks/break-firewall.yml`
+
+Symptom: app health fails; DB port missing from `firewalld` on DB host.
+
+* On DB container: `firewall-cmd --list-ports` → add `5432/tcp`, reload, verify health.
+
+[TIP]
+.Layered enforcement
+====
+Micro-segmentation on the switch does not remove the need for **host-level** controls. If `firewalld` blocks the port, the app cannot reach PostgreSQL even when ACLs and credentials are correct—showing **defence in depth** and why ZTA operations must **map the whole path** (app → network → host → database).
+====
+
+=== Exercise 2.10 — Vault policy path (hands-on)
+
+*Instructor:* `ansible-playbook section2/playbooks/break-vault-policy.yml`
+
+Symptom: OPA passes; Vault **403** on credential step. Compare `vault policy read app-deployer` paths with `vault list database/roles`; correct policy to `database/creds/ztaapp-short-lived`.
+
+[TIP]
+.Multiple PDPs, multiple denials
+====
+**OPA** can say “this human role may request DB creds” while **Vault policy** still enforces *which paths* the automation token may read. That separation is healthy: **authorisation** (intent) vs **secret issuance** (mechanism). A typo in Vault policy is a reminder that Zero Trust systems must be **tested end-to-end**, not assumed from one green checkmark.
+====
+
+=== Exercise 2.11 — SELinux context (hands-on)
+
+*Instructor:* `ansible-playbook section2/playbooks/break-selinux.yml`
+
+Symptom: permission errors; `ls -Z /opt/ztaapp` shows wrong context. Use `ausearch -m avc`, `audit2why`, fix with `chcon -R -t container_file_t /opt/ztaapp`, restart app.
+
+[TIP]
+.Mandatory access control
+====
+SELinux enforces **kernel-level** boundaries: even root in a container cannot read mislabelled files. ZTA-minded platforms keep SELinux **enforcing** because identity and network controls are not enough if a process is tricked—**MAC** limits blast radius on the node.
+====

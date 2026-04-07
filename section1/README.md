@@ -120,7 +120,7 @@ This is the **only credential with a directly stored password**. It
 authenticates to Vault so that all other credentials can pull their
 secrets at runtime.
 
-1. Navigate to **Resources → Credentials → Add**
+1. In the **automation controller** (AAP 2.6), navigate to **Credentials** → **Add** (under *Access* or *Automation Execution*, depending on your role)
 2. Configure:
 
 | Field | Value |
@@ -146,7 +146,7 @@ This credential authenticates AAP to managed RHEL hosts. Instead of
 storing the password in AAP, it is **looked up from Vault** every time
 a job runs.
 
-1. Navigate to **Resources → Credentials → Add**
+1. In the **automation controller** (AAP 2.6), navigate to **Credentials** → **Add** (under *Access* or *Automation Execution*, depending on your role)
 2. Configure the base fields:
 
 | Field | Value |
@@ -200,7 +200,7 @@ vault kv put secret/machine/rhel password=ansible123! become_password=ansible123
 The Arista cEOS switch credentials are already stored in Vault at
 `secret/network/arista` (populated by `setup/configure-vault.yml`).
 
-1. Navigate to **Resources → Credentials → Add**
+1. In the **automation controller** (AAP 2.6), navigate to **Credentials** → **Add** (under *Access* or *Automation Execution*, depending on your role)
 2. Configure the base fields:
 
 | Field | Value |
@@ -238,7 +238,7 @@ The Arista cEOS switch credentials are already stored in Vault at
 > (`setup/configure-aap-netbox.yml`). If it is missing, expand the manual
 > steps below.
 
-1. Navigate to **Resources → Credentials → Add**
+1. In the **automation controller** (AAP 2.6), navigate to **Credentials** → **Add** (under *Access* or *Automation Execution*, depending on your role)
 2. Configure:
 
 | Field | Value |
@@ -355,7 +355,7 @@ To see this in action, run **Exercise 1.6 — Test Vault SSH Certificates**.
 
 ### Project from Gitea (create first — the inventory source depends on it)
 
-1. Navigate to **Resources → Projects → Add**
+1. Navigate to **Projects** → **Add**
 2. Name: `ZTA Workshop`
 3. Source Control Type: `Git`
 4. Source Control URL: `http://gitea.zta.lab:3000/zta-workshop/zta-app.git`
@@ -366,7 +366,7 @@ To see this in action, run **Exercise 1.6 — Test Vault SSH Certificates**.
 
 **Step 1 — Create the inventory**
 
-1. Navigate to **Resources → Inventories → Add → Add inventory**
+1. Navigate to **Inventories** → **Add** → **Add inventory**
 2. Name: `ZTA Lab Inventory`
 3. Organization: `Default`
 4. Click **Save**

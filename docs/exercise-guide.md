@@ -16,6 +16,8 @@ Nothing is trusted by default. Every request is verified. Every credential is
 short-lived. Every decision is auditable. And when an attack is detected, the
 response is automatic.
 
+**Platform version:** Lab instructions assume **Red Hat Ansible Automation Platform 2.6** — the **automation controller** (jobs, workflows, credentials, inventories) and the **Event-Driven Ansible controller** (rulebook activations, decision environments). See the [AAP 2.6 documentation](https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.6/) and [Using automation decisions](https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.6/html/using_automation_decisions/) for EDA UI details.
+
 ---
 
 ## Zero Trust Architecture — NIST SP 800-207 Alignment
@@ -86,7 +88,7 @@ executing.
 | **CMDB / Source of Truth** | Netbox | Infrastructure state, device inventory, maintenance status |
 | **Source Control** | Gitea | GitOps trigger, automation code repository |
 | **SIEM** | Wazuh | Security event monitoring, brute-force detection |
-| **Event-Driven Automation** | EDA Controller | Automated incident response triggered by Wazuh |
+| **Event-Driven Automation** | Event-Driven Ansible controller (AAP 2.6) | Automated incident response triggered by SIEM / webhooks |
 | **Resources** | RHEL containers, Arista switches, PostgreSQL | Managed infrastructure |
 
 ---
@@ -97,8 +99,8 @@ executing.
 
 | System | URL / Address | Credentials |
 |--------|---------------|-------------|
-| AAP Controller | `https://control.zta.lab` | *provided by instructor* |
-| EDA Controller | `https://control.zta.lab` (EDA tab) | *provided by instructor* |
+| Automation controller (AAP 2.6) | `https://control.zta.lab` | *provided by instructor* |
+| Event-Driven Ansible controller (AAP 2.6) | Same platform as automation controller (EDA UI per deployment) | *provided by instructor* |
 | IdM (FreeIPA) | `https://central.zta.lab` | admin / ansible123! |
 | OPA | `http://central.zta.lab:8181` | (no auth) |
 | Vault | `http://vault.zta.lab:8200` | admin / ansible123! |
@@ -222,7 +224,7 @@ ansible-playbook setup/configure-wazuh-eda.yml
 - [ ] AAP Policy as Code configured (OPA gateway)
 - [ ] SPIRE Server + Agents deployed
 - [ ] Wazuh → EDA webhook integration configured
-- [ ] EDA rulebook activation created in EDA Controller
+- [ ] EDA rulebook activation created in Event-Driven Ansible controller (AAP 2.6)
 
 ---
 
@@ -277,7 +279,7 @@ vault secrets list    # should show database/, secret/, ssh/
 
 ### Exercise 1.2 — Configure AAP Credentials
 
-Log into AAP Controller at `https://control.zta.lab` and create:
+Log into the **automation controller** (AAP 2.6) at `https://control.zta.lab` and create:
 
 | Credential | Type | Key Details |
 |------------|------|-------------|
@@ -748,7 +750,7 @@ SSH login attempts to `app.zta.lab`.
 ### Exercise 5.4 — Watch the Automated Response
 
 1. **Wazuh Dashboard** (`http://wazuh.zta.lab:5601`): Alert rule 5712 fires
-2. **EDA Controller**: Event received, rulebook matched, job triggered
+2. **Event-Driven Ansible controller**: Event received, rulebook matched, job triggered
 3. **AAP Jobs**: "Emergency: Revoke App Credentials" appears — triggered by EDA,
    no human clicked Launch
 4. **Application**: `curl http://app.zta.lab:8081/health` → unhealthy or refused

@@ -88,7 +88,7 @@ Before running this section:
 2. **Splunk** must be running on central (`http://central.zta.lab:8000`)
 3. **Splunk log shipping** must be configured — `/var/log/secure` from app/db
    containers is forwarded to Splunk (`setup/integrate-splunk.yml`)
-4. **EDA Controller** must be running (or standalone `ansible-rulebook`)
+4. **Event-Driven Ansible controller** (AAP 2.6) must be running, or standalone `ansible-rulebook` for CLI-only demos
 
 ---
 
@@ -164,10 +164,10 @@ curl -k -u admin:splunkpassword \
 
 ## Exercise 5.3 — Configure EDA Rulebook
 
-### Option A — EDA Controller (AAP 2.5+)
+### Option A — Event-Driven Ansible controller (Red Hat Ansible Automation Platform 2.6)
 
-1. Navigate to **EDA Controller → Rulebooks**
-2. Import `section5/eda/splunk-credential-revoke.yml`
+1. In the **Event-Driven Ansible controller**, ensure a **Project** provides this repository (or the rulebook file), and create a **Decision Environment** if you do not already have one. See [Using automation decisions](https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.6/html/using_automation_decisions/) in the AAP 2.6 documentation.
+2. Add or sync content so `section5/eda/splunk-credential-revoke.yml` is available to activations.
 3. Create a **Rulebook Activation**:
    - Name: `Splunk Brute Force Response`
    - Rulebook: `splunk-credential-revoke`
@@ -238,14 +238,14 @@ You should see the brute-force source IP with a high failure count.
 Check **Activity → Triggered Alerts** — the `ZTA: SSH Brute Force Detected`
 alert should show as recently fired.
 
-### Check EDA Controller
+### Check Event-Driven Ansible controller
 
-In the EDA Controller UI (or ansible-rulebook terminal output):
+In the Event-Driven Ansible controller UI (AAP 2.6), or `ansible-rulebook` terminal output:
 - Event received from Splunk webhook
 - Rule matched: `Revoke credentials on SSH brute-force detection`
 - Action: `run_job_template` triggered
 
-### Check AAP Controller
+### Check automation controller
 
 Navigate to **Jobs** — you should see:
 - **Emergency: Revoke App Credentials** — triggered by EDA

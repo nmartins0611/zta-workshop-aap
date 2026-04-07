@@ -31,7 +31,7 @@ for RHEL 9.x but should work on CentOS Stream 9 or Fedora.
 | VM | Hostname | IP (example) | Role | Min Specs |
 |----|----------|--------------|------|-----------|
 | **Central** | central.zta.lab | 192.168.1.11 | IdM, OPA, Keycloak, SPIRE server, Arista cEOS switches, DB/App containers, Wazuh, Splunk | 8 vCPU, 16 GB RAM, 80 GB disk |
-| **AAP Controller** | control.zta.lab | 192.168.1.10 | AAP, EDA Controller, SPIRE agent | 4 vCPU, 16 GB RAM, 40 GB disk |
+| **Automation controller host** | control.zta.lab | 192.168.1.10 | AAP 2.6 automation controller, Event-Driven Ansible controller, SPIRE agent | 4 vCPU, 16 GB RAM, 40 GB disk |
 | **Vault** | vault.zta.lab | 192.168.1.12 | HashiCorp Vault | 2 vCPU, 4 GB RAM, 20 GB disk |
 
 Optional VMs (can be consolidated onto central if resources allow):
@@ -55,10 +55,10 @@ Optional VMs (can be consolidated onto central if resources allow):
 - `python3` and `python3-pip`
 - A user `rhel` with sudo access and password `ansible123!` (or update `inventory/hosts.ini`)
 
-### Software Pre-installed on AAP Controller
+### Software Pre-installed on automation controller host
 
-- Ansible Automation Platform 2.4+ (Controller + EDA Controller)
-- Or: `ansible-core` + `ansible-rulebook` for a CLI-only setup
+- Red Hat Ansible Automation Platform **2.6** (automation controller + Event-Driven Ansible controller)
+- **Alternatively:** `ansible-core` + `ansible-rulebook` for a CLI-only EDA demo (no controller UI)
 
 ### Additional Accounts and Tokens
 
@@ -485,13 +485,12 @@ curl -sk https://control.zta.lab/api/controller/v2/ping/
 
 ## 7. Phase 5 — AAP Controller and EDA Configuration
 
-These steps are done in the AAP web UI (or via API) and are typically the
-first exercises attendees perform (Section 1 of the workshop).
+Use **Red Hat Ansible Automation Platform 2.6**: the **automation controller** web UI for credentials, projects, inventories, and templates, and the **Event-Driven Ansible controller** for rulebook activations. These steps are done in the platform UI (or via API) and are typically the first exercises attendees perform (Section 1 of the workshop).
 
 ### Pre-configure for Attendees (Instructor)
 
 If you want attendees to start from Section 2 (skip credential/project
-setup), pre-create these in the AAP UI:
+setup), pre-create these in the **automation controller** UI:
 
 **Credentials:**
 
@@ -515,12 +514,12 @@ setup), pre-create these in the AAP UI:
 |------|----------|-----|
 | ZTA Workshop | Git | `http://gitea.zta.lab:3000/zta-workshop/zta-app.git` |
 
-### EDA Configuration
+### Event-Driven Ansible configuration (AAP 2.6)
 
-1. In the EDA Controller, import the rulebook `section5/eda/splunk-credential-revoke.yml`
-2. Create a **Rulebook Activation** named "Splunk Brute Force Response"
-3. Set restart policy to "On failure"
-4. Enable the activation (starts listening on port 5000)
+1. In the **Event-Driven Ansible controller**, add a **Project** that includes this repo (or upload the rulebook) and a **Decision Environment** if needed. See [Using automation decisions](https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.6/html/using_automation_decisions/).
+2. Create a **Rulebook Activation** for `section5/eda/splunk-credential-revoke.yml` named **Splunk Brute Force Response**
+3. Set restart policy to **On failure**
+4. Enable the activation (starts listening on port 5000, or the port configured for your activation)
 
 ---
 

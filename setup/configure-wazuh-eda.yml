@@ -10,7 +10,7 @@
 # Prerequisites:
 #   - Wazuh manager is running on wazuh.zta.lab
 #   - Wazuh agent is installed on app.zta.lab
-#   - EDA Controller is running on control.zta.lab (or AAP node)
+#   - Event-Driven Ansible controller (AAP 2.6) is running on control.zta.lab (or AAP node)
 
 - name: Configure Wazuh → EDA Integration
   hosts: wazuh_servers
@@ -145,7 +145,7 @@
           ║  EDA then triggers the credential revocation job in AAP.     ║
           ║                                                              ║
           ║  Next steps:                                                 ║
-          ║    1. Import the EDA rulebook into EDA Controller            ║
+          ║    1. Add rulebook via Event-Driven Ansible controller (AAP 2.6) ║
           ║    2. Create a Rulebook Activation                           ║
           ║    3. Create the AAP job template:                           ║
           ║       "Emergency: Revoke App Credentials"                    ║

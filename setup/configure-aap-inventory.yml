@@ -45,7 +45,7 @@
         variables:
           ansible_user: rhel
       - name: automation
-        description: AAP Controller / EDA
+        description: Automation controller / Event-Driven Ansible (AAP 2.6)
         variables:
           ansible_user: rhel
       - name: app_servers
@@ -73,7 +73,7 @@
           ansible_host: "{{ hostvars['central']['ansible_host'] | default('192.168.1.11') }}"
 
       - name: control
-        description: "AAP Controller and EDA Controller"
+        description: "Automation controller and Event-Driven Ansible controller (AAP 2.6)"
         groups:
           - automation
         variables:

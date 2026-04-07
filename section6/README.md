@@ -109,7 +109,7 @@ AAP service account from the HBAC rule**.
 
 **Observe the failure:**
 
-1. Go to AAP Controller and launch **any** job template (e.g., "Verify ZTA Services")
+1. Go to the **automation controller** (AAP 2.6) and launch **any** job template (e.g., "Verify ZTA Services")
 2. The job **fails** with an SSH authentication error:
    ```
    UNREACHABLE! => {"msg": "Failed to connect to the host via ssh:

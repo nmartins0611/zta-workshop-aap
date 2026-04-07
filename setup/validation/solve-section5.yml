@@ -6,7 +6,7 @@
 #   - Verifies Wazuh agent and EDA webhook readiness
 #
 # Note: EDA rulebook activation must be configured manually or via the
-# EDA Controller API (not covered here as it varies by AAP version).
+# Event-Driven Ansible controller API (not covered here; varies by deployment).
 #
 # Prerequisites: Sections 1-2 solve must be complete
 #
@@ -124,7 +124,7 @@
           ║    ✓ Template: Restore App Credentials                         ║
           ║                                                                ║
           ║  Manual steps (if not already done):                           ║
-          ║    - Configure EDA rulebook activation in EDA Controller       ║
+          ║    - Configure rulebook activation in Event-Driven Ansible ctrl  ║
           ║    - Verify Wazuh → EDA webhook integration                    ║
           ║                                                                ║
           ║  Run check-section5.yml to verify.                             ║

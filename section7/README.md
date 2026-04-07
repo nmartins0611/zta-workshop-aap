@@ -96,7 +96,7 @@ Before running this section:
 2. **Wazuh server** must be running (`deploy-wazuh.yml`)
 3. **Wazuh agent** must be installed and active on `app.zta.lab`
    (`deploy-wazuh-agents.yml`)
-4. **EDA Controller** must be running (or standalone `ansible-rulebook`)
+4. **Event-Driven Ansible controller** (AAP 2.6) must be running, or standalone `ansible-rulebook` for CLI-only demos
 5. **Wazuh→EDA integration** must be configured (`setup/configure-wazuh-eda.yml`)
 
 ---
@@ -116,10 +116,10 @@ Before running this section:
 
 ## Exercise 7.2 — Configure EDA Rulebook
 
-### Option A — EDA Controller (AAP 2.5+)
+### Option A — Event-Driven Ansible controller (Red Hat Ansible Automation Platform 2.6)
 
-1. Navigate to **EDA Controller → Rulebooks**
-2. Import `section7/eda/wazuh-credential-revoke.yml`
+1. In the **Event-Driven Ansible controller**, ensure a **Project** provides this repository (or the rulebook file), and create a **Decision Environment** if needed. See [Using automation decisions](https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.6/html/using_automation_decisions/) in the AAP 2.6 documentation.
+2. Add or sync content so `section7/eda/wazuh-credential-revoke.yml` is available to activations.
 3. Create a **Rulebook Activation**:
    - Name: `Wazuh Brute Force Response`
    - Rulebook: `wazuh-credential-revoke`
@@ -172,7 +172,7 @@ Open `http://wazuh.zta.lab:5601` and look for:
 - Agent: `app.zta.lab`
 - Level: 10 (high severity)
 
-### Check EDA Controller
+### Check Event-Driven Ansible controller
 
 - Event received from Wazuh webhook
 - Rule matched: `Revoke credentials on SSH brute-force detection`

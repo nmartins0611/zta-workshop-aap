@@ -60,8 +60,8 @@ and Arista cEOS network infrastructure.
 | **Gitea** | Git server for GitOps workflows | gitea.zta.lab |
 | **Splunk** | Log aggregation, security analytics | central.zta.lab (container) |
 | **Wazuh** | SIEM, vulnerability scanning, brute-force detection | central.zta.lab (container) |
-| **AAP Controller** | Automation orchestration (Policy Enforcement Point) | control.zta.lab (own VM) |
-| **EDA Controller** | Event-Driven Ansible (automated incident response) | control.zta.lab (own VM) |
+| **Automation controller (AAP 2.6)** | Automation orchestration (Policy Enforcement Point) | control.zta.lab (own VM) |
+| **Event-Driven Ansible controller (AAP 2.6)** | Event-Driven Ansible (automated incident response) | control.zta.lab (own VM) |
 | **Arista cEOS** | 3-switch fabric (spine + 2 leaf), VLANs, ACLs | central.zta.lab (containers) |
 | **PostgreSQL** | Application database | central.zta.lab (RHEL container, 10.30.0.10) |
 | **App Server** | Global Telemetry Platform (Flask) | central.zta.lab (RHEL container, 10.20.0.10) |
@@ -115,6 +115,12 @@ attack via a saved search alert and sends a webhook to **Event-Driven Ansible**
 (EDA), which automatically triggers an AAP job to **revoke the application's
 database credentials** in Vault — isolating the application from sensitive data
 in under 30 seconds.
+
+---
+
+## Platform version
+
+Workshop automation and UI steps target **Red Hat Ansible Automation Platform 2.6** (automation controller and Event-Driven Ansible controller). See the [AAP 2.6 documentation](https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.6/).
 
 ---
 

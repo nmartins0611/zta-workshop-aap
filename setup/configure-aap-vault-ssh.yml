@@ -137,7 +137,7 @@
         that: vault_ssh_cred_type.json.count > 0
         fail_msg: >
           'HashiCorp Vault Signed SSH' credential type not found in AAP.
-          Ensure AAP 2.4+ is installed with the Vault credential plugin.
+          Ensure Red Hat Ansible Automation Platform 2.6 (or newer supported release) is installed with the Vault credential plugin.
 
     - name: Set credential type ID
       set_fact:

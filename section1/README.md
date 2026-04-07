@@ -440,12 +440,14 @@ curl -s -H "Authorization: Token 0123456789abcdef0123456789abcdef01234567" \
 
 ## Exercise 1.3 — Create Job Templates
 
-| Template Name | Playbook | Inventory | Credentials |
-|---------------|----------|-----------|-------------|
-| Verify ZTA Services | `section1/playbooks/verify-zta-services.yml` | ZTA Lab Inventory | ZTA Machine Credential |
-| Test Vault Integration | `section1/playbooks/test-vault-integration.yml` | ZTA Lab Inventory | ZTA Machine Credential |
-| Test Vault SSH Certificates | `section1/playbooks/test-vault-ssh.yml` | ZTA Lab Inventory | ZTA Machine Credential |
-| Test OPA Policy | `section1/playbooks/test-opa-policy.yml` | ZTA Lab Inventory | ZTA Machine Credential |
+| Template Name | Playbook | Inventory | Execution environment | Credentials |
+|---------------|----------|-----------|------------------------|-------------|
+| Verify ZTA Services | `section1/playbooks/verify-zta-services.yml` | ZTA Lab Inventory | `ZTA Workshop EE` | **ZTA Machine Credential** + **ZTA Arista Credential** (third play: EOS on switches) |
+| Test Vault Integration | `section1/playbooks/test-vault-integration.yml` | ZTA Lab Inventory | `ZTA Workshop EE` | ZTA Machine Credential |
+| Test Vault SSH Certificates | `section1/playbooks/test-vault-ssh.yml` | ZTA Lab Inventory | `ZTA Workshop EE` | ZTA Machine Credential |
+| Test OPA Policy | `section1/playbooks/test-opa-policy.yml` | ZTA Lab Inventory | `ZTA Workshop EE` | ZTA Machine Credential |
+
+Enable **privilege escalation** on each template. Do **not** attach **ZTA Vault Credential** to templates (it is used only via credential input sources). If jobs fail with undefined variables (`vault_addr`, `opa_url`, etc.), add **Extra Variables** on the template — see `section1/lab/index.adoc` Exercise 1.3.
 
 ---
 

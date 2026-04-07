@@ -319,9 +319,10 @@ and impact** in [deployment-guide.md](deployment-guide.md).
 **Project from Gitea (create first — the inventory source references it):**
 
 1. Create `ZTA Workshop` project
-2. Git URL: `http://gitea.zta.lab:3000/zta-workshop/zta-app.git`
-3. Credential: `ZTA Gitea Credential`
-4. Sync and verify green status
+2. Set **Execution environment** to **`ZTA Workshop EE`** (or the instructor-provided workshop EE)
+3. Git URL: `http://gitea.zta.lab:3000/zta-workshop/zta-app.git`
+4. Credential: `ZTA Gitea Credential`
+5. Sync and verify green status
 
 **Inventory from NetBox:**
 
@@ -357,7 +358,16 @@ and impact** in [deployment-guide.md](deployment-guide.md).
 | Test Vault SSH Certificates | `section1/playbooks/test-vault-ssh.yml` |
 | Test OPA Policy | `section1/playbooks/test-opa-policy.yml` |
 
-All use: `ZTA Lab Inventory` + `ZTA Machine Credential`
+**Common settings (each template):** **Inventory** `ZTA Lab Inventory`, **Project** `ZTA Workshop`, **Execution environment** **`ZTA Workshop EE`**, **Privilege escalation** enabled.
+
+**Credentials:**
+
+- **All four templates:** **ZTA Machine Credential**
+- **Verify ZTA Services only (add second credential):** **ZTA Arista Credential** — required for the playbook’s third play (`arista.eos.eos_facts` on `ceos1`–`ceos3`).
+
+Do **not** attach **ZTA Vault Credential** to job templates (it is consumed only via credential input sources on Machine/Network credentials).
+
+If a job fails with undefined variables (`vault_addr`, `opa_url`, `idm_admin_password`, etc.), add **Extra Variables** on that template. Copy the YAML block from **`section1/lab/index.adoc`** (Exercise 1.3 — *Extra variables*).
 
 ---
 

@@ -502,6 +502,24 @@ setup), pre-create these in the **automation controller** UI:
 | ZTA Arista Credential | Network | User: `admin`, Pass: `admin` |
 | ZTA Gitea Credential | Source Control | Gitea user + password |
 
+### Vault AppRole naming and impact
+
+Workshop automation uses **two** Vault AppRole names (see [inventory/group_vars/all.yml](../inventory/group_vars/all.yml)):
+
+| Variable | Default role | Used by | Purpose |
+|----------|----------------|---------|---------|
+| `ssh_approle_name` / `ssh_approle_policies` | `ssh-client` + policy `ssh-access` | `setup/configure-aap-credentials.yml` (`--tags vault-ssh`), `setup/configure-aap-vault-ssh.yml` | **ZTA Vault SSH Credential** in AAP (`HashiCorp Vault Signed SSH`) — Role ID + Secret ID stored in the controller |
+| `vault_lockdown_approle_name` / `vault_lockdown_approle_policies` | `aap-automation` + combined policies | `setup/ssh_lockdown/lockdown-vault-policies.yml` | Post–Section 6 lockdown: full automation identity (KV, DB creds, SSH signing). Playbook output supplies Role ID + Secret ID |
+
+**If you change an AppRole** (rename, change `token_policies`, rotate Secret ID, or merge roles):
+
+1. **Re-run** the playbook that creates that role and **update the matching AAP credential** (UI or re-run the credentials playbook) so Role ID and Secret ID stay valid.
+2. **Vault ACL policies** attached via `token_policies` must exist and must allow every path that credential needs (for example `ssh/sign/*` for signed SSH certs; the `aap-automation` policy also allows database and KV paths used by jobs).
+3. **Keep both credential playbooks aligned** — they read the same `ssh_approle_*` variables from `group_vars`; do not hardcode different names in only one file.
+4. **After lockdown**, update AAP to use the **`aap-automation`** AppRole credentials from `lockdown-vault-policies.yml` output for credentials that must generate dynamic secrets or sign SSH certs; the bootstrap **userpass** `admin` account is restricted to `human-readonly` and cannot sign SSH certificates or read database dynamic credentials. See [setup/ssh_lockdown/README.md](../setup/ssh_lockdown/README.md).
+
+**Usually unchanged** by AppRole edits alone: SSH CA trust on hosts (`setup/configure-vault-ssh.yml`), Vault SSH engine paths (`vault_ssh_*` in `group_vars`), and NetBox/Arista credential definitions — unless token policies no longer grant the paths those jobs need.
+
 **Inventory:**
 
 | Name | Source | URL |

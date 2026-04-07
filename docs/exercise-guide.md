@@ -298,7 +298,9 @@ Log into the **automation controller** (AAP 2.6) at `https://control.zta.lab` an
 authenticates to Vault via AppRole, sends its public key to Vault's SSH CA,
 receives a time-bound signed certificate, and uses it to SSH into target
 hosts. No static SSH keys are stored in AAP. The hosts only need to trust
-Vault's CA public key (configured during setup).
+Vault's CA public key (configured during setup). Default AppRole name and
+post-lockdown credential updates are documented under **Vault AppRole naming
+and impact** in [deployment-guide.md](deployment-guide.md).
 
 > **ZTA Concept**: Each credential is scoped to a specific purpose — this is
 > least privilege applied to the automation platform itself. The NetBox

@@ -618,43 +618,45 @@
 
 
 # ═════════════════════════════════════════════════════════════════════════════
-# Play 8 — Ensure firewalld survived container restarts
-# Podman/Netavark nftables operations can race with firewalld and crash it.
+# Play 8 — Repair Netavark port mappings after container restarts
+# Restarting containers (e.g. wazuh-manager) can corrupt nftables rules for
+# other containers when firewalld is disabled.  A quick restart of affected
+# containers forces Netavark to recreate their port-mapping rules.
 # ═════════════════════════════════════════════════════════════════════════════
-- name: "Phase 8 — Verify and recover firewalld"
+- name: "Phase 8 — Repair container port mappings"
   hosts: zta_services
   become: true
   gather_facts: false
 
   tasks:
-    - name: Check if firewalld is running
-      ansible.builtin.systemd:
-        name: firewalld
-      register: firewalld_state
+    - name: Verify Splunk web port is reachable after integration
+      ansible.builtin.uri:
+        url: "http://localhost:8000"
+        method: GET
+        status_code: [200, 302, 303]
+      register: splunk_post_check
+      failed_when: false
 
-    - name: Restart firewalld if it stopped (Netavark race condition)
-      ansible.builtin.systemd:
-        name: firewalld
-        state: started
-        enabled: true
-      when: firewalld_state.status.ActiveState != 'active'
+    - name: Restart Splunk container to repair nftables rules if needed
+      ansible.builtin.command:
+        cmd: podman restart splunk
+      when: splunk_post_check.status | default(0) not in [200, 302, 303]
+      register: splunk_restarted
 
-    - name: Re-open workshop ports if firewalld was restarted
-      ansible.posix.firewalld:
-        port: "{{ item }}/tcp"
-        permanent: true
-        immediate: true
-        state: enabled
-      loop:
-        - 8000    # Splunk web UI
-        - 8088    # Splunk HEC
-        - 8089    # Splunk management API
-        - 9997    # Splunk forwarder
-      when: firewalld_state.status.ActiveState != 'active'
+    - name: Wait for Splunk to come back after restart
+      ansible.builtin.uri:
+        url: "http://localhost:8000"
+        method: GET
+        status_code: [200, 302, 303]
+      register: splunk_recovery
+      until: splunk_recovery.status in [200, 302, 303]
+      retries: 30
+      delay: 10
+      when: splunk_restarted is changed
 
-    - name: Firewalld recovery status
+    - name: Port mapping repair status
       ansible.builtin.debug:
-        msg: "{{ 'firewalld was DOWN — restarted and Splunk ports reopened' if firewalld_state.status.ActiveState != 'active' else 'firewalld is healthy' }}"
+        msg: "{{ 'Splunk port mapping was broken — container restarted to repair nftables rules' if splunk_restarted is changed else 'Splunk port mapping intact' }}"
 
 
 # ═════════════════════════════════════════════════════════════════════════════

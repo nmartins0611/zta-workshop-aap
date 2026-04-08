@@ -6,6 +6,11 @@
 # dynamic source.  Both can coexist — the static inventory is useful for
 # initial bootstrap and troubleshooting.
 #
+# When the ZTA Workshop project already exists on the controller, this playbook
+# also adds an SCM inventory source (inventory/hosts.ini) so inventory/group_vars/all.yml
+# is merged on sync. If the project is missing (e.g. before configure-aap-project.yml),
+# that step is skipped; re-run this playbook after setup/configure-aap-project.yml.
+#
 # Prerequisites:
 #   - AAP Controller is installed and reachable
 #   - ansible.controller collection available
@@ -26,6 +31,10 @@
     aap_organization: Default
 
     inventory_name: ZTA Lab Inventory
+    # Must match setup/configure-aap-project.yml project_name.
+    aap_workshop_project_name: ZTA Workshop
+    aap_inventory_scm_path: inventory/hosts.ini
+    aap_inventory_scm_source_name: Workshop hosts.ini (project)
 
     lab_groups:
       - name: zta_services
@@ -210,6 +219,48 @@
       loop_control:
         label: "{{ item.0.name }} → {{ item.1 }}"
 
+    # ── SCM inventory source (hosts.ini + inventory/group_vars from repo) ──
+
+    - name: Check if ZTA Workshop project exists on controller
+      uri:
+        url: "{{ aap_host }}/api/controller/v2/projects/?name__exact={{ aap_workshop_project_name | urlencode }}"
+        method: GET
+        user: "{{ aap_user }}"
+        password: "{{ aap_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ aap_verify_ssl }}"
+        status_code: 200
+      register: aap_project_lookup
+
+    - name: Add inventory source from project (hosts.ini + group_vars)
+      ansible.controller.inventory_source:
+        name: "{{ aap_inventory_scm_source_name }}"
+        description: "Static inventory from workshop repo — loads inventory/group_vars/all.yml on sync"
+        inventory: "{{ inventory_name }}"
+        organization: "{{ aap_organization }}"
+        source: scm
+        source_project: "{{ aap_workshop_project_name }}"
+        source_path: "{{ aap_inventory_scm_path }}"
+        overwrite: true
+        update_on_launch: true
+        state: present
+      when: aap_project_lookup.json.count | default(0) | int > 0
+
+    - name: Sync SCM inventory source
+      ansible.controller.inventory_source_update:
+        inventory_source: "{{ aap_inventory_scm_source_name }}"
+        inventory: "{{ inventory_name }}"
+        wait: true
+        timeout: 120
+      when: aap_project_lookup.json.count | default(0) | int > 0
+
+    - name: Note when SCM inventory source was skipped
+      ansible.builtin.debug:
+        msg: >
+          Skipped adding SCM inventory source: project '{{ aap_workshop_project_name }}' not found on controller.
+          Run setup/configure-aap-project.yml (project sync), then re-run this playbook.
+      when: aap_project_lookup.json.count | default(0) | int == 0
+
     # ── Summary ────────────────────────────────────────────────────────
 
     - name: Display inventory summary
@@ -243,5 +294,8 @@
           ║  Container hosts:     SSH via published ports on central    ║
           ║    app → :2023, db → :2022                                  ║
           ║    ceos1 → :2001, ceos2 → :2002, ceos3 → :2003             ║
+          ║                                                             ║
+          ║  SCM source: {{ aap_inventory_scm_source_name }} ({{ aap_inventory_scm_path }}) ║
+          ║    Merges inventory/group_vars/all.yml when project '{{ aap_workshop_project_name }}' exists ║
           ║                                                             ║
           ╚═══════════════════════════════════════════════════════════════╝

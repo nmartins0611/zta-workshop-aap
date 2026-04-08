@@ -4,6 +4,8 @@
   hosts: zta_services
   become: false
   gather_facts: false
+  vars_files:
+    - ../../inventory/group_vars/all.yml
 
   tasks:
     - name: "Test 1 | Patching policy — authorised user, all conditions met"

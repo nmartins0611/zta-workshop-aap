@@ -4,8 +4,12 @@
   hosts: vault_servers
   become: true
   gather_facts: false
+  # AAP often uses a tiny inventory under /runner/inventory — that skips project inventory/group_vars.
+  # Load the same defaults as a full checkout so idm_admin_password, vault_addr, and paths exist.
+  vars_files:
+    - ../../inventory/group_vars/all.yml
 
-  # When AAP uses a minimal inventory, group_vars (e.g. vault_addr) are not loaded. First task fills gaps.
+  # When group_vars were already merged from inventory, set_fact only applies env overrides / gaps.
   vars:
     vault_username: "{{ lookup('env', 'VAULT_USERNAME') | default('admin', true) }}"
     # vars lookup avoids templating undefined idm_admin_password (minimal AAP inventory has no group_vars).

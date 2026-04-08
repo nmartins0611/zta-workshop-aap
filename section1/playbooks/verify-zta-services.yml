@@ -4,6 +4,8 @@
   hosts: zta_services
   become: true
   gather_facts: true
+  vars_files:
+    - ../../inventory/group_vars/all.yml
 
   tasks:
     - name: Verify IdM services are running
@@ -84,6 +86,8 @@
   hosts: db_servers
   become: true
   gather_facts: false
+  vars_files:
+    - ../../inventory/group_vars/all.yml
 
   tasks:
     - name: Check PostgreSQL is running
@@ -105,6 +109,8 @@
 - name: Verify Arista cEOS Switches
   hosts: network
   gather_facts: false
+  vars_files:
+    - ../../inventory/group_vars/all.yml
 
   tasks:
     - name: Gather Arista switch facts

@@ -8,7 +8,8 @@
   # When AAP uses a minimal inventory, group_vars (e.g. vault_addr) are not loaded. First task fills gaps.
   vars:
     vault_username: "{{ lookup('env', 'VAULT_USERNAME') | default('admin', true) }}"
-    vault_password: "{{ lookup('env', 'VAULT_PASSWORD') | default(idm_admin_password | default('ansible123!', true), true) }}"
+    # vars lookup avoids templating undefined idm_admin_password (minimal AAP inventory has no group_vars).
+    vault_password: "{{ lookup('env', 'VAULT_PASSWORD') | default(lookup('vars', 'idm_admin_password', default='ansible123!'), true) }}"
 
   pre_tasks:
     - name: Default Vault API variables when inventory has no group_vars

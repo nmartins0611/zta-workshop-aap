@@ -40,48 +40,6 @@
             maintenance_approved: true
       register: patch_deny
 
-    # #region agent log
-    - name: "DBG | capture patch_deny shape for analysis (7335e3)"
-      ansible.builtin.set_fact:
-        patch_deny_dbg:
-          status: "{{ patch_deny.status | default('') }}"
-          content_type: "{{ patch_deny.content_type | default('') }}"
-          json_is_mapping: "{{ patch_deny.json is mapping }}"
-          json_keys: "{{ patch_deny.json.keys() | list if patch_deny.json is mapping else [] }}"
-          content_head: "{{ (patch_deny.content | default(''))[:500] }}"
-          has_result_key: "{{ patch_deny.json is mapping and ('result' in patch_deny.json) }}"
-          result_is_mapping: "{{ patch_deny.json['result'] is defined and patch_deny.json['result'] is mapping }}"
-          result_keys: "{{ patch_deny.json['result'].keys() | list if (patch_deny.json['result'] is defined and patch_deny.json['result'] is mapping) else [] }}"
-
-    - name: "DBG | job log patch_deny shape (7335e3)"
-      ansible.builtin.debug:
-        msg: "{{ patch_deny_dbg }}"
-
-    - name: "DBG | NDJSON log patch_deny (7335e3)"
-      ansible.builtin.shell: |
-        python3 <<'PY'
-        import json, os, time
-        rec = {
-          "sessionId": "7335e3",
-          "hypothesisId": "H1-H5",
-          "location": "test-opa-policy.yml:after Test2 uri",
-          "message": "patch_deny uri registered vars",
-          "data": json.loads(os.environ["DBG_DATA"]),
-          "timestamp": int(time.time() * 1000),
-        }
-        path = "/home/nmartins/Development/.cursor/debug-7335e3.log"
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-        with open(path, "a") as f:
-          f.write(json.dumps(rec) + "\n")
-        PY
-      environment:
-        DBG_DATA: "{{ patch_deny_dbg | to_json }}"
-      delegate_to: localhost
-      run_once: true
-      changed_when: false
-      failed_when: false
-    # #endregion
-
     - name: "Test 2 result"
       debug:
         msg: "Patching (wrong group): {{ 'ALLOWED' if ((patch_deny.json['result'] | default(patch_deny.json))['allow'] | default(patch_deny.json['allow'] | default(false))) else 'DENIED' }} — {{ ((patch_deny.json['result'] | default(patch_deny.json))['reason'] | default(patch_deny.json['reason'] | default('(no reason)'))) }}"

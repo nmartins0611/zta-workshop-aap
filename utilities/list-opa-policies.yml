@@ -16,24 +16,10 @@
     - name: Display policy summary
       debug:
         msg: |
-          ╔════════════════════════════════════════════════════════════╗
-          ║       OPA Policy Inventory                               ║
-          ╠════════════════════════════════════════════════════════════╣
-          ║                                                          ║
-          ║  Server:          {{ opa_url | ljust(38) }}║
-          ║  Policies loaded: {{ (opa_policies.json.result | length | string) | ljust(38) }}║
-          ║                                                          ║
+          OPA policy inventory — server {{ opa_url }}, policies loaded: {{ opa_policies.json.result | length }}
           {% for policy in opa_policies.json.result %}
-          ║  ── {{ policy.id | ljust(52) }}║
-          {% if policy.ast.package.path is defined %}
-          ║     Package: {{ (policy.ast.package.path | map(attribute='value') | join('.')) | ljust(45) }}║
-          {% endif %}
-          {% if policy.raw is defined %}
-          ║     Size:    {{ (policy.raw | length | string + ' bytes') | ljust(45) }}║
-          {% endif %}
+          - {{ policy.id }}{% if policy.ast.package.path is defined %} (package: {{ policy.ast.package.path | map(attribute='value') | join('.') }}){% endif %}{% if policy.raw is defined %} [{{ policy.raw | length }} bytes]{% endif %}
           {% endfor %}
-          ║                                                          ║
-          ╚════════════════════════════════════════════════════════════╝
 
     - name: Show detailed rules per policy
       debug:

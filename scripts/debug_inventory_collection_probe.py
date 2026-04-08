@@ -1,33 +1,10 @@
 #!/usr/bin/env python3
-"""Debug probe: log whether netbox.netbox is visible to ansible-galaxy (local or EE-like PATH)."""
-# #region agent log
-import json
+"""Print whether netbox.netbox is visible to ansible-galaxy (local or EE-like PATH)."""
 import os
 import subprocess
-import time
 
-LOG = "/home/nmartins/Development/.cursor/debug-aa82e8.log"
-SESSION = "aa82e8"
-
-
-def _log(hypothesis_id: str, message: str, data: dict) -> None:
-    payload = {
-        "sessionId": SESSION,
-        "runId": os.environ.get("DEBUG_RUN_ID", "probe"),
-        "hypothesisId": hypothesis_id,
-        "location": "scripts/debug_inventory_collection_probe.py",
-        "message": message,
-        "data": data,
-        "timestamp": int(time.time() * 1000),
-    }
-    with open(LOG, "a", encoding="utf-8") as f:
-        f.write(json.dumps(payload) + "\n")
-
-
-# #endregion
 
 def main() -> None:
-    # #region agent log
     r = subprocess.run(
         ["ansible-galaxy", "collection", "list"],
         capture_output=True,
@@ -35,34 +12,15 @@ def main() -> None:
         timeout=120,
     )
     out = (r.stdout or "") + (r.stderr or "")
-    _log(
-        "H1",
-        "ansible-galaxy collection list",
-        {
-            "exit_code": r.returncode,
-            "netbox_netbox_present": "netbox.netbox" in out,
-            "output_head": out[:2500],
-        },
+    repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+    req_path = os.path.join(repo_root, "collections", "requirements.yml")
+    print(
+        "ansible-galaxy collection list: exit=%s, netbox.netbox present=%s"
+        % (r.returncode, "netbox.netbox" in out)
     )
-    _log(
-        "H4",
-        "requirements file presence",
-        {
-            "repo_root": os.path.abspath(
-                os.path.join(os.path.dirname(__file__), "..")
-            ),
-            "requirements_exists": os.path.isfile(
-                os.path.join(
-                    os.path.dirname(__file__),
-                    "..",
-                    "collections",
-                    "requirements.yml",
-                )
-            ),
-        },
-    )
-    # #endregion
-    print(f"Debug probe appended to {LOG}")
+    print("Output (head):\n%s" % out[:2500])
+    print("Repo root: %s" % repo_root)
+    print("collections/requirements.yml exists: %s" % os.path.isfile(req_path))
 
 
 if __name__ == "__main__":

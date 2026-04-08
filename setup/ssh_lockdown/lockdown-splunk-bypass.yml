@@ -87,26 +87,10 @@
 
     - name: Display bypass detection summary
       debug:
-        msg: |
-          ╔════════════════════════════════════════════════════════════════╗
-          ║       Splunk SSH Bypass Detection — Active                    ║
-          ╠════════════════════════════════════════════════════════════════╣
-          ║                                                              ║
-          ║  Saved searches created:                                     ║
-          ║    1. SSH Bypass — Login from Non-AAP Source   (severity 4)  ║
-          ║    2. SSH Bypass — Repeated HBAC Denials       (severity 5)  ║
-          ║                                                              ║
-          ║  EDA integration:                                            ║
-          ║    Both alerts fire webhooks to EDA at:                      ║
-          ║    {{ eda_webhook_url | ljust(51) }}║
-          ║                                                              ║
-          ║  What triggers an alert:                                     ║
-          ║    1. Someone SSH-es to a host from their workstation        ║
-          ║    2. An IdM user denied by HBAC tries repeatedly            ║
-          ║                                                              ║
-          ║  AAP controller ({{ aap_controller_ip }}) and central ({{ management_ip }})       ║
-          ║  are excluded from bypass detection.                         ║
-          ║                                                              ║
-          ║  View alerts: http://central.zta.lab:8000                    ║
-          ║  Activity → Triggered Alerts                                 ║
-          ╚════════════════════════════════════════════════════════════════╝
+        msg:
+          - "Splunk SSH bypass detection — active"
+          - "Saved searches: (1) SSH bypass — login from non-AAP source (sev 4); (2) repeated HBAC denials (sev 5)"
+          - "EDA webhooks: {{ eda_webhook_url }}"
+          - "Triggers: SSH from workstation; repeated HBAC denials"
+          - "Excluded from bypass rules: AAP controller {{ aap_controller_ip }}, central {{ management_ip }}"
+          - "View alerts: http://central.zta.lab:8000 → Activity → Triggered Alerts"

@@ -74,21 +74,13 @@
 
     - name: Display Vault integration results
       debug:
-        msg: |
-          ╔════════════════════════════════════════════════════════════╗
-          ║       Vault Integration Test Results                     ║
-          ╠════════════════════════════════════════════════════════════╣
-          ║                                                          ║
-          ║  KV Secret Read:    PASS                                 ║
-          ║                                                          ║
-          ║  Dynamic DB Credentials:                                 ║
-          ║    Username: {{ dynamic_db_user | ljust(42) }}║
-          ║    TTL:      {{ (dynamic_db_ttl | string + 's') | ljust(42) }}║
-          ║    Lease ID: {{ dynamic_db_lease[:40] | ljust(42) }}║
-          ║                                                          ║
-          ║  This user will automatically expire after the TTL.      ║
-          ║  This is Zero Trust: short-lived, least-privilege.       ║
-          ╚════════════════════════════════════════════════════════════╝
+        msg:
+          - "Vault integration test — results"
+          - "KV secret read: PASS ({{ vault_kv_secrets_path }}/network/arista)"
+          - "Dynamic DB username: {{ dynamic_db_user }}"
+          - "Dynamic DB TTL: {{ dynamic_db_ttl }}s"
+          - "Lease ID: {{ dynamic_db_lease }}"
+          - "Short-lived DB user expires after TTL (Zero Trust / least privilege)."
 
     - name: Revoke the test credentials
       command: vault lease revoke {{ dynamic_db_lease }}

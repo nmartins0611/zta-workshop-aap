@@ -49,22 +49,13 @@
 
     - name: Display OPA decision details
       debug:
-        msg: |
-          ╔════════════════════════════════════════════════════════════╗
-          ║       OPA Patching Policy Decision                      ║
-          ╠════════════════════════════════════════════════════════════╣
-          ║                                                          ║
-          ║  User:    {{ patching_user | ljust(46) }}║
-          ║  Target:  {{ (target_host + '.' + idm_domain) | ljust(46) }}║
-          ║  Result:  {{ ('ALLOWED' if opa_decision.json.result.allow else 'DENIED') | ljust(46) }}║
-          ║                                                          ║
-          ║  Conditions:                                             ║
-          ║    User in patch-admins:    {{ ('PASS' if opa_decision.json.result.conditions.user_authorized else 'FAIL') | ljust(30) }}║
-          ║    Server active in CMDB:   {{ ('PASS' if opa_decision.json.result.conditions.server_active else 'FAIL') | ljust(30) }}║
-          ║    Maintenance approved:    {{ ('PASS' if opa_decision.json.result.conditions.maintenance_approved else 'FAIL') | ljust(30) }}║
-          ║                                                          ║
-          ║  {{ opa_decision.json.result.reason | ljust(56) }}║
-          ╚════════════════════════════════════════════════════════════╝
+        msg:
+          - "OPA patching policy decision"
+          - "User: {{ patching_user }}"
+          - "Target: {{ target_host }}.{{ idm_domain }}"
+          - "Result: {{ 'ALLOWED' if opa_decision.json.result.allow else 'DENIED' }}"
+          - "Conditions — patch-admins: {{ 'PASS' if opa_decision.json.result.conditions.user_authorized else 'FAIL' }}; CMDB active: {{ 'PASS' if opa_decision.json.result.conditions.server_active else 'FAIL' }}; maintenance: {{ 'PASS' if opa_decision.json.result.conditions.maintenance_approved else 'FAIL' }}"
+          - "Reason: {{ opa_decision.json.result.reason }}"
 
     - name: Enforce OPA decision
       assert:
@@ -129,13 +120,8 @@
 
     - name: Patching summary
       debug:
-        msg: |
-          ╔════════════════════════════════════════════════════════════╗
-          ║       Patching Complete                                  ║
-          ╠════════════════════════════════════════════════════════════╣
-          ║                                                          ║
-          ║  Host:     {{ (inventory_hostname ~ '.' ~ idm_domain) | ljust(46) }}║
-          ║  Updates:  {{ (patch_result.results | default([]) | length | string + ' packages') | ljust(46) }}║
-          ║  Reboot:   {{ ('Required' if needs_restarting.rc | default(0) != 0 else 'Not required') | ljust(46) }}║
-          ║                                                          ║
-          ╚════════════════════════════════════════════════════════════╝
+        msg:
+          - "Patching complete"
+          - "Host: {{ inventory_hostname }}.{{ idm_domain }}"
+          - "Packages updated: {{ patch_result.results | default([]) | length }}"
+          - "Reboot: {{ 'Required' if needs_restarting.rc | default(0) != 0 else 'Not required' }}"

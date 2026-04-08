@@ -30,28 +30,18 @@
       copy:
         dest: /etc/issue
         content: |
-          ╔════════════════════════════════════════════════════════════════╗
-          ║                                                              ║
-          ║   AUTHORISED ACCESS ONLY                                     ║
-          ║                                                              ║
-          ║   This system is the property of ZTA Lab.                    ║
-          ║   Unauthorised access is prohibited and will be prosecuted.  ║
-          ║   All activity is monitored and logged by Wazuh SIEM.        ║
-          ║                                                              ║
-          ║   Security patch: {{ patch_version }}{{ ' ' * (38 - patch_version | length) }}║
-          ║                                                              ║
-          ╚════════════════════════════════════════════════════════════════╝
+          AUTHORISED ACCESS ONLY — ZTA Lab.
+          Unauthorised access is prohibited. Activity is monitored by Wazuh SIEM.
+          Security patch: {{ patch_version }}
         mode: '0644'
 
     - name: "Patch 1/4 | Deploy MOTD"
       copy:
         dest: /etc/motd
         content: |
-          ┌────────────────────────────────────────────────────┐
-          │  ZTA Lab — {{ inventory_hostname | ljust(39) }}│
-          │  Security patch {{ patch_version }} applied{{ ' ' * (24 - patch_version | length) }}│
-          │  Monitored by Wazuh SIEM                           │
-          └────────────────────────────────────────────────────┘
+          ZTA Lab — {{ inventory_hostname }}
+          Security patch {{ patch_version }} applied.
+          Monitored by Wazuh SIEM.
         mode: '0644'
 
     - name: "Patch 2/4 | Harden SSH — disable root login"
@@ -113,24 +103,13 @@
 
     - name: "Post-patch | Display patch summary"
       debug:
-        msg: |
-          ╔════════════════════════════════════════════════════════════╗
-          ║       Security Patch Applied                             ║
-          ╠════════════════════════════════════════════════════════════╣
-          ║                                                          ║
-          ║  Host:      {{ (inventory_hostname ~ '.' ~ idm_domain) | ljust(44) }}║
-          ║  Patch:     {{ patch_version | ljust(44) }}║
-          ║  OS:        {{ ansible_distribution }} {{ ansible_distribution_version | ljust(32) }}║
-          ║                                                          ║
-          ║  Applied:                                                ║
-          ║    ✓ Security login banner (/etc/issue + /etc/motd)      ║
-          ║    ✓ SSH hardening (no root, max 3 auth tries)           ║
-          ║    ✓ Password policy (12 char min, complexity)           ║
-          ║    ✓ Audit logging (auth, identity, sudoers)             ║
-          ║                                                          ║
-          ║  This patch was authorised by AAP Policy as Code.        ║
-          ║  Only users in 'patch-admins' can launch this template.  ║
-          ╚════════════════════════════════════════════════════════════╝
+        msg:
+          - "Security patch applied"
+          - "Host: {{ inventory_hostname }}.{{ idm_domain }}"
+          - "Patch ID: {{ patch_version }}"
+          - "OS: {{ ansible_distribution }} {{ ansible_distribution_version }}"
+          - "Changes: login banner (/etc/issue, /etc/motd); SSH hardening; password policy; audit rules"
+          - "Authorised via AAP Policy as Code (patch-admins only)."
 
   handlers:
     - name: Restart sshd

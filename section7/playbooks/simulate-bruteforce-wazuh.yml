@@ -31,18 +31,10 @@
 
     - name: Display attack simulation warning
       debug:
-        msg: |
-          ╔════════════════════════════════════════════════════════════════╗
-          ║       ATTACK SIMULATION — BRUTE FORCE SSH (Wazuh)            ║
-          ╠════════════════════════════════════════════════════════════════╣
-          ║                                                              ║
-          ║  Target:    {{ target_hostname | ljust(46) }}║
-          ║  IP:        {{ target_ip | ljust(46) }}║
-          ║  User:      {{ attack_user | ljust(46) }}║
-          ║  Attempts:  {{ (attempt_count | string) | ljust(46) }}║
-          ║                                                              ║
-          ║  Detection: Wazuh agent → rule 5712 → webhook → EDA          ║
-          ╚════════════════════════════════════════════════════════════════╝
+        msg:
+          - "Attack simulation — brute-force SSH (Wazuh)"
+          - "Target: {{ target_hostname }} ({{ target_ip }}), user: {{ attack_user }}, attempts: {{ attempt_count }}"
+          - "Detection path: Wazuh agent → rule 5712 → webhook → EDA"
 
     - name: "Generate {{ attempt_count }} failed SSH login attempts"
       shell: |

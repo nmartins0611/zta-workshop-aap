@@ -51,7 +51,7 @@
     aap_organization: Default
 
     ee_name: ZTA Workshop EE
-    ee_image: quay.io/acme_corp/network-ee
+    ee_image: quay.io/nmartins/zta_ee
 
     project_name: ZTA Workshop
     project_scm_url: https://github.com/nmartins0611/zta-workshop-aap.git

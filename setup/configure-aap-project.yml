@@ -33,7 +33,7 @@
     aap_organization: Default
 
     ee_name: ZTA Workshop EE
-    ee_image: quay.io/nmartins/ceoslab-rh
+    ee_image: quay.io/acme_corp/network-ee
 
     project_name: ZTA Workshop
     project_scm_url: http://gitea:3000/gitea/zta-workshop-aap.git

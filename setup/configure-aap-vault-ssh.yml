@@ -175,29 +175,9 @@
     # ── 7. Summary ─────────────────────────────────────────────────────
     - name: Display configuration summary
       debug:
-        msg: |
-          ╔════════════════════════════════════════════════════════════════╗
-          ║   AAP Vault SSH Signed Certificate — Configuration Complete   ║
-          ╠════════════════════════════════════════════════════════════════╣
-          ║                                                              ║
-          ║  Vault SSH CA:                                               ║
-          ║    Engine Path: {{ vault_ssh_secrets_path | ljust(45) }}║
-          ║    Signing Role: {{ vault_ssh_role_name | ljust(44) }}║
-          ║    Certificate TTL: {{ vault_ssh_ttl | ljust(41) }}║
-          ║                                                              ║
-          ║  Vault AppRole (for AAP):                                    ║
-          ║    Role Name:  {{ ssh_approle_name | ljust(46) }}║
-          ║    Role ID:    {{ ssh_role_id | ljust(46) }}║
-          ║    Policies:   {{ ssh_approle_policies | join(', ') | ljust(46) }}║
-          ║                                                              ║
-          ║  AAP Credential:                                             ║
-          ║    Name: ZTA Vault SSH Credential                            ║
-          ║    Type: HashiCorp Vault Signed SSH                          ║
-          ║    Auth: AppRole ({{ ssh_approle_name }}){{ ' ' * (38 - ssh_approle_name | length) }}║
-          ║                                                              ║
-          ║  Next Steps:                                                 ║
-          ║    1. Create a Machine credential in AAP that links to       ║
-          ║       this Vault SSH credential for signed certificates      ║
-          ║    2. Set username to 'rhel' with valid principals           ║
-          ║    3. Use this Machine credential in job templates           ║
-          ╚════════════════════════════════════════════════════════════════╝
+        msg:
+          - "AAP Vault SSH signed certificate — configuration complete"
+          - "Vault SSH CA — engine path: {{ vault_ssh_secrets_path }}, signing role: {{ vault_ssh_role_name }}, cert TTL: {{ vault_ssh_ttl }}"
+          - "Vault AppRole — name: {{ ssh_approle_name }}, role_id: {{ ssh_role_id }}, policies: {{ ssh_approle_policies | join(', ') }}"
+          - "AAP credential: ZTA Vault SSH Credential (HashiCorp Vault Signed SSH), auth AppRole ({{ ssh_approle_name }})"
+          - "Next: create/link Machine credential for signed SSH; set username rhel + principals; attach to job templates."

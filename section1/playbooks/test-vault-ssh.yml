@@ -145,33 +145,20 @@
     - name: "Phase 5 | Display SSH signed certificate test results"
       debug:
         msg: |
-          ╔════════════════════════════════════════════════════════════════╗
-          ║    Vault SSH Signed Certificates — Short-Lived Credentials   ║
-          ╠════════════════════════════════════════════════════════════════╣
-          ║                                                              ║
-          ║  SSH CA Engine: {{ vault_ssh_secrets_path | ljust(47) }}║
-          ║  Signing Role:  {{ vault_ssh_role_name | ljust(46) }}║
-          ║  Certificate TTL: {{ vault_ssh_ttl | ljust(44) }}║
-          ║                                                              ║
-          ║  Certificate Metadata:                                       ║
-          {% for line in cert_metadata.stdout_lines %}
-          ║    {{ line | ljust(57) }}║
+          Vault SSH signed certificates — test results
+
+          SSH CA engine path: {{ vault_ssh_secrets_path }}
+          Signing role: {{ vault_ssh_role_name }}
+          Certificate TTL: {{ vault_ssh_ttl }}
+
+          Certificate metadata:
+          {% for line in cert_metadata.stdout_lines | default([]) %}
+            {{ line }}
           {% endfor %}
-          ║                                                              ║
-          ║  ── Per-Host Results ──────────────────────────────────────   ║
-          ║                                                              ║
+
+          Per-host cert login:
           {% for result in ssh_test_results.results %}
-          ║  {{ result.item.name | ljust(10) }} ({{ result.item.ip }}){{ ' ' * (37 - result.item.ip | length) }}║
-          ║    Cert login: {{ ('PASS' if result.rc == 0 else 'FAIL') | ljust(48) }}║
-          ║                                                              ║
+            {{ result.item.name }} ({{ result.item.ip }}): {{ 'PASS' if result.rc == 0 else 'FAIL' }}
           {% endfor %}
-          ║  ── Zero Trust Properties ────────────────────────────────   ║
-          ║                                                              ║
-          ║    ● Just-in-time:  Certificate signed on demand by Vault    ║
-          ║    ● Short-lived:   Cert expires after {{ vault_ssh_ttl }} (configurable){{ ' ' * (18 - vault_ssh_ttl | length) }}║
-          ║    ● Scoped:        Only valid for specified principals       ║
-          ║    ● Audited:       Every signing request logged in Vault    ║
-          ║    ● No agents:     Hosts only need the CA public key        ║
-          ║    ● No callback:   Hosts never contact Vault at login time  ║
-          ║                                                              ║
-          ╚════════════════════════════════════════════════════════════════╝
+
+          Zero Trust: JIT signing by Vault, short-lived ({{ vault_ssh_ttl }}), scoped principals, audited requests, CA pubkey only on hosts, no Vault contact at login.

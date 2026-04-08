@@ -185,37 +185,24 @@
     - name: Display Wazuh security check results
       debug:
         msg: |
-          ╔════════════════════════════════════════════════════════════╗
-          ║       Wazuh Security Posture Check                       ║
-          ╠════════════════════════════════════════════════════════════╣
-          ║                                                          ║
-          ║  Target:  {{ target_fqdn | ljust(46) }}║
-          ║  Agent:   {{ ('ID ' + agent_id + ' (' + agent_status + ')') | ljust(46) }}║
-          ║  Version: {{ agent_version | ljust(46) }}║
-          ║                                                          ║
-          ║  Vulnerability Assessment:                               ║
-          ║    Critical:  {{ (critical_count | string + ' found (max allowed: ' + max_critical_vulns | string + ')') | ljust(44) }}║
-          ║    High:      {{ (high_count | string + ' found (max allowed: ' + max_high_vulns | string + ')') | ljust(44) }}║
-          ║                                                          ║
-          ║  SCA Compliance: {{ (sca_pass_pct | string + '%') | ljust(38) }}║
-          ║                                                          ║
-          ║  ┌──────────────────────────────────────────────────┐    ║
-          ║  │  SECURITY POSTURE: {{ ('PASS' if wazuh_security_ok | bool else 'FAIL') | ljust(30) }}│    ║
-          ║  └──────────────────────────────────────────────────┘    ║
-          ║                                                          ║
+          Wazuh security posture check
+          Target: {{ target_fqdn }}
+          Agent: ID {{ agent_id }} ({{ agent_status }}), version {{ agent_version }}
+          Vulnerabilities — critical: {{ critical_count }} (max {{ max_critical_vulns }}), high: {{ high_count }} (max {{ max_high_vulns }})
+          SCA compliance: {{ sca_pass_pct }}%
+          Overall: {{ 'PASS' if wazuh_security_ok | bool else 'FAIL' }}
           {% if not wazuh_security_ok | bool %}
-          ║  Action required before patching:                        ║
+          Actions before patching:
           {% if not agent_connected | bool %}
-          ║    → Agent is disconnected — check wazuh-agent service   ║
+          - Agent disconnected — check wazuh-agent
           {% endif %}
           {% if critical_count | int > max_critical_vulns | int %}
-          ║    → {{ critical_count }} critical CVEs must be remediated first  ║
+          - {{ critical_count }} critical CVEs exceed threshold
           {% endif %}
           {% if high_count | int > max_high_vulns | int %}
-          ║    → High-severity CVE count ({{ high_count }}) exceeds threshold   ║
+          - High CVE count {{ high_count }} exceeds threshold
           {% endif %}
           {% endif %}
-          ╚════════════════════════════════════════════════════════════╝
 
     # ── Publish stats for AAP workflow ───────────────────────────────
 

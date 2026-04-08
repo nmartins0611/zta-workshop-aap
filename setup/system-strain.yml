@@ -281,70 +281,51 @@
     - name: Display strain report
       debug:
         msg: |
-          ╔══════════════════════════════════════════════════════════════════════╗
-          ║             ZTA Workshop — System Strain Report                     ║
-          ╠══════════════════════════════════════════════════════════════════════╣
+          ZTA Workshop — System Strain Report
+
           {% for h in host_health %}
-          ║                                                                    ║
-          ║  ┌──────────────────────────────────────────────────────────────┐   ║
-          ║  │  {{ h.name | upper }}{{ ' ' * (57 - h.name | length) }}│   ║
-          ║  ├──────────────────────────────────────────────────────────────┤   ║
+          --- {{ h.name | upper }} ---
           {% if not h.reachable %}
-          ║  │  ✗ UNREACHABLE                                              │   ║
+          UNREACHABLE
           {% else %}
-          ║  │  CPU Cores: {{ h.cpus | string | ljust(5) }} Load: {{ h.load_1m | string | ljust(6) }} {{ h.load_5m | string | ljust(6) }} {{ h.load_15m | string | ljust(6) }}(1/5/15m)  │   ║
-          ║  │  RAM: {{ h.mem_used }}M / {{ h.mem_total }}M{{ ' ' * (12 - (h.mem_used | string | length) - (h.mem_total | string | length)) }}Available: {{ h.mem_avail }}M{{ ' ' * (23 - (h.mem_avail | string | length)) }}│   ║
-          ║  │  Swap: {{ h.swap_used }}M / {{ h.swap_total }}M {{ '⚠ SWAPPING' if (h.swap_used | int > 100) else '' }}{{ ' ' * (42 - (h.swap_used | string | length) - (h.swap_total | string | length) - (10 if (h.swap_used | int > 100) else 0)) }}│   ║
-          ║  │                                                              │   ║
-          ║  │  Disk:                                                       │   ║
+          CPU cores: {{ h.cpus }}  Load 1/5/15m: {{ h.load_1m }} {{ h.load_5m }} {{ h.load_15m }}
+          RAM: {{ h.mem_used }}M / {{ h.mem_total }}M  Available: {{ h.mem_avail }}M
+          Swap: {{ h.swap_used }}M / {{ h.swap_total }}M{% if h.swap_used | int > 100 %} (high swap use){% endif %}
+
+          Disk:
           {% for d in h.disk %}
-          ║  │    {{ d | ljust(54) }}│   ║
+            {{ d }}
           {% endfor %}
-          ║  │                                                              │   ║
-          ║  │  Pressure (PSI some — avg10/avg60/avg300):                   │   ║
-          ║  │    CPU: {{ h.psi_cpu | replace('some ', '') | truncate(50, true, '…') | ljust(51) }}│   ║
-          ║  │    Mem: {{ h.psi_mem | replace('some ', '') | truncate(50, true, '…') | ljust(51) }}│   ║
-          ║  │    I/O: {{ h.psi_io | replace('some ', '') | truncate(50, true, '…') | ljust(51) }}│   ║
-          ║  │                                                              │   ║
-          ║  │  Top by CPU:                                                 │   ║
+
+          Pressure (PSI some — avg10/avg60/avg300):
+            CPU: {{ h.psi_cpu | replace('some ', '') | truncate(80, true, '…') }}
+            Mem: {{ h.psi_mem | replace('some ', '') | truncate(80, true, '…') }}
+            I/O: {{ h.psi_io | replace('some ', '') | truncate(80, true, '…') }}
+
+          Top by CPU:
           {% for p in h.top_cpu[:3] %}
-          ║  │    {{ p | truncate(54, true, '…') | ljust(54) }}│   ║
+            {{ p | truncate(80, true, '…') }}
           {% endfor %}
-          ║  │  Top by Memory:                                              │   ║
+          Top by memory:
           {% for p in h.top_mem[:3] %}
-          ║  │    {{ p | truncate(54, true, '…') | ljust(54) }}│   ║
+            {{ p | truncate(80, true, '…') }}
           {% endfor %}
           {% endif %}
-          ║  └──────────────────────────────────────────────────────────────┘   ║
+
           {% endfor %}
-          ║                                                                    ║
-          ║  ┌──────────────────────────────────────────────────────────────┐   ║
-          ║  │  CENTRAL — CONTAINER DETAILS                                │   ║
-          ║  ├──────────────────────────────────────────────────────────────┤   ║
-          ║  │  Uptime:     {{ c_uptime | truncate(44, true, '…') | ljust(44) }}│   ║
-          ║  │  Containers: {{ c_count | string | ljust(44) }}│   ║
-          ║  │  Overlay:    {{ c_overlay | ljust(44) }}│   ║
-          ║  │                                                              │   ║
-          ║  │  Name           CPU%    Memory              Mem%  PIDs       │   ║
-          ║  │  ─────────────────────────────────────────────────────────── │   ║
+
+          --- CENTRAL — container details ---
+          Uptime: {{ c_uptime | truncate(80, true, '…') }}
+          Container count: {{ c_count }}
+          Overlay size: {{ c_overlay }}
           {% for line in c_stats %}
-          {% set parts = line.split('|') %}
-          ║  │  {{ parts[0] | default('') | ljust(15) }}{{ parts[1] | default('') | ljust(8) }}{{ parts[2] | default('') | ljust(20) }}{{ parts[3] | default('') | ljust(6) }}{{ parts[6] | default('') | ljust(7) }}│   ║
+          {{ line }}
           {% endfor %}
           {% if c_failed | length > 0 %}
-          ║  │                                                              │   ║
-          ║  │  ⚠ FAILED SYSTEMD UNITS:                                    │   ║
+          Failed systemd units:
           {% for u in c_failed %}
-          ║  │    {{ u | truncate(54, true, '…') | ljust(54) }}│   ║
+            {{ u | truncate(80, true, '…') }}
           {% endfor %}
           {% endif %}
-          ║  └──────────────────────────────────────────────────────────────┘   ║
-          ║                                                                    ║
-          ║  Quick Reference — Warning Thresholds:                             ║
-          ║    Load avg > {{ strain_thresholds.load_ratio_warn }}× CPU count  = warn │  > {{ strain_thresholds.load_ratio_crit }}× = critical                ║
-          ║    RAM used  > {{ strain_thresholds.mem_pct_warn }}%             = warn │  > {{ strain_thresholds.mem_pct_crit }}% = critical                ║
-          ║    Swap used > {{ strain_thresholds.swap_warn_mb }}M             = memory pressure                          ║
-          ║    PSI avg10 > 10%            = noticeable contention                  ║
-          ║    PSI avg10 > 25%            = significant degradation                ║
-          ║                                                                    ║
-          ╚══════════════════════════════════════════════════════════════════════╝
+
+          Thresholds: load warn/crit = {{ strain_thresholds.load_ratio_warn }}x / {{ strain_thresholds.load_ratio_crit }}x CPU count; RAM warn/crit = {{ strain_thresholds.mem_pct_warn }}% / {{ strain_thresholds.mem_pct_crit }}%; swap pressure if used > {{ strain_thresholds.swap_warn_mb }}M; PSI avg10 > 10% contention, > 25% severe.

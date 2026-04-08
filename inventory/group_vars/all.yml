@@ -15,7 +15,7 @@ opa_container_name: opa
 opa_policy_dir: /opt/opa/policies
 
 # ── HashiCorp Vault (own VM) ────────────────────────────────────────
-vault_addr: "http://vault.zta.lab:8200"
+vault_addr: "http://192.168.1.12:8200"
 vault_skip_verify: true
 
 # ── Netbox / CMDB (own VM) ──────────────────────────────────────────

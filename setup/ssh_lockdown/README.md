@@ -92,17 +92,23 @@ Replace the current `rhel` machine credential with:
 | **Privilege Escalation** | `sudo` |
 | **Privilege Escalation Password** | `ansible123!` |
 
-### Configure AAP Vault Credential (AppRole)
+### Configure AAP credentials after Vault lockdown (AppRole)
 
-The `lockdown-vault-policies.yml` playbook outputs the Role ID and Secret ID.
-Create a new HashiCorp Vault credential in AAP:
+`lockdown-vault-policies.yml` creates the Vault AppRole named **`vault_lockdown_approle_name`** (default **`aap-automation`**) in [inventory/group_vars/all.yml](../../inventory/group_vars/all.yml) and prints **Role ID** and **Secret ID**. After lockdown, **userpass** `admin` is limited to **human-readonly** and cannot sign SSH certificates or read dynamic database credentials.
+
+Apply the lockdown output to every AAP credential that must perform those operations:
+
+1. **ZTA Vault Credential** (`HashiCorp Vault Secret Lookup`) — switch **Auth Method** to **AppRole** and use the Role ID and Secret ID from the lockdown summary (same automation identity as below). This restores KV and dynamic secret access for jobs that depended on the old admin userpass token.
+2. **ZTA Vault SSH Credential** (`HashiCorp Vault Signed SSH`) — set **Role ID** and **Secret ID** to the **same** `aap-automation` values (or keep the pre-lockdown **`ssh-client`** AppRole if you still use it and its policies remain valid). Both AppRoles are independent Vault roles; using **`aap-automation`** everywhere avoids maintaining two automation identities.
 
 | Field | Value |
 |-------|-------|
-| **Vault Server URL** | `https://vault.zta.lab:8200` |
+| **Vault Server URL** | `http://vault.zta.lab:8200` (match your lab; TLS if configured) |
 | **Auth Method** | AppRole |
-| **Role ID** | *(from playbook output)* |
-| **Secret ID** | *(from playbook output)* |
+| **Role ID** | *(from `lockdown-vault-policies.yml` output)* |
+| **Secret ID** | *(from `lockdown-vault-policies.yml` output)* |
+
+Pre-lockdown, **ZTA Vault SSH Credential** is created by `setup/configure-aap-credentials.yml` using **`ssh_approle_name`** / **`ssh_approle_policies`** (default **`ssh-client`** + `ssh-access`). Changing those variables requires re-running that playbook (`--tags vault-ssh`) and refreshing the controller credential. See **Vault AppRole naming and impact** in [docs/deployment-guide.md](../../docs/deployment-guide.md).
 
 ### Test the lockdown
 

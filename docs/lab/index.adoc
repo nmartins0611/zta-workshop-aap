@@ -6,7 +6,7 @@
 
 AsciiDoc versions of the hands-on labs live next to each section. Steps assume **Red Hat Ansible Automation Platform 2.6** (automation controller + Event-Driven Ansible controller); see the platform note in link:common-environment.adoc[common-environment.adoc].
 
-* link:../../section1/lab/index.adoc[Section 1 — AAP integration]
+* link:../../section1/lab/index.adoc[Section 1 — Verify ZTA + AAP integration]
 * link:../../section2/lab/index.adoc[Section 2 — Short-lived credentials]
 * link:../../section3/lab/index.adoc[Section 3 — Policy as Code patching]
 * link:../../section4/lab/index.adoc[Section 4 — SPIFFE VLAN management]

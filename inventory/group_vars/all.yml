@@ -232,6 +232,25 @@ vault_ssh_ttl: 30m
 vault_ssh_max_ttl: 1h
 vault_ssh_allowed_users: "rhel,aap-service"
 
+# ── Vault AppRole — AAP → Vault (Signed SSH credential) ───────────────
+# Defaults for setup/configure-aap-credentials.yml (--tags vault-ssh) and
+# setup/configure-aap-vault-ssh.yml. Changing names or policies requires
+# re-running those playbooks and refreshing AAP credentials; see
+# docs/deployment-guide.md (Vault AppRole naming and impact).
+ssh_approle_name: ssh-client
+ssh_approle_policies:
+  - ssh-access
+
+# AppRole created by setup/ssh_lockdown/lockdown-vault-policies.yml. Use its
+# Role ID and Secret ID for post-lockdown AAP credentials (see ssh_lockdown/README.md).
+vault_lockdown_approle_name: aap-automation
+vault_lockdown_approle_policies:
+  - app-deployer
+  - network-admin
+  - patch-admin
+  - ssh-access
+  - aap-automation
+
 # ── SPIFFE / SPIRE (Workload Identity) ─────────────────────────────
 spire_version: "1.12.0"
 spire_trust_domain: "{{ idm_domain }}"

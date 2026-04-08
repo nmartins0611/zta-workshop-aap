@@ -28,10 +28,6 @@
     vault_username: "{{ lookup('env', 'VAULT_USERNAME') | default('admin', true) }}"
     vault_password: "{{ lookup('env', 'VAULT_PASSWORD') | default('ansible123!', true) }}"
 
-    ssh_approle_name: ssh-client
-    ssh_approle_policies:
-      - ssh-access
-
   tasks:
     # ── 1. Authenticate to Vault ───────────────────────────────────────
     - name: Authenticate to Vault with userpass

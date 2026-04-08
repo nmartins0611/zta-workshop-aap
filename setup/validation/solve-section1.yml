@@ -1,7 +1,8 @@
 ---
-# Section 1 Solve: Configure ZTA Components & AAP Integration
+# Section 1 Solve: ZTA + AAP integration
 #
-# Auto-creates all AAP resources that participants configure manually:
+# Auto-creates AAP resources when participants skip hands-on setup (credentials
+# are normally pre-created with configure-aap-credentials.yml; students verify):
 #   - All 5 credentials (delegates to configure-aap-credentials.yml)
 #   - Project from Gitea
 #   - Inventory with NetBox source

@@ -5,29 +5,43 @@
 # Creates:
 #   1. ZTA Workshop EE             — Custom execution environment (cEOS + RHEL)
 #   2. ZTA Workshop Project        — SCM project (Git)
-#   3. Section 1 job templates     — Verify ZTA, Vault, Vault SSH, OPA
+#   3. Job templates               — All playbooks under section*/playbooks/ (tagged per section)
 #
 # Prerequisites:
 #   - AAP Controller is installed and reachable
 #   - SCM host reachable; zta-workshop-aap repo exists at project_scm_url
 #   - ansible.controller collection available
 #   - ZTA Lab Inventory and ZTA Machine Credential already exist on the controller
+#   - ZTA Arista Credential for templates that touch switches (see vars file)
 #
 # Usage:
 #   ansible-playbook -i inventory/hosts.ini setup/configure-aap-project.yml
 #   ansible-playbook -i inventory/hosts.ini setup/configure-aap-project.yml --tags ee
 #   ansible-playbook -i inventory/hosts.ini setup/configure-aap-project.yml --tags project
 #   ansible-playbook -i inventory/hosts.ini setup/configure-aap-project.yml --tags templates
+#   ansible-playbook -i inventory/hosts.ini setup/configure-aap-project.yml --tags section1
+#   ansible-playbook -i inventory/hosts.ini setup/configure-aap-project.yml --tags section2
+#   ansible-playbook -i inventory/hosts.ini setup/configure-aap-project.yml --tags "section1,section2"
+#
+# Remove job templates (does not delete project/EE):
+#   ansible-playbook -i inventory/hosts.ini setup/configure-aap-project.yml --tags remove_section -e aap_remove_section=3
+#   ansible-playbook -i inventory/hosts.ini setup/configure-aap-project.yml --tags remove_last_section
 #
 # Tags:
-#   ee         — Execution environment only
-#   project    — SCM project only (sync included)
-#   templates  — Section 1 job templates only (project must exist)
+#   ee                 — Execution environment only
+#   project            — SCM project only (sync included)
+#   templates          — All workshop job templates (all sections)
+#   section1 … section7— Only that section’s job templates
+#   remove_section     — Delete templates for aap_remove_section (integer, required)
+#   remove_last_section— Delete templates for the highest section number in the catalog
 
 - name: Create AAP Project and Execution Environment for ZTA Workshop
   hosts: localhost
   connection: local
   gather_facts: false
+
+  vars_files:
+    - vars/zta_workshop_job_templates.yml
 
   vars:
     aap_host: "{{ aap_controller_url | default('https://control.zta.lab') }}"
@@ -45,6 +59,9 @@
     # Pre-created on the controller before this playbook (see solve-section1 / lab docs)
     inventory_name: ZTA Lab Inventory
     machine_credential_name: ZTA Machine Credential
+
+    # Set -e aap_remove_section=N with --tags remove_section to delete that section’s templates
+    aap_remove_section: 0
 
   module_defaults:
     group/ansible.controller.controller:
@@ -85,7 +102,7 @@
         pull: missing
         organization: "{{ aap_organization }}"
         state: present
-      tags: [ee]
+      tags: [ee, aap-bootstrap, aap, aap-project]
 
     # ══════════════════════════════════════════════════════════════════════
     #  2. Project — SCM project pointing at Gitea
@@ -103,7 +120,7 @@
         scm_update_on_launch: true
         default_environment: "{{ ee_name }}"
         state: present
-      tags: [project]
+      tags: [project, aap-bootstrap, aap, aap-project]
 
     - name: Wait for initial project sync to complete
       ansible.controller.project:
@@ -112,10 +129,10 @@
         wait: true
         timeout: 120
         state: present
-      tags: [project]
+      tags: [project, aap-bootstrap, aap, aap-project]
 
     # ══════════════════════════════════════════════════════════════════════
-    #  3. Section 1 job templates
+    #  3. Job templates — catalog in vars/zta_workshop_job_templates.yml
     # ══════════════════════════════════════════════════════════════════════
 
     - name: Create Section 1 job templates
@@ -125,25 +142,144 @@
         project: "{{ project_name }}"
         playbook: "{{ item.playbook }}"
         inventory: "{{ inventory_name }}"
-        credentials:
-          - "{{ machine_credential_name }}"
+        credentials: "{{ item.credentials }}"
+        survey_enabled: "{{ item.survey_enabled | default(false) | bool }}"
+        survey_spec: "{{ item.survey_spec | default(omit) }}"
         state: present
-      loop:
-        - name: Verify ZTA Services
-          description: "Section 1 — Verify all ZTA infrastructure services"
-          playbook: section1/playbooks/verify-zta-services.yml
-        - name: Test Vault Integration
-          description: "Section 1 — Test Vault dynamic credentials"
-          playbook: section1/playbooks/test-vault-integration.yml
-        - name: Test Vault SSH Certificates
-          description: "Section 1 — Test Vault SSH signed certificates"
-          playbook: section1/playbooks/test-vault-ssh.yml
-        - name: Test OPA Policy
-          description: "Section 1 — Test OPA policy decisions"
-          playbook: section1/playbooks/test-opa-policy.yml
+      loop: "{{ zta_workshop_job_templates | selectattr('section', 'equalto', 1) | list }}"
       loop_control:
         label: "{{ item.name }}"
-      tags: [templates]
+      tags: [templates, section1, aap-bootstrap, aap, aap-project]
+
+    - name: Create Section 2 job templates
+      ansible.controller.job_template:
+        name: "{{ item.name }}"
+        description: "{{ item.description }}"
+        project: "{{ project_name }}"
+        playbook: "{{ item.playbook }}"
+        inventory: "{{ inventory_name }}"
+        credentials: "{{ item.credentials }}"
+        survey_enabled: "{{ item.survey_enabled | default(false) | bool }}"
+        survey_spec: "{{ item.survey_spec | default(omit) }}"
+        state: present
+      loop: "{{ zta_workshop_job_templates | selectattr('section', 'equalto', 2) | list }}"
+      loop_control:
+        label: "{{ item.name }}"
+      tags: [templates, section2]
+
+    - name: Create Section 3 job templates
+      ansible.controller.job_template:
+        name: "{{ item.name }}"
+        description: "{{ item.description }}"
+        project: "{{ project_name }}"
+        playbook: "{{ item.playbook }}"
+        inventory: "{{ inventory_name }}"
+        credentials: "{{ item.credentials }}"
+        survey_enabled: "{{ item.survey_enabled | default(false) | bool }}"
+        survey_spec: "{{ item.survey_spec | default(omit) }}"
+        state: present
+      loop: "{{ zta_workshop_job_templates | selectattr('section', 'equalto', 3) | list }}"
+      loop_control:
+        label: "{{ item.name }}"
+      tags: [templates, section3]
+
+    - name: Create Section 4 job templates
+      ansible.controller.job_template:
+        name: "{{ item.name }}"
+        description: "{{ item.description }}"
+        project: "{{ project_name }}"
+        playbook: "{{ item.playbook }}"
+        inventory: "{{ inventory_name }}"
+        credentials: "{{ item.credentials }}"
+        survey_enabled: "{{ item.survey_enabled | default(false) | bool }}"
+        survey_spec: "{{ item.survey_spec | default(omit) }}"
+        state: present
+      loop: "{{ zta_workshop_job_templates | selectattr('section', 'equalto', 4) | list }}"
+      loop_control:
+        label: "{{ item.name }}"
+      tags: [templates, section4]
+
+    - name: Create Section 5 job templates
+      ansible.controller.job_template:
+        name: "{{ item.name }}"
+        description: "{{ item.description }}"
+        project: "{{ project_name }}"
+        playbook: "{{ item.playbook }}"
+        inventory: "{{ inventory_name }}"
+        credentials: "{{ item.credentials }}"
+        survey_enabled: "{{ item.survey_enabled | default(false) | bool }}"
+        survey_spec: "{{ item.survey_spec | default(omit) }}"
+        state: present
+      loop: "{{ zta_workshop_job_templates | selectattr('section', 'equalto', 5) | list }}"
+      loop_control:
+        label: "{{ item.name }}"
+      tags: [templates, section5]
+
+    - name: Create Section 6 job templates
+      ansible.controller.job_template:
+        name: "{{ item.name }}"
+        description: "{{ item.description }}"
+        project: "{{ project_name }}"
+        playbook: "{{ item.playbook }}"
+        inventory: "{{ inventory_name }}"
+        credentials: "{{ item.credentials }}"
+        survey_enabled: "{{ item.survey_enabled | default(false) | bool }}"
+        survey_spec: "{{ item.survey_spec | default(omit) }}"
+        state: present
+      loop: "{{ zta_workshop_job_templates | selectattr('section', 'equalto', 6) | list }}"
+      loop_control:
+        label: "{{ item.name }}"
+      tags: [templates, section6]
+
+    - name: Create Section 7 job templates
+      ansible.controller.job_template:
+        name: "{{ item.name }}"
+        description: "{{ item.description }}"
+        project: "{{ project_name }}"
+        playbook: "{{ item.playbook }}"
+        inventory: "{{ inventory_name }}"
+        credentials: "{{ item.credentials }}"
+        survey_enabled: "{{ item.survey_enabled | default(false) | bool }}"
+        survey_spec: "{{ item.survey_spec | default(omit) }}"
+        state: present
+      loop: "{{ zta_workshop_job_templates | selectattr('section', 'equalto', 7) | list }}"
+      loop_control:
+        label: "{{ item.name }}"
+      tags: [templates, section7]
+
+    # ══════════════════════════════════════════════════════════════════════
+    #  4. Remove job templates (optional)
+    # ══════════════════════════════════════════════════════════════════════
+
+    - name: Require aap_remove_section when using remove_section tag
+      ansible.builtin.assert:
+        that:
+          - aap_remove_section | default(0) | int > 0
+        fail_msg: >-
+          Pass a positive section number, e.g. -e aap_remove_section=3
+          when running with --tags remove_section.
+      tags: [remove_section]
+
+    - name: Remove job templates for a specific section
+      ansible.controller.job_template:
+        name: "{{ item.name }}"
+        state: absent
+      loop: "{{ zta_workshop_job_templates | selectattr('section', 'equalto', aap_remove_section | int) | list }}"
+      loop_control:
+        label: "{{ item.name }}"
+      when: aap_remove_section | default(0) | int > 0
+      tags: [remove_section]
+
+    - name: Remove job templates for last catalog section (highest section number)
+      vars:
+        zta_workshop_last_section: "{{ zta_workshop_job_templates | map(attribute='section') | max }}"
+      ansible.controller.job_template:
+        name: "{{ item.name }}"
+        state: absent
+      loop: "{{ zta_workshop_job_templates | selectattr('section', 'equalto', zta_workshop_last_section) | list }}"
+      loop_control:
+        label: "{{ item.name }}"
+      tags: [remove_last_section]
 
     # ══════════════════════════════════════════════════════════════════════
     #  Summary
@@ -151,6 +287,8 @@
 
     - name: Display configuration summary
       tags: [always]
+      vars:
+        _tpl_count: "{{ zta_workshop_job_templates | length }}"
       debug:
         msg: |
           ╔═══════════════════════════════════════════════════════════════════╗
@@ -166,13 +304,15 @@
           ║  │   │   SCM URL                │ (see below)                  │║
           ║  │   │   Branch                 │ main                         │║
           ║  │   │   Update on launch       │ yes                          │║
-          ║  │ 3 │ Job templates (S1)     │ 4 (Verify ZTA, Vault, …)     │║
+          ║  │ 3 │ Job templates (catalog)  │ {{ _tpl_count }} (tags section1–section7)   │║
           ║  └───┴──────────────────────────┴──────────────────────────────┘║
           ║                                                                 ║
           ║  SCM URL: {{ project_scm_url }}{{ ' ' * (55 - project_scm_url | length) }}║
           ║  Default EE: {{ ee_name }}{{ ' ' * (53 - ee_name | length) }}║
           ║  Inventory: {{ inventory_name }}{{ ' ' * (53 - inventory_name | length) }}║
           ║                                                                 ║
-          ║  Templates: {{ machine_credential_name }} + project default EE.  ║
+          ║  Add per lab phase:  --tags sectionN   (or --tags templates for all) ║
+          ║  Remove section N:  --tags remove_section -e aap_remove_section=N   ║
+          ║  Remove last section: --tags remove_last_section                  ║
           ║                                                                 ║
           ╚═══════════════════════════════════════════════════════════════════╝

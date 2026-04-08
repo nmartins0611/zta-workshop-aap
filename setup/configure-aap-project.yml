@@ -4,21 +4,25 @@
 #
 # Creates:
 #   1. ZTA Workshop EE             — Custom execution environment (cEOS + RHEL)
-#   2. ZTA Workshop Project        — SCM project pointing at Gitea
+#   2. ZTA Workshop Project        — SCM project (Git)
+#   3. Section 1 job templates     — Verify ZTA, Vault, Vault SSH, OPA
 #
 # Prerequisites:
 #   - AAP Controller is installed and reachable
-#   - Gitea is deployed and the zta-workshop-aap repo exists
+#   - SCM host reachable; zta-workshop-aap repo exists at project_scm_url
 #   - ansible.controller collection available
+#   - ZTA Lab Inventory and ZTA Machine Credential already exist on the controller
 #
 # Usage:
 #   ansible-playbook -i inventory/hosts.ini setup/configure-aap-project.yml
 #   ansible-playbook -i inventory/hosts.ini setup/configure-aap-project.yml --tags ee
 #   ansible-playbook -i inventory/hosts.ini setup/configure-aap-project.yml --tags project
+#   ansible-playbook -i inventory/hosts.ini setup/configure-aap-project.yml --tags templates
 #
 # Tags:
-#   ee       — Execution environment only
-#   project  — SCM project only
+#   ee         — Execution environment only
+#   project    — SCM project only (sync included)
+#   templates  — Section 1 job templates only (project must exist)
 
 - name: Create AAP Project and Execution Environment for ZTA Workshop
   hosts: localhost
@@ -36,7 +40,11 @@
     ee_image: quay.io/acme_corp/network-ee
 
     project_name: ZTA Workshop
-    project_scm_url: http://gitea:3000/gitea/zta-workshop-aap.git
+    project_scm_url: https://github.com/nmartins0611/zta-workshop-aap.git
+
+    # Pre-created on the controller before this playbook (see solve-section1 / lab docs)
+    inventory_name: ZTA Lab Inventory
+    machine_credential_name: ZTA Machine Credential
 
   module_defaults:
     group/ansible.controller.controller:
@@ -107,6 +115,37 @@
       tags: [project]
 
     # ══════════════════════════════════════════════════════════════════════
+    #  3. Section 1 job templates
+    # ══════════════════════════════════════════════════════════════════════
+
+    - name: Create Section 1 job templates
+      ansible.controller.job_template:
+        name: "{{ item.name }}"
+        description: "{{ item.description }}"
+        project: "{{ project_name }}"
+        playbook: "{{ item.playbook }}"
+        inventory: "{{ inventory_name }}"
+        credentials:
+          - "{{ machine_credential_name }}"
+        state: present
+      loop:
+        - name: Verify ZTA Services
+          description: "Section 1 — Verify all ZTA infrastructure services"
+          playbook: section1/playbooks/verify-zta-services.yml
+        - name: Test Vault Integration
+          description: "Section 1 — Test Vault dynamic credentials"
+          playbook: section1/playbooks/test-vault-integration.yml
+        - name: Test Vault SSH Certificates
+          description: "Section 1 — Test Vault SSH signed certificates"
+          playbook: section1/playbooks/test-vault-ssh.yml
+        - name: Test OPA Policy
+          description: "Section 1 — Test OPA policy decisions"
+          playbook: section1/playbooks/test-opa-policy.yml
+      loop_control:
+        label: "{{ item.name }}"
+      tags: [templates]
+
+    # ══════════════════════════════════════════════════════════════════════
     #  Summary
     # ══════════════════════════════════════════════════════════════════════
 
@@ -127,13 +166,13 @@
           ║  │   │   SCM URL                │ (see below)                  │║
           ║  │   │   Branch                 │ main                         │║
           ║  │   │   Update on launch       │ yes                          │║
+          ║  │ 3 │ Job templates (S1)     │ 4 (Verify ZTA, Vault, …)     │║
           ║  └───┴──────────────────────────┴──────────────────────────────┘║
           ║                                                                 ║
           ║  SCM URL: {{ project_scm_url }}{{ ' ' * (55 - project_scm_url | length) }}║
           ║  Default EE: {{ ee_name }}{{ ' ' * (53 - ee_name | length) }}║
+          ║  Inventory: {{ inventory_name }}{{ ' ' * (53 - inventory_name | length) }}║
           ║                                                                 ║
-          ║  The project syncs from Gitea on every job launch.              ║
-          ║  All job templates using this project will automatically        ║
-          ║  run inside the {{ ee_name }} execution environment.{{ ' ' * (27 - ee_name | length) }}║
+          ║  Templates: {{ machine_credential_name }} + project default EE.  ║
           ║                                                                 ║
           ╚═══════════════════════════════════════════════════════════════════╝

@@ -3,39 +3,17 @@
 Diagnose NetBox dynamic inventory (same env vars AAP injects: NETBOX_API, NETBOX_TOKEN).
 Run from repo root after: export NETBOX_API=... NETBOX_TOKEN=...
 """
-# #region agent log
-import json
 import os
 import re
 import subprocess
 import sys
-import time
-from typing import Optional
 import urllib.error
 import urllib.request
 from pathlib import Path
+from typing import Optional
 from urllib.parse import urlparse
 
-LOG = "/home/nmartins/Development/.cursor/debug-2d3c8d.log"
-SESSION = "2d3c8d"
 REPO_ROOT = Path(__file__).resolve().parent.parent
-
-
-def _log(hypothesis_id: str, message: str, data: dict) -> None:
-    payload = {
-        "sessionId": SESSION,
-        "runId": os.environ.get("DEBUG_RUN_ID", "pre-fix"),
-        "hypothesisId": hypothesis_id,
-        "location": "scripts/diagnose_netbox_inventory_sync.py",
-        "message": message,
-        "data": data,
-        "timestamp": int(time.time() * 1000),
-    }
-    with open(LOG, "a", encoding="utf-8") as f:
-        f.write(json.dumps(payload) + "\n")
-
-
-# #endregion
 
 
 def _group_vars_netbox_url() -> Optional[str]:
@@ -72,35 +50,40 @@ def _netbox_status_check(api_base: str, token: str) -> dict:
 
 
 def main() -> int:
-    # #region agent log
     api = os.environ.get("NETBOX_API", "").strip()
     token_set = bool(os.environ.get("NETBOX_TOKEN", "").strip())
     parsed = urlparse(api) if api else None
-    port = parsed.port if parsed and parsed.port else (80 if parsed and parsed.scheme == "http" else 443 if parsed and parsed.scheme == "https" else None)
+    port = (
+        parsed.port
+        if parsed and parsed.port
+        else (
+            80
+            if parsed and parsed.scheme == "http"
+            else 443 if parsed and parsed.scheme == "https" else None
+        )
+    )
 
-    _log(
-        "H1",
-        "credential env presence (AAP injector)",
-        {
-            "NETBOX_API_set": bool(api),
-            "NETBOX_TOKEN_set": token_set,
-            "api_host": parsed.hostname if parsed else None,
-            "api_port": port,
-            "api_scheme": parsed.scheme if parsed else None,
-        },
+    print(
+        "Env: NETBOX_API set=%s, NETBOX_TOKEN set=%s; host=%s port=%s scheme=%s"
+        % (
+            bool(api),
+            token_set,
+            parsed.hostname if parsed else None,
+            port,
+            parsed.scheme if parsed else None,
+        )
     )
 
     gv_url = _group_vars_netbox_url()
-    _log(
-        "H4",
-        "group_vars netbox_url vs NETBOX_API port",
-        {
-            "group_vars_netbox_url": gv_url,
-            "env_uses_port_8000": ":8000" in api if api else False,
-            "env_uses_port_8880": ":8880" in api if api else False,
-            "gv_uses_8000": ":8000" in (gv_url or ""),
-            "gv_uses_8880": ":8880" in (gv_url or ""),
-        },
+    print(
+        "group_vars netbox_url: %r (env has :8000=%s :8880=%s; gv has :8000=%s :8880=%s)"
+        % (
+            gv_url,
+            ":8000" in api if api else False,
+            ":8880" in api if api else False,
+            ":8000" in (gv_url or ""),
+            ":8880" in (gv_url or ""),
+        )
     )
 
     r = subprocess.run(
@@ -110,23 +93,17 @@ def main() -> int:
         timeout=120,
     )
     gal = (r.stdout or "") + (r.stderr or "")
-    _log(
-        "H5",
-        "local ansible-galaxy netbox.netbox",
-        {
-            "exit_code": r.returncode,
-            "netbox_netbox_present": "netbox.netbox" in gal,
-        },
+    print(
+        "ansible-galaxy collection list: exit=%s, netbox.netbox present=%s"
+        % (r.returncode, "netbox.netbox" in gal)
     )
 
     if not api or not token_set:
-        _log("H2", "skip NetBox HTTP (missing api or token)", {})
-        _log("H3", "skip ansible-inventory (missing api or token)", {})
-        print(f"Set NETBOX_API and NETBOX_TOKEN, then re-run. Logs: {LOG}")
+        print("Set NETBOX_API and NETBOX_TOKEN, then re-run.", file=sys.stderr)
         return 2
 
     status = _netbox_status_check(api, os.environ.get("NETBOX_TOKEN", "").strip())
-    _log("H2", "NetBox GET /api/status/", status)
+    print("NetBox GET /api/status/: %r" % (status,))
 
     inv_dir = REPO_ROOT / "inventory"
     cfg = inv_dir / "ansible.cfg"
@@ -146,18 +123,13 @@ def main() -> int:
         env=env,
     )
     err = (proc.stderr or "")[:1200]
-    _log(
-        "H3",
-        "ansible-inventory --list",
-        {
-            "exit_code": proc.returncode,
-            "stderr_head": err,
-            "stdout_bytes": len(proc.stdout or ""),
-        },
+    print(
+        "ansible-inventory --list: exit=%s, stdout_bytes=%s"
+        % (proc.returncode, len(proc.stdout or ""))
     )
-    # #endregion
+    if err:
+        print("ansible-inventory stderr (head):\n%s" % err, file=sys.stderr)
 
-    print(f"Diagnostics appended to {LOG}")
     return 0 if proc.returncode == 0 else 1
 
 

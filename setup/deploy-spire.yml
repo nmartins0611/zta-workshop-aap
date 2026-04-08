@@ -312,17 +312,6 @@
       debug:
         msg: "{{ agent_list.stdout }}"
 
-    # #region agent log
-    - name: "[DEBUG 5a17d8] Verify hostvars agent IDs for each workload"
-      debug:
-        msg: >-
-          parent_host={{ item.parent_host }}
-          spire_agent_id={{ hostvars[item.parent_host]['spire_agent_id'] }}
-      loop: "{{ spire_workloads }}"
-      loop_control:
-        label: "{{ item.parent_host }}"
-    # #endregion
-
     - name: Register workload entries
       command: >
         {{ spire_install_dir }}/bin/spire-server entry create

@@ -10,6 +10,9 @@
 #   - AAP Controller is installed and reachable
 #   - OPA is running on central.zta.lab with aap_gateway.rego loaded
 #   - setup/configure-opa-base.yml has been run
+#
+# Manual alternative (controller UI or REST API): docs/deployment-guide.md
+# → Layer 7 — Policy → "Manual Policy as Code (OPA gateway)".
 
 - name: Configure AAP Policy as Code (OPA Gateway)
   hosts: localhost

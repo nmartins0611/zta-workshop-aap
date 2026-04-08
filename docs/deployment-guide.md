@@ -337,6 +337,43 @@ Loads all OPA Rego policies, configures the AAP controller to check OPA
 before every job launch (Policy as Code), and wires AAP LDAP authentication
 to the IdM directory so workshop users can log in.
 
+<a id="manual-policy-as-code-opa"></a>
+
+**Manual Policy as Code (OPA gateway) — alternative to `configure-aap-policy.yml`**
+
+Use this when you prefer the controller UI or API instead of the Ansible task in `setup/configure-aap-policy.yml`. The playbook PATCHes `/api/controller/v2/settings/opa/` with the same values listed below.
+
+1. **Prerequisite:** `setup/configure-opa-base.yml` must have run so OPA exposes `v1/data/aap/gateway/decision` (gateway Rego loaded). Quick check:
+   ```bash
+   curl -s http://central.zta.lab:8181/v1/policies | python3 -m json.tool
+   ```
+
+2. **Automation controller UI (AAP 2.6)** — log in as a platform administrator, open **Settings**, then the **Policy** / **Open Policy Agent** / **Policy as Code** category (exact label depends on controller patch level). Configure:
+   - **OPA URL** (or **Open Policy Agent URL**): `http://central.zta.lab:8181` — match `opa_url` in `inventory/group_vars/all.yml` if your lab uses a different host or TLS.
+   - **Policy path**: `v1/data/aap/gateway/decision` — path only, not a full URL.
+   - **Enable Policy as Code** / **Enable OPA**: on.
+   - **Pre-action policy enforcement** (or equivalent): on (matches `OPA_PRE_ACTION_ENABLED`).
+   - **Request timeout (seconds)**: `5`.
+   Save the settings.
+
+3. **Controller REST API** (equivalent to the playbook — adjust URL, user, and password):
+   ```bash
+   AAP=https://control.zta.lab
+   curl -sk -u "admin:ansible123!" \
+     -X PATCH "${AAP}/api/controller/v2/settings/opa/" \
+     -H "Content-Type: application/json" \
+     -d '{
+       "OPA_URL": "http://central.zta.lab:8181",
+       "OPA_POLICY_PATH": "v1/data/aap/gateway/decision",
+       "OPA_ENABLED": true,
+       "OPA_PRE_ACTION_ENABLED": true,
+       "OPA_REQUEST_TIMEOUT": 5
+     }'
+   ```
+   Confirm with GET (same URL, basic auth): the JSON body should show the same `OPA_*` fields.
+
+4. **Validation:** OPA should deny an unauthorised launch input (see [Appendix — AAP Policy as Code troubleshooting](exercise-guide.md#aap-policy-as-code-not-blocking) in the exercise guide). For TLS to the controller, install or trust your lab CA if the UI or `curl` fails on certificate verification.
+
 #### Layer 8 — Workload Identity (~2 min)
 
 ```bash
@@ -485,42 +522,28 @@ curl -sk https://control.zta.lab/api/controller/v2/ping/
 
 ## 7. Phase 5 — AAP Controller and EDA Configuration
 
-Use **Red Hat Ansible Automation Platform 2.6**: the **automation controller** web UI for credentials, projects, inventories, and templates, and the **Event-Driven Ansible controller** for rulebook activations. These steps are done in the platform UI (or via API) and are typically the first exercises attendees perform (Section 1 of the workshop).
+Use **Red Hat Ansible Automation Platform 2.6**: the **automation controller** web UI for credentials, projects, inventories, and templates, and the **Event-Driven Ansible controller** for rulebook activations. Section 1 assumes credentials are **pre-created** with `setup/configure-aap-credentials.yml`; attendees **verify** Vault lookups and related objects, then configure inventory, project, and job templates (or use additional setup playbooks for a shorter path).
 
 ### Pre-configure for Attendees (Instructor)
 
-If you want attendees to start from Section 2 (skip credential/project
-setup), pre-create these in the **automation controller** UI:
+**Credentials (recommended):** Run `setup/configure-aap-credentials.yml` after
+Vault and NetBox are ready. That creates **ZTA Vault Credential**, **ZTA Machine
+Credential** (KV lookups), **ZTA Arista Credential** (KV lookups), **ZTA NetBox
+Credential**, and **ZTA Vault SSH Credential** (AppRole). Section 1 has
+attendees **verify** those objects and lookups instead of building them in the UI
+(see `section1/README.md` Exercise 1.1).
 
-**Credentials:**
+**Source control:** `configure-aap-credentials.yml` does **not** create **ZTA
+Gitea Credential**. Add it in the controller UI if your Git URL needs
+authentication, or pre-create it alongside the project below.
 
-| Name | Type | Details |
-|------|------|---------|
-| ZTA Machine Credential | Machine | User: `rhel`, sudo enabled, linked to Vault SSH cert |
-| ZTA Vault Credential | HashiCorp Vault Secret Lookup | URL: `http://vault.zta.lab:8200` (or Vault **IP** if controller pods cannot resolve the name), **default auth path / Path to Auth:** `userpass`, `admin`/`ansible123!` |
-| ZTA Vault SSH Credential | HashiCorp Vault Signed SSH | URL: `http://vault.zta.lab:8200`, AppRole auth |
-| ZTA Arista Credential | Network | User: `admin`, Pass: `admin` |
-| ZTA Gitea Credential | Source Control | Gitea user + password |
+**Optional — UI-only reference** (if you are not using
+`configure-aap-credentials.yml`): see historical field values in
+`section1/README.md` (NetBox custom type YAML) or mirror the API inputs in
+`setup/configure-aap-credentials.yml`.
 
-`setup/configure-aap-credentials.yml` wires Machine/Arista lookups with KV paths **`secret/machine/rhel`** and **`secret/network/arista`** (AAP 2.6 KV v2 — avoid `secret/data/...` in the lookup metadata, which duplicates the `data` segment). Direct Vault HTTP writes in that playbook still use `/v1/secret/data/...` as required by the API.
-
-### Vault AppRole naming and impact
-
-Workshop automation uses **two** Vault AppRole names (see [inventory/group_vars/all.yml](../inventory/group_vars/all.yml)):
-
-| Variable | Default role | Used by | Purpose |
-|----------|----------------|---------|---------|
-| `ssh_approle_name` / `ssh_approle_policies` | `ssh-client` + policy `ssh-access` | `setup/configure-aap-credentials.yml` (`--tags vault-ssh`), `setup/configure-aap-vault-ssh.yml` | **ZTA Vault SSH Credential** in AAP (`HashiCorp Vault Signed SSH`) — Role ID + Secret ID stored in the controller |
-| `vault_lockdown_approle_name` / `vault_lockdown_approle_policies` | `aap-automation` + combined policies | `setup/ssh_lockdown/lockdown-vault-policies.yml` | Post–Section 6 lockdown: full automation identity (KV, DB creds, SSH signing). Playbook output supplies Role ID + Secret ID |
-
-**If you change an AppRole** (rename, change `token_policies`, rotate Secret ID, or merge roles):
-
-1. **Re-run** the playbook that creates that role and **update the matching AAP credential** (UI or re-run the credentials playbook) so Role ID and Secret ID stay valid.
-2. **Vault ACL policies** attached via `token_policies` must exist and must allow every path that credential needs (for example `ssh/sign/*` for signed SSH certs; the `aap-automation` policy also allows database and KV paths used by jobs).
-3. **Keep both credential playbooks aligned** — they read the same `ssh_approle_*` variables from `group_vars`; do not hardcode different names in only one file.
-4. **After lockdown**, update AAP to use the **`aap-automation`** AppRole credentials from `lockdown-vault-policies.yml` output for credentials that must generate dynamic secrets or sign SSH certs; the bootstrap **userpass** `admin` account is restricted to `human-readonly` and cannot sign SSH certificates or read database dynamic credentials. See [setup/ssh_lockdown/README.md](../setup/ssh_lockdown/README.md).
-
-**Usually unchanged** by AppRole edits alone: SSH CA trust on hosts (`setup/configure-vault-ssh.yml`), Vault SSH engine paths (`vault_ssh_*` in `group_vars`), and NetBox/Arista credential definitions — unless token policies no longer grant the paths those jobs need.
+**Jump to Section 2:** Pre-create the same objects (credentials + inventory +
+project below) so attendees skip Section 1 hands-on.
 
 **Inventory:**
 
@@ -533,6 +556,8 @@ Workshop automation uses **two** Vault AppRole names (see [inventory/group_vars/
 | Name | SCM Type | URL |
 |------|----------|-----|
 | ZTA Workshop | Git | `http://gitea.zta.lab:3000/zta-workshop/zta-app.git` |
+
+**Policy as Code (OPA)** — Section 3 and Section 4 assume the automation controller is integrated with the workshop OPA gateway (`aap.gateway`). Enable that by running `setup/configure-aap-policy.yml` (Layer 7) or by using the [manual UI/API steps](#manual-policy-as-code-opa) under Layer 7 above.
 
 ### Event-Driven Ansible configuration (AAP 2.6)
 
@@ -597,7 +622,7 @@ Run through this checklist the day of the workshop:
 | Time | Activity |
 |------|----------|
 | 0:00 | Intro / Architecture overview (10 min) |
-| 0:10 | Section 1: Configure ZTA Components — exercises 1.1–1.7 (25 min) |
+| 0:10 | Section 1: ZTA + AAP integration — verify credentials, inventory, templates 1.1–1.7 (25 min) |
 | 0:35 | Section 2: Deploy App with Short-Lived Credentials — exercises 2.1–2.6 (30 min) |
 | 1:05 | Section 3: AAP Policy as Code — exercises 3.1–3.6 (20 min) |
 | 1:25 | Break (5 min) |

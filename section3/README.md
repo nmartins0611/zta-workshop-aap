@@ -17,6 +17,10 @@
 > For a **2-hour workshop**, complete exercises **3.1–3.6** (~20 min).
 > Section 3B is a deep-dive hands-on lab for longer formats only.
 
+## Prerequisite
+
+The automation controller must have **Policy as Code** enabled and pointed at the workshop OPA gateway (`v1/data/aap/gateway/decision`). Use `setup/configure-aap-policy.yml`, or configure manually via the controller UI/API — see **`docs/deployment-guide.md`** (Layer 7 — Policy, *Manual Policy as Code*). Ensure `setup/configure-opa-base.yml` has loaded OPA policies (including `aap.gateway`) first.
+
 ## Objective
 
 Demonstrate how AAP **Policy as Code** prevents unauthorised users from even

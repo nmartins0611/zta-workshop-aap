@@ -81,12 +81,11 @@ containers via published ports on central's management IP.
 
 ## Workshop Sections
 
-### Section 1 — Configure ZTA Components & AAP Integration
+### Section 1 — Verify ZTA Components & AAP Integration
 
-Configure AAP and connect it to the Zero Trust infrastructure: IdM for
-identity, Vault for secrets (including SSH signed certificates), OPA for
-policy decisions, Netbox as a CMDB, and Gitea for source control. Verify
-all services are healthy.
+Pre-create AAP credentials with `setup/configure-aap-credentials.yml`, then
+verify Vault lookups, inventory, and templates. Connect AAP to IdM, Vault, OPA,
+Netbox, and Gitea and confirm all services are healthy.
 
 ### Section 2 — Deploy Application with Short-Lived Credentials
 
@@ -198,6 +197,12 @@ ansible-playbook setup/configure-wazuh-eda.yml
 
 # Verify everything
 ansible-playbook setup/verify-lab.yml
+
+# Automation controller bootstrap (run after AAP is installed; attendees verify in Section 1)
+ansible-playbook setup/configure-aap-credentials.yml
+# Optional: execution environment + Git project, static inventory
+# ansible-playbook setup/configure-aap-project.yml
+# ansible-playbook setup/configure-aap-inventory.yml
 ```
 
 ### 7. Start the workshop
@@ -205,7 +210,7 @@ ansible-playbook setup/verify-lab.yml
 Section guides (Markdown): `sectionN/README.md`. **AsciiDoc lab handouts:** `sectionN/lab/index.adoc` (index of all: `docs/lab/index.adoc`).
 
 ```
-section1/README.md   — Configure & Verify
+section1/README.md   — Verify integrations & health
 section2/README.md   — Deploy App with Short-Lived Credentials
 section3/README.md   — AAP Policy as Code: Patching
 section4/README.md   — SPIFFE-Verified VLAN Management

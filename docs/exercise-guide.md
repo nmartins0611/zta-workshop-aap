@@ -228,7 +228,7 @@ ansible-playbook setup/configure-wazuh-eda.yml
 
 ---
 
-## Section 1 — Configure ZTA Components & AAP Integration
+## Section 1 — Verify ZTA Components & AAP Integration
 
 ### Learning Objectives
 
@@ -277,40 +277,39 @@ vault secrets list    # should show database/, secret/, ssh/
 
 ---
 
-### Exercise 1.2 — Configure AAP Credentials
+### Exercise 1.2 — Verify AAP credentials (pre-configured)
 
-Log into the **automation controller** (AAP 2.6) at `https://control.zta.lab` and create:
+**Instructor:** Run `setup/configure-aap-credentials.yml` before the workshop.
+That creates the Vault lookup credential, Machine and Arista credentials with
+**KV lookups**, NetBox credential, and Vault Signed SSH credential.
 
-| Credential | Type | Key Details |
-|------------|------|-------------|
-| ZTA Machine Credential | Machine | Username: `rhel`, sudo |
-| ZTA Vault Credential | HashiCorp Vault Secret Lookup | URL: `http://vault.zta.lab:8200` (Vault IP if needed), **Path to Auth:** `userpass`, admin / ansible123! |
-| ZTA Vault SSH Credential | HashiCorp Vault Signed SSH | URL: `http://vault.zta.lab:8200`, AppRole (Role ID + Secret ID from instructor) |
-| ZTA Arista Credential | Network | Username: `admin`, Password: `admin` |
-| ZTA Gitea Credential | Source Control | Gitea username + password |
-| ZTA NetBox Credential | NetBox (custom) | URL: `http://netbox.zta.lab:8880`, Token: `0123456789abcdef0123456789abcdef01234567` |
+Attendees log into the **automation controller** (AAP 2.6) at
+`https://control.zta.lab` and **confirm** the following exist — do **not**
+recreate them unless troubleshooting:
 
-> **Note**: The `NetBox` credential type is pre-created by the setup playbook.
-> If missing, create it under **Administration → Credential Types** — see
-> `section1/README.md` Exercise 1.1 for the full Input/Injector YAML.
+| Credential | Type | What to verify |
+|------------|------|----------------|
+| ZTA Vault Credential | HashiCorp Vault Secret Lookup | Vault URL, v2; bootstrap userpass fields present |
+| ZTA Machine Credential | Machine | User `rhel`, sudo; password/become use lookups on `secret/data/machine/rhel` |
+| ZTA Arista Credential | Network | Lookups on `secret/data/network/arista` |
+| ZTA Vault SSH Credential | HashiCorp Vault Signed SSH | Present (AppRole to Vault) |
+| ZTA NetBox Credential | NetBox | URL + token match the lab NetBox |
 
-> **KV lookup paths (AAP 2.6):** For Machine and Arista credentials that source
-> secrets from Vault, use lookup paths **`secret/machine/rhel`** and
-> **`secret/network/arista`** — not `secret/data/...` — so the controller does
-> not double the `data` segment for KV v2. See `section1/README.md` Step 3–4.
+**ZTA Gitea Credential** (source control) is **not** created by
+`configure-aap-credentials.yml`. Confirm or add it when configuring the
+**ZTA Workshop** project (next exercise), if required for your Git URL.
+
+> **Note**: If the `NetBox` credential type is missing, see `section1/README.md`
+> Exercise 1.1 (NetBox troubleshooting) for Input/Injector YAML.
 
 **Vault SSH Signed Certificate Flow:** When a job template runs, AAP
 authenticates to Vault via AppRole, sends its public key to Vault's SSH CA,
 receives a time-bound signed certificate, and uses it to SSH into target
-hosts. No static SSH keys are stored in AAP. The hosts only need to trust
-Vault's CA public key (configured during setup). Default AppRole name and
-post-lockdown credential updates are documented under **Vault AppRole naming
-and impact** in [deployment-guide.md](deployment-guide.md).
+hosts. The hosts trust Vault's CA public key (configured during setup).
 
-> **ZTA Concept**: Each credential is scoped to a specific purpose — this is
-> least privilege applied to the automation platform itself. The NetBox
-> credential injects `NETBOX_API` and `NETBOX_TOKEN` as environment variables,
-> so playbooks and the inventory plugin authenticate without hardcoded secrets.
+> **ZTA Concept**: Machine and Arista **passwords** are resolved at job time from
+> Vault — not stored in AAP. The NetBox credential injects `NETBOX_API` and
+> `NETBOX_TOKEN` for inventory and modules.
 
 ---
 
@@ -319,10 +318,9 @@ and impact** in [deployment-guide.md](deployment-guide.md).
 **Project from Gitea (create first — the inventory source references it):**
 
 1. Create `ZTA Workshop` project
-2. Set **Execution environment** to **`ZTA Workshop EE`** (or the instructor-provided workshop EE)
-3. Git URL: `http://gitea.zta.lab:3000/zta-workshop/zta-app.git`
-4. Credential: `ZTA Gitea Credential`
-5. Sync and verify green status
+2. Git URL: `http://gitea.zta.lab:3000/zta-workshop/zta-app.git`
+3. Credential: `ZTA Gitea Credential`
+4. Sync and verify green status
 
 **Inventory from NetBox:**
 
@@ -358,16 +356,7 @@ and impact** in [deployment-guide.md](deployment-guide.md).
 | Test Vault SSH Certificates | `section1/playbooks/test-vault-ssh.yml` |
 | Test OPA Policy | `section1/playbooks/test-opa-policy.yml` |
 
-**Common settings (each template):** **Inventory** `ZTA Lab Inventory`, **Project** `ZTA Workshop`, **Execution environment** **`ZTA Workshop EE`**, **Privilege escalation** enabled.
-
-**Credentials:**
-
-- **All four templates:** **ZTA Machine Credential**
-- **Verify ZTA Services only (add second credential):** **ZTA Arista Credential** — required for the playbook’s third play (`arista.eos.eos_facts` on `ceos1`–`ceos3`).
-
-Do **not** attach **ZTA Vault Credential** to job templates (it is consumed only via credential input sources on Machine/Network credentials).
-
-If a job fails with undefined variables (`vault_addr`, `opa_url`, `idm_admin_password`, etc.), add **Extra Variables** on that template. Copy the YAML block from **`section1/lab/index.adoc`** (Exercise 1.3 — *Extra variables*).
+All use: `ZTA Lab Inventory` + `ZTA Machine Credential`
 
 ---
 
@@ -962,11 +951,23 @@ curl http://central.zta.lab:8181/v1/policies
 
 ### AAP Policy as Code not blocking
 
-```bash
-curl -s http://central.zta.lab:8181/v1/data/aap/gateway/decision \
-  -d '{"input":{"user":{"username":"neteng","groups":[],"is_superuser":false},"action":"launch","resource":{"name":"Apply Security Patch"}}}' | python3 -m json.tool
-# Should show "allow": false
-```
+1. **OPA has gateway policies loaded** (if `/v1/policies` is empty, run `setup/configure-opa-base.yml`):
+   ```bash
+   curl -s http://central.zta.lab:8181/v1/policies | python3 -m json.tool
+   ```
+
+2. **OPA decision endpoint works** (expect `allow: false` for this user/template pair):
+   ```bash
+   curl -s http://central.zta.lab:8181/v1/data/aap/gateway/decision \
+     -d '{"input":{"user":{"username":"neteng","groups":[],"is_superuser":false},"action":"launch","resource":{"name":"Apply Security Patch"}}}' | python3 -m json.tool
+   ```
+
+3. **Controller integration** — Policy as Code must be enabled on the automation controller. Either run `setup/configure-aap-policy.yml`, or configure manually (automation controller **Settings** → **Policy** / **Open Policy Agent**, or PATCH `/api/controller/v2/settings/opa/` as documented in **`docs/deployment-guide.md`** → Layer 7 → *Manual Policy as Code*). Verify with GET:
+   ```bash
+   curl -sk -u "admin:ansible123!" \
+     "https://control.zta.lab/api/controller/v2/settings/opa/"
+   ```
+   Confirm `OPA_ENABLED` and `OPA_PRE_ACTION_ENABLED` are true and `OPA_POLICY_PATH` is `v1/data/aap/gateway/decision`.
 
 ### Vault credentials fail
 

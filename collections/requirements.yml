@@ -1,0 +1,6 @@
+---
+# Installed during AAP project sync (with Galaxy/Automation Hub cred on the project)
+# so inventory updates can load plugin netbox.netbox.nb_inventory.
+collections:
+  - name: netbox.netbox
+    version: ">=3.0.0"

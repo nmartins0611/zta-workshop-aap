@@ -39,8 +39,6 @@
     aap_ldap_skip_api_token_test: false
     # Password for ztauser session login test (defaults to IdM admin password — same as ztauser when created by workshop IdM playbooks)
     aap_ldap_test_user_password: "{{ aap_ldap_test_password | default(idm_ldap_password) }}"
-    # NDJSON debug (optional): export ZTA_LDAP_DEBUG_LOG=/path/to/debug-636aff.log on the Ansible controller
-    zta_ldap_debug_log: "{{ lookup('env', 'ZTA_LDAP_DEBUG_LOG') | default('/tmp/debug-636aff.log', true) }}"
 
     # LDAP settings for AAP's authentication backend
     ldap_config:
@@ -169,6 +167,7 @@
           Cookie: "csrftoken={{ (ldap_login_csrf.cookies | default({})).csrftoken }}"
         validate_certs: "{{ aap_verify_ssl }}"
         status_code: [200, 201, 204, 301, 302, 303, 307, 308, 401, 403]
+        return_content: true
       register: ldap_session_post
       when:
         - not ((aap_ldap_skip_api_token_test | default(false)) | bool)
@@ -211,50 +210,19 @@
         - ldap_session_post.status | int not in [200, 201, 204, 301, 302, 303, 307, 308]
         - ldap_login_test is not defined
 
-    # #region agent log
-    - name: DBG session POST failure (stdout + NDJSON, no passwords)
-      ansible.builtin.debug:
-        msg:
-          hypothesis_note: "H1=gateway rejected creds H2=gateway LDAP not configured H3=ztauser/IdM H4=unexpected POST body shape"
-          post_http: "{{ ldap_session_post.status | int }}"
-          post_json: "{{ ldap_session_post.json | default({}) }}"
-          post_content_len: "{{ ldap_session_post.content | default('') | length }}"
+    - name: LDAP session test — hint when POST 401 has no JSON body
+      ansible.builtin.set_fact:
+        ldap_login_test:
+          status: "{{ ldap_login_test['status'] | int }}"
+          json: "{{ (ldap_login_test['json'] | default({})) | combine({'detail': ldap_post_401_empty_hint}) }}"
+      vars:
+        ldap_post_401_empty_hint: >-
+          HTTP 401 with empty JSON body: gateway rejected session login. Configure Access Management LDAP (Exercise 1.2), verify IdM user ztauser and password (or -e aap_ldap_test_password), or -e aap_ldap_skip_api_token_test=true to skip this check.
       when:
         - not ((aap_ldap_skip_api_token_test | default(false)) | bool)
-        - ldap_session_post is defined
-        - ldap_session_post.status | int not in [200, 201, 204, 301, 302, 303, 307, 308]
-
-    - name: DBG append session POST outcome to NDJSON log
-      ansible.builtin.copy:
-        dest: /tmp/zta-ldap-dbg-post.json
-        content: "{{ {'sessionId': '636aff', 'runId': 'ldap-post', 'hypothesisId': 'H1-H4', 'location': 'configure-aap-ldap.yml:post-session', 'post_status': ldap_session_post.status | int, 'post_json': ldap_session_post.json | default({}), 'post_content_len': ldap_session_post.content | default('') | length} | to_json }}"
-        mode: '0600'
-      delegate_to: localhost
-      changed_when: false
-      when:
-        - not ((aap_ldap_skip_api_token_test | default(false)) | bool)
-        - ldap_session_post is defined
-        - ldap_session_post.status | int not in [200, 201, 204, 301, 302, 303, 307, 308]
-
-    - name: DBG flush POST outcome NDJSON line
-      ansible.builtin.shell: |
-        export ZTA_LOG='{{ zta_ldap_debug_log }}'
-        python3 <<'PY'
-        import json, time, os
-        path = os.environ["ZTA_LOG"]
-        os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
-        d = json.load(open("/tmp/zta-ldap-dbg-post.json"))
-        d["timestamp"] = int(time.time() * 1000)
-        d["message"] = "gateway session POST non-success"
-        open(path, "a").write(json.dumps(d) + "\n")
-        PY
-      delegate_to: localhost
-      changed_when: false
-      when:
-        - not ((aap_ldap_skip_api_token_test | default(false)) | bool)
-        - ldap_session_post is defined
-        - ldap_session_post.status | int not in [200, 201, 204, 301, 302, 303, 307, 308]
-    # #endregion agent log
+        - ldap_login_test is defined
+        - ldap_login_test['status'] | int == 401
+        - (ldap_login_test['json'] | default({})) | length == 0
 
     - name: LDAP session test — POST ok but GET /me/ did not run
       ansible.builtin.set_fact:
@@ -309,7 +277,7 @@
           {% if aap_ldap_skip_api_token_test | default(false) | bool %}║    SKIPPED (-e aap_ldap_skip_api_token_test=true)         ║
           {% elif ldap_login_test is not defined %}║    FAILED (no test result — check session tasks above)      ║
           {% elif ldap_login_test['status'] | default(0) | int == 200 %}║    PASSED                                                 ║
-          {% else %}║    FAILED HTTP {{ ldap_login_test['status'] | default('?') }} — {{ (ldap_login_test['json'] | default({}))['detail'] | default(ldap_login_test['msg'] | default('see DBG session POST failure + session tasks')) }}║
+          {% else %}║    FAILED HTTP {{ ldap_login_test['status'] | default('?') }} — {{ (ldap_login_test['json'] | default({}))['detail'] | default(ldap_login_test['msg'] | default('see session login tasks above')) }}║
           {% endif %}║                                                         ║
           ║  HTTP 401 on session POST: gateway rejected login — often  ║
           ║  gateway LDAP (Exercise 1.2) not only controller LDAP API.║

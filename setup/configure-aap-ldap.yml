@@ -166,7 +166,7 @@
           # ansible.legacy.uri on Ansible 2.14 has no `cookies` parameter — use Cookie header
           Cookie: "csrftoken={{ (ldap_login_csrf.cookies | default({})).csrftoken }}"
         validate_certs: "{{ aap_verify_ssl }}"
-        status_code: [200, 302, 301, 204, 401, 403]
+        status_code: [200, 201, 204, 301, 302, 303, 307, 308, 401, 403]
       register: ldap_session_post
       when:
         - not ((aap_ldap_skip_api_token_test | default(false)) | bool)
@@ -180,11 +180,23 @@
         headers:
           Cookie: "{{ ldap_session_post.cookies | default({}) | dictsort | map('join', '=') | join('; ') }}"
         status_code: [200, 401, 403]
-      register: ldap_login_test
+      register: ldap_me_result
       when:
         - not ((aap_ldap_skip_api_token_test | default(false)) | bool)
         - ldap_session_post is defined
-        - ldap_session_post.status | int in [200, 302, 301, 204]
+        - ldap_session_post.status | int in [200, 201, 204, 301, 302, 303, 307, 308]
+
+    # Do not register skipped uri results as ldap_login_test — Ansible sets skipped: true
+    # and the Summary must not treat that as -e aap_ldap_skip_api_token_test.
+    - name: LDAP session test — record GET /me/ outcome
+      ansible.builtin.set_fact:
+        ldap_login_test:
+          status: "{{ ldap_me_result['status'] | int }}"
+          json: "{{ ldap_me_result['json'] | default({}) }}"
+      when:
+        - not ((aap_ldap_skip_api_token_test | default(false)) | bool)
+        - ldap_me_result is defined
+        - not (ldap_me_result['skipped'] | default(false))
 
     - name: LDAP session test — record failed POST session login
       ansible.builtin.set_fact:
@@ -194,7 +206,21 @@
       when:
         - not ((aap_ldap_skip_api_token_test | default(false)) | bool)
         - ldap_session_post is defined
-        - ldap_session_post.status | int not in [200, 302, 301, 204]
+        - ldap_session_post.status | int not in [200, 201, 204, 301, 302, 303, 307, 308]
+        - ldap_login_test is not defined
+
+    - name: LDAP session test — POST ok but GET /me/ did not run
+      ansible.builtin.set_fact:
+        ldap_login_test:
+          status: 598
+          json:
+            detail: "POST login returned HTTP {{ ldap_session_post.status }} but GET /me/ was skipped (check when conditions or empty session cookies)."
+      when:
+        - not ((aap_ldap_skip_api_token_test | default(false)) | bool)
+        - ldap_session_post is defined
+        - ldap_session_post.status | int in [200, 201, 204, 301, 302, 303, 307, 308]
+        - ldap_me_result is defined
+        - ldap_me_result['skipped'] | default(false)
         - ldap_login_test is not defined
 
     - name: LDAP session test — no CSRF cookie from GET session login
@@ -208,14 +234,6 @@
         - ldap_login_csrf is defined
         - (ldap_login_csrf.cookies | default({})).csrftoken | default('') | length == 0
         - ldap_login_test is not defined
-
-    - name: Placeholder when API token test skipped
-      ansible.builtin.set_fact:
-        ldap_login_test:
-          status: 0
-          skipped: true
-          json: {}
-      when: (aap_ldap_skip_api_token_test | default(false)) | bool
 
     # ── Summary ──────────────────────────────────────────────────────
 
@@ -241,8 +259,8 @@
           ║    Applications   ← team-applications                   ║
           ║                                                         ║
           ║  LDAP session test (ztauser gateway login + /me/):     ║
-          {% if ldap_login_test is not defined %}║    FAILED (no test result — check skipped conditions)     ║
-          {% elif ldap_login_test['skipped'] | default(false) %}║    SKIPPED (aap_ldap_skip_api_token_test=true)            ║
+          {% if aap_ldap_skip_api_token_test | default(false) | bool %}║    SKIPPED (-e aap_ldap_skip_api_token_test=true)         ║
+          {% elif ldap_login_test is not defined %}║    FAILED (no test result — check session tasks above)      ║
           {% elif ldap_login_test['status'] | default(0) | int == 200 %}║    PASSED                                                 ║
           {% else %}║    FAILED HTTP {{ ldap_login_test['status'] | default('?') }} — {{ (ldap_login_test['json'] | default({}))['detail'] | default(ldap_login_test['msg'] | default('see session login / me tasks above')) }}║
           {% endif %}║                                                         ║

@@ -6,6 +6,7 @@
 >
 > | Exercise | Status | Est. Time |
 > |----------|--------|-----------|
+> | Prerequisite — LDAP + Policy as Code on controller (verify) | **Core** | 2 min |
 > | 1.1 — Verify AAP credentials (Vault lookups) | **Core** | 5 min |
 > | 1.2 — Configure Inventory & Project | **Core** | 5 min |
 > | 1.3 — Create Job Templates | **Core** | 3 min |
@@ -15,7 +16,7 @@
 > | 1.7 — Test OPA Policy Decisions | **Core** | 2 min |
 > | 1.8 — Certificate Trust Chain Debugging | **Extended** | 25 min |
 >
-> For a **2-hour workshop**, complete exercises **1.1–1.7** (~20–25 min).
+> For a **2-hour workshop**, confirm the **LDAP + Policy as Code** prerequisite (below), then complete exercises **1.1–1.7** (~22–27 min).
 > Skip exercise 1.8 unless you have extra time or are running a longer format.
 
 ## Objective
@@ -63,6 +64,42 @@ IdM, Vault, OPA, Netbox, and Gitea.
     │central │  │vault   │  │ central    │  │ netbox     │
     └────────┘  └────────┘  └────────────┘  └────────────┘
 ```
+
+---
+
+## Controller identity and Policy as Code (prerequisite)
+
+Later sections assume the automation controller accepts **IdM users** for login and enforces **Policy as Code** (OPA gateway) before jobs run. In a typical lab build this is applied **during deployment** (Layer 7), not during Section 1 in the UI.
+
+**Playbooks** (see [`docs/deployment-guide.md`](../docs/deployment-guide.md) — *Layer 7 — Policy*):
+
+| Playbook | Purpose |
+|----------|---------|
+| `setup/configure-opa-base.yml` | Load OPA policies (including `aap.gateway`). |
+| `setup/configure-aap-policy.yml` | Enable controller ↔ OPA (Policy as Code). |
+| `setup/configure-aap-ldap.yml` | Controller **LDAP** authentication against IdM (LDAPS). |
+
+Running **LDAP earlier** in setup is fine; Section 1 still asks you to **verify** both integrations so Sections 2–4 match the lab narrative.
+
+### Verify LDAP (controller → IdM)
+
+- **Goal:** Workshop users sign in at `https://control.zta.lab` with **IdM accounts** (e.g. `ztauser` / `ansible123!`), not only platform `admin`.
+- **If login fails:** Confirm `configure-aap-ldap.yml` (or equivalent) ran, IdM is reachable, and the controller trusts the IdM CA (e.g. after `setup/enroll-idm-clients.yml`). See [`HANDOFF.md`](../HANDOFF.md) (*LDAP: controller → IdM*) and the deployment guide.
+
+### Verify Policy as Code (controller → OPA)
+
+- **Goal:** Before a job runs, the controller can query OPA at `v1/data/aap/gateway/decision`. Sections 3–4 rely on this **outer ring**.
+- **UI:** As platform **admin**, open **Settings** → **Policy** / **Open Policy Agent** / **Policy as Code** (label varies by patch). Values should match [*Manual Policy as Code (OPA gateway)*](../docs/deployment-guide.md#manual-policy-as-code-opa) in the deployment guide.
+- **API:**
+
+```bash
+curl -sk -u "admin:ansible123!" \
+  "https://control.zta.lab/api/controller/v2/settings/opa/" | python3 -m json.tool
+```
+
+Expect `OPA_ENABLED` and `OPA_PRE_ACTION_ENABLED` true; `OPA_POLICY_PATH` is `v1/data/aap/gateway/decision`; `OPA_URL` matches your lab OPA (typically `http://central.zta.lab:8181` per `inventory/group_vars/all.yml`).
+
+If automation was skipped, use the **manual UI or API** steps in `docs/deployment-guide.md` Layer 7 or run `setup/configure-aap-policy.yml`.
 
 ---
 

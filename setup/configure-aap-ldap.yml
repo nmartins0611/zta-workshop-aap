@@ -2,8 +2,11 @@
 # configure-aap-ldap.yml — Configure AAP Controller to authenticate
 # against IdM via LDAP.
 #
-# This playbook uses the AAP Controller API to set up LDAP
-# authentication so that IdM users and groups are available in AAP.
+# This playbook PATCHes the legacy controller API:
+#   /api/controller/v2/settings/ldap/
+# AAP 2.6 gateway installs often require **Access Management → Authentication
+# Methods** instead; see Section 1 **Exercise 1.2** (lab/index.adoc or README.md)
+# for IdM field values that mirror the ldap_config below.
 #
 # Usage:
 #   ansible-playbook setup/configure-aap-ldap.yml

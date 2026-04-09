@@ -337,6 +337,12 @@ Loads all OPA Rego policies, configures the AAP controller to check OPA
 before every job launch (Policy as Code), and wires AAP LDAP authentication
 to the IdM directory so workshop users can log in.
 
+**AAP 2.6 platform gateway:** `configure-aap-ldap.yml` PATCHes the legacy
+`/api/controller/v2/settings/ldap/` endpoint. Installations that use
+**Access Management → Authentication Methods → LDAP** need the UI path
+instead; field values match the playbook—see **Section 1 Exercise 1.2**
+(`section1/lab/index.adoc` or `section1/README.md`).
+
 <a id="manual-policy-as-code-opa"></a>
 
 **Manual Policy as Code (OPA gateway) — alternative to `configure-aap-policy.yml`**

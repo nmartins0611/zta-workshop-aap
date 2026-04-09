@@ -35,11 +35,9 @@
     idm_ldap_domain: "{{ idm_domain | default('zta.lab') }}"
     idm_ldap_base_dn: "dc={{ idm_ldap_domain.split('.') | join(',dc=') }}"
     idm_ldap_password: "{{ idm_admin_password | default('ansible123!') }}"
-    # NDJSON debug log (override with -e or env ZTA_AAP_DEBUG_LOG); must be writable on the Ansible controller
-    zta_aap_debug_log: "{{ lookup('env', 'ZTA_AAP_DEBUG_LOG') | default('/tmp/debug-636aff.log', true) }}"
     # Skip session-based LDAP verification (GET/POST session login + GET /me/)
     aap_ldap_skip_api_token_test: false
-    # Password for API token test (defaults to IdM admin password — same as ztauser when created by workshop IdM playbooks)
+    # Password for ztauser session login test (defaults to IdM admin password — same as ztauser when created by workshop IdM playbooks)
     aap_ldap_test_user_password: "{{ aap_ldap_test_password | default(idm_ldap_password) }}"
 
     # LDAP settings for AAP's authentication backend
@@ -141,38 +139,6 @@
         msg: "LDAP authentication configured successfully"
       when: ldap_update.status == 200
 
-    # #region agent log
-    - name: DBG stage LDAP API snapshot for session log
-      ansible.builtin.copy:
-        dest: /tmp/zta-agent-dbg-snap.json
-        content: "{{ {'aap_host': aap_host, 'session_login_url': aap_session_login_url, 'server_uri_sent': ldap_config.AUTH_LDAP_SERVER_URI, 'patch_status': ldap_update.status } | to_json }}"
-        mode: '0600'
-      delegate_to: localhost
-      changed_when: false
-
-    - name: DBG append LDAP snapshot to session log
-      ansible.builtin.shell: |
-        export ZTA_LOG='{{ zta_aap_debug_log }}'
-        python3 <<'PY'
-        import json, time, os
-        path = os.environ["ZTA_LOG"]
-        os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
-        data = json.load(open("/tmp/zta-agent-dbg-snap.json"))
-        rec = {
-            "sessionId": "636aff",
-            "runId": "pre-fix",
-            "hypothesisId": "H1",
-            "location": "configure-aap-ldap.yml:post-patch",
-            "message": "LDAP settings visible to controller API after PATCH",
-            "data": data,
-            "timestamp": int(time.time() * 1000),
-        }
-        open(path, "a").write(json.dumps(rec) + "\n")
-        PY
-      delegate_to: localhost
-      changed_when: false
-    # #endregion agent log
-
     # ── Verify LDAP integration works ────────────────────────────────
     # Controller may have AUTH_BASIC_ENABLED=false: POST /tokens/ with Basic
     # returns 401 "visit /api/login/". Use session flow (gateway: /api/gateway/v1/login/).
@@ -251,52 +217,6 @@
           json: {}
       when: (aap_ldap_skip_api_token_test | default(false)) | bool
 
-    - name: DBG LDAP session test response (stdout evidence)
-      ansible.builtin.debug:
-        msg: "LDAP session verify HTTP={{ ldap_login_test['status'] | default(-1) }} response={{ ldap_login_test['json'] | default({}) }}"
-      when:
-        - not ((aap_ldap_skip_api_token_test | default(false)) | bool)
-        - ldap_login_test is defined
-        - ldap_login_test['status'] | default(0) | int != 200
-        - not (ldap_login_test['skipped'] | default(false))
-
-    # #region agent log
-    - name: DBG stage LDAP session test result for session log
-      ansible.builtin.copy:
-        dest: /tmp/zta-agent-dbg-token.json
-        content: "{{ {'http_status': ldap_login_test['status'] | default(-1), 'response': ldap_login_test['json'] | default({}), 'pwd_len': aap_ldap_test_user_password | length, 'flow': 'session_login_me'} | to_json }}"
-        mode: '0600'
-      delegate_to: localhost
-      changed_when: false
-      when:
-        - not ((aap_ldap_skip_api_token_test | default(false)) | bool)
-        - ldap_login_test is defined
-
-    - name: DBG append LDAP session test to session log
-      ansible.builtin.shell: |
-        export ZTA_LOG='{{ zta_aap_debug_log }}'
-        python3 <<'PY'
-        import json, time, os
-        path = os.environ["ZTA_LOG"]
-        data = json.load(open("/tmp/zta-agent-dbg-token.json"))
-        rec = {
-            "sessionId": "636aff",
-            "runId": "post-fix",
-            "hypothesisId": "session-me",
-            "location": "configure-aap-ldap.yml:session-verify",
-            "message": "ztauser GET/POST session login then GET /api/controller/v2/me/",
-            "data": data,
-            "timestamp": int(time.time() * 1000),
-        }
-        open(path, "a").write(json.dumps(rec) + "\n")
-        PY
-      delegate_to: localhost
-      changed_when: false
-      when:
-        - not ((aap_ldap_skip_api_token_test | default(false)) | bool)
-        - ldap_login_test is defined
-    # #endregion agent log
-
     # ── Summary ──────────────────────────────────────────────────────
 
     - name: Summary
@@ -324,7 +244,7 @@
           {% if ldap_login_test is not defined %}║    FAILED (no test result — check skipped conditions)     ║
           {% elif ldap_login_test['skipped'] | default(false) %}║    SKIPPED (aap_ldap_skip_api_token_test=true)            ║
           {% elif ldap_login_test['status'] | default(0) | int == 200 %}║    PASSED                                                 ║
-          {% else %}║    FAILED HTTP {{ ldap_login_test['status'] | default('?') }} — {{ (ldap_login_test['json'] | default({}))['detail'] | default(ldap_login_test['msg'] | default('see DBG LDAP session test response')) }}║
+          {% else %}║    FAILED HTTP {{ ldap_login_test['status'] | default('?') }} — {{ (ldap_login_test['json'] | default({}))['detail'] | default(ldap_login_test['msg'] | default('see session login / me tasks above')) }}║
           {% endif %}║                                                         ║
           ║  If FAILED: confirm ztauser exists in IdM and password     ║
           ║  (workshop: idm_admin_password or -e aap_ldap_test_password)║

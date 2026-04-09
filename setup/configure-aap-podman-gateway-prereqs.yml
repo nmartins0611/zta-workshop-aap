@@ -1,0 +1,36 @@
+---
+# configure-aap-podman-gateway-prereqs.yml — Podman DNS + IdM CA for gateway LDAPS
+#
+# Run against the AAP host that runs rootless Podman (inventory group [automation], e.g. control).
+# Fixes:
+#   - automation-gateway cannot resolve central.zta.lab → Podman [network] dns_servers
+#   - LDAPS fails: certificate verify failed → IdM CA in container trust (update-ca-trust)
+#
+# Usage:
+#   ansible-playbook -i inventory/hosts.ini setup/configure-aap-podman-gateway-prereqs.yml
+#
+# Extra vars:
+#   idm_ip                      Override central/IdM IP (default from [zta_services] or 192.168.1.11)
+#   aap_podman_container_dns_servers  List e.g. ["192.168.1.11","8.8.8.8"]
+#   aap_podman_idm_ca_url       Override CA URL (default http://<idm_ip>/ipa/config/ca.crt)
+#   aap_podman_ca_src_file      If set, copy this file on the target to stage CA (skip ipa + get_url)
+#   aap_podman_gateway_container_name  Default automation-gateway
+#   aap_podman_skip_dns / aap_podman_skip_ca / aap_podman_skip_restart
+#
+# Chain with LDAP:
+#   ansible-playbook ... setup/configure-aap-ldap.yml -e aap_podman_gateway_prereqs=true
+
+- name: AAP Podman gateway prerequisites for IdM LDAPS
+  hosts: automation
+  gather_facts: false
+  become: false
+
+  vars:
+    aap_podman_gateway_container: "{{ aap_podman_gateway_container_name | default('automation-gateway') }}"
+    aap_podman_ca_staged_path: "{{ aap_podman_ca_staged | default('/tmp/zta-ipa-ca-staged.crt') }}"
+    aap_podman_ca_anchor_name: "{{ aap_podman_ca_trust_anchor | default('zta-ipa-ca.crt') }}"
+    aap_podman_ca_path_remote: "{{ aap_podman_ca_src_file | default('') }}"
+
+  tasks:
+    - name: Apply Podman gateway LDAPS prerequisites
+      ansible.builtin.include_tasks: tasks/aap-podman-gateway-prereqs_tasks.yml

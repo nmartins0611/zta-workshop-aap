@@ -1,0 +1,106 @@
+---
+# Included by configure-aap-podman-gateway-prereqs.yml and optionally configure-aap-ldap.yml.
+# Target: [automation] (AAP on Podman). Uses ansible_user for podman (rootless); become root only for /etc/containers.
+
+- name: Resolve IdM / central IP for container DNS and CA download
+  ansible.builtin.set_fact:
+    aap_podman_central_ip: >-
+      {{ idm_ip | default(
+           (('zta_services' in groups) and (groups['zta_services'] | length > 0)) | ternary(
+             hostvars[groups['zta_services'][0]]['ansible_host'],
+             '192.168.1.11'
+           ), true) }}
+
+- name: Build container DNS server list
+  ansible.builtin.set_fact:
+    aap_podman_dns_servers_effective: "{{ aap_podman_container_dns_servers | default([aap_podman_central_ip, '8.8.8.8']) }}"
+
+- name: Default IdM CA download URL (HTTP to central)
+  ansible.builtin.set_fact:
+    aap_podman_idm_ca_url_effective: "{{ aap_podman_idm_ca_url | default('http://' ~ aap_podman_central_ip ~ '/ipa/config/ca.crt') }}"
+
+- name: Install Podman network DNS drop-in
+  when: not (aap_podman_skip_dns | default(false) | bool)
+  ansible.builtin.copy:
+    dest: /etc/containers/containers.conf.d/99-lab-dns.conf
+    mode: '0644'
+    content: |
+      # Ansible — zta-workshop-aap aap-podman-gateway-prereqs
+      [network]
+      dns_servers = {{ aap_podman_dns_servers_effective | to_json }}
+  become: true
+
+- name: Stat IdM CA on control host (IdM-enrolled clients)
+  ansible.builtin.stat:
+    path: /etc/ipa/ca.crt
+  register: aap_podman_ipa_ca_stat
+
+- name: Stage IdM CA from /etc/ipa/ca.crt
+  when:
+    - not (aap_podman_skip_ca | default(false) | bool)
+    - (aap_podman_ca_path_remote | default('') | length) == 0
+    - aap_podman_ipa_ca_stat.stat.exists | bool
+  ansible.builtin.copy:
+    src: /etc/ipa/ca.crt
+    dest: "{{ aap_podman_ca_staged_path }}"
+    remote_src: true
+    mode: '0644'
+  become: true
+
+- name: Stage IdM CA from explicit path on target
+  when:
+    - not (aap_podman_skip_ca | default(false) | bool)
+    - (aap_podman_ca_path_remote | default('') | length) > 0
+  ansible.builtin.copy:
+    src: "{{ aap_podman_ca_path_remote }}"
+    dest: "{{ aap_podman_ca_staged_path }}"
+    remote_src: true
+    mode: '0644'
+
+- name: Download IdM CA when not present on disk
+  when:
+    - not (aap_podman_skip_ca | default(false) | bool)
+    - (aap_podman_ca_path_remote | default('') | length) == 0
+    - not (aap_podman_ipa_ca_stat.stat.exists | bool)
+  ansible.builtin.get_url:
+    url: "{{ aap_podman_idm_ca_url_effective }}"
+    dest: "{{ aap_podman_ca_staged_path }}"
+    mode: '0644'
+
+- name: Check automation-gateway container exists (rootless podman user)
+  when: not (aap_podman_skip_ca | default(false) | bool)
+  ansible.builtin.command:
+    cmd: podman inspect {{ aap_podman_gateway_container }}
+  register: aap_podman_gw_inspect
+  changed_when: false
+  failed_when: aap_podman_gw_inspect.rc != 0
+
+- name: Install IdM CA into gateway container trust store
+  when: not (aap_podman_skip_ca | default(false) | bool)
+  ansible.builtin.command:
+    cmd: >-
+      podman cp {{ aap_podman_ca_staged_path }}
+      {{ aap_podman_gateway_container }}:/etc/pki/ca-trust/source/anchors/{{ aap_podman_ca_anchor_name }}
+  register: aap_podman_cp_ca
+  changed_when: aap_podman_cp_ca.rc == 0
+
+- name: Refresh CA trust inside gateway container
+  when: not (aap_podman_skip_ca | default(false) | bool)
+  ansible.builtin.command:
+    cmd: podman exec -u 0 {{ aap_podman_gateway_container }} update-ca-trust extract
+  changed_when: true
+
+- name: Restart automation-gateway
+  when: not (aap_podman_skip_restart | default(false) | bool)
+  ansible.builtin.command:
+    cmd: podman restart {{ aap_podman_gateway_container }}
+  changed_when: true
+
+- name: Summary — Podman gateway IdM LDAPS prerequisites
+  ansible.builtin.debug:
+    msg:
+      - "DNS drop-in: {{ '/etc/containers/containers.conf.d/99-lab-dns.conf' if not (aap_podman_skip_dns | default(false) | bool) else 'skipped' }}"
+      - "IdM CA staged: {{ aap_podman_ca_staged_path if not (aap_podman_skip_ca | default(false) | bool) else 'skipped' }}"
+      - "Gateway container: {{ aap_podman_gateway_container }}"
+      - "Verify: podman exec -it {{ aap_podman_gateway_container }} getent hosts central.zta.lab"
+      - "Verify TLS: podman exec {{ aap_podman_gateway_container }} openssl s_client -connect central.zta.lab:636 -brief </dev/null"

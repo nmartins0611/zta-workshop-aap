@@ -2,6 +2,9 @@
 # Configure Podman default network DNS so AAP containers can resolve lab names
 # (e.g. central.zta.lab for LDAP). Run as root on the AAP host.
 #
+# For DNS + IdM CA in automation-gateway in one go (run as rhel / podman user), use:
+#   ./setup/aap-podman-lab-bootstrap.sh
+#
 # Usage:
 #   sudo ./setup/podman-containers-dns-lab.sh
 #   sudo IDM_DNS=192.168.1.11 FALLBACK_DNS=8.8.8.8 ./setup/podman-containers-dns-lab.sh

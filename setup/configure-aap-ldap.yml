@@ -17,7 +17,9 @@
 # Prerequisites:
 #   - IdM (central.zta.lab) is installed and running
 #   - AAP Controller is installed and reachable
-#   - setup/enroll-idm-clients.yml has run (AAP trusts IdM CA)
+#   - setup/enroll-idm-clients.yml has run (AAP trusts IdM CA on the *host*)
+#   - Containerized AAP: run setup/configure-aap-podman-gateway-prereqs.yml on [automation],
+#     or add -e aap_podman_gateway_prereqs=true to this playbook (second play).
 
 - name: Configure AAP Controller LDAP authentication
   hosts: localhost
@@ -286,3 +288,20 @@
           ║  -e aap_ldap_skip_api_token_test=true                      ║
           ║                                                         ║
           ╚══════════════════════════════════════════════════════════╝
+
+# ── Optional: Podman gateway DNS + IdM CA (container LDAPS) ─────────
+- name: Optional — Podman gateway DNS and IdM CA for LDAPS
+  hosts: automation
+  gather_facts: false
+  become: false
+
+  vars:
+    aap_podman_gateway_container: "{{ aap_podman_gateway_container_name | default('automation-gateway') }}"
+    aap_podman_ca_staged_path: "{{ aap_podman_ca_staged | default('/tmp/zta-ipa-ca-staged.crt') }}"
+    aap_podman_ca_anchor_name: "{{ aap_podman_ca_trust_anchor | default('zta-ipa-ca.crt') }}"
+    aap_podman_ca_path_remote: "{{ aap_podman_ca_src_file | default('') }}"
+
+  tasks:
+    - name: Apply Podman gateway LDAPS prerequisites
+      when: aap_podman_gateway_prereqs | default(false) | bool
+      ansible.builtin.include_tasks: tasks/aap-podman-gateway-prereqs_tasks.yml

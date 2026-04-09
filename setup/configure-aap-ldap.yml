@@ -131,6 +131,37 @@
         msg: "LDAP authentication configured successfully"
       when: ldap_update.status == 200
 
+    # #region agent log
+    - name: DBG stage LDAP API snapshot for session log
+      ansible.builtin.copy:
+        dest: /tmp/zta-agent-dbg-snap.json
+        content: "{{ {'aap_host': aap_host, 'server_uri_sent': ldap_config.AUTH_LDAP_SERVER_URI, 'patch_status': ldap_update.status } | to_json }}"
+        mode: '0600'
+      delegate_to: localhost
+      changed_when: false
+
+    - name: DBG append LDAP snapshot to session log
+      ansible.builtin.shell: |
+        python3 <<'PY'
+        import json, time, os
+        path = "/home/nmartins/Development/.cursor/debug-636aff.log"
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        data = json.load(open("/tmp/zta-agent-dbg-snap.json"))
+        rec = {
+            "sessionId": "636aff",
+            "runId": "pre-fix",
+            "hypothesisId": "H1",
+            "location": "configure-aap-ldap.yml:post-patch",
+            "message": "LDAP settings visible to controller API after PATCH",
+            "data": data,
+            "timestamp": int(time.time() * 1000),
+        }
+        open(path, "a").write(json.dumps(rec) + "\n")
+        PY
+      delegate_to: localhost
+      changed_when: false
+    # #endregion agent log
+
     # ── Verify LDAP integration works ────────────────────────────────
 
     - name: Test LDAP login with ztauser
@@ -148,6 +179,36 @@
         status_code: [201, 400, 401, 403]
       register: ldap_login_test
       ignore_errors: true
+
+    # #region agent log
+    - name: DBG stage token test result for session log
+      ansible.builtin.copy:
+        dest: /tmp/zta-agent-dbg-token.json
+        content: "{{ {'http_status': ldap_login_test.status, 'response': ldap_login_test.json | default({}), 'pwd_len': idm_ldap_password | length } | to_json }}"
+        mode: '0600'
+      delegate_to: localhost
+      changed_when: false
+
+    - name: DBG append token test to session log
+      ansible.builtin.shell: |
+        python3 <<'PY'
+        import json, time, os
+        path = "/home/nmartins/Development/.cursor/debug-636aff.log"
+        data = json.load(open("/tmp/zta-agent-dbg-token.json"))
+        rec = {
+            "sessionId": "636aff",
+            "runId": "pre-fix",
+            "hypothesisId": "H2-H4",
+            "location": "configure-aap-ldap.yml:token-response",
+            "message": "ztauser POST /api/controller/v2/tokens/ basic auth",
+            "data": data,
+            "timestamp": int(time.time() * 1000),
+        }
+        open(path, "a").write(json.dumps(rec) + "\n")
+        PY
+      delegate_to: localhost
+      changed_when: false
+    # #endregion agent log
 
     - name: Clean up test token
       uri:

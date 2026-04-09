@@ -33,7 +33,7 @@
     idm_ldap_password: "{{ idm_admin_password | default('ansible123!') }}"
     # NDJSON debug log (override with -e or env ZTA_AAP_DEBUG_LOG); must be writable on the Ansible controller
     zta_aap_debug_log: "{{ lookup('env', 'ZTA_AAP_DEBUG_LOG') | default('/tmp/debug-636aff.log', true) }}"
-    # Set true on gateway-led installs where UI LDAP works but controller token API rejects LDAP basic auth
+    # Skip session-based LDAP verification (GET/POST /api/login/ + GET /me/)
     aap_ldap_skip_api_token_test: false
     # Password for API token test (defaults to IdM admin password — same as ztauser when created by workshop IdM playbooks)
     aap_ldap_test_user_password: "{{ aap_ldap_test_password | default(idm_ldap_password) }}"
@@ -170,23 +170,72 @@
     # #endregion agent log
 
     # ── Verify LDAP integration works ────────────────────────────────
+    # Controller may have AUTH_BASIC_ENABLED=false: POST /tokens/ with Basic
+    # returns 401 "visit /api/login/". Use session flow per AWX REST API docs.
 
-    - name: Test LDAP login with ztauser
-      uri:
-        url: "{{ aap_host }}/api/controller/v2/tokens/"
-        method: POST
-        user: ztauser
-        password: "{{ aap_ldap_test_user_password }}"
-        force_basic_auth: true
+    - name: Get CSRF cookie for LDAP session test
+      ansible.builtin.uri:
+        url: "{{ aap_host }}/api/login/"
+        method: GET
         validate_certs: "{{ aap_verify_ssl }}"
-        body_format: json
-        body:
-          description: "LDAP integration test"
-          scope: write
-        status_code: [201, 400, 401, 403]
-      register: ldap_login_test
-      ignore_errors: true
+        status_code: [200]
+      register: ldap_login_csrf
       when: not ((aap_ldap_skip_api_token_test | default(false)) | bool)
+
+    - name: POST /api/login/ as ztauser (LDAP)
+      ansible.builtin.uri:
+        url: "{{ aap_host }}/api/login/"
+        method: POST
+        body_format: form-urlencoded
+        body:
+          username: ztauser
+          password: "{{ aap_ldap_test_user_password }}"
+        headers:
+          X-CSRFToken: "{{ (ldap_login_csrf.cookies | default({})).csrftoken }}"
+          Referer: "{{ aap_host }}/api/login/"
+        cookies:
+          csrftoken: "{{ (ldap_login_csrf.cookies | default({})).csrftoken }}"
+        validate_certs: "{{ aap_verify_ssl }}"
+        status_code: [200, 302, 301, 204, 401, 403]
+      register: ldap_session_post
+      when:
+        - not ((aap_ldap_skip_api_token_test | default(false)) | bool)
+        - (ldap_login_csrf.cookies | default({})).csrftoken | default('') | length > 0
+
+    - name: Verify LDAP user session (GET /api/controller/v2/me/)
+      ansible.builtin.uri:
+        url: "{{ aap_host }}/api/controller/v2/me/"
+        method: GET
+        validate_certs: "{{ aap_verify_ssl }}"
+        cookies: "{{ ldap_session_post.cookies | default({}) }}"
+        status_code: [200, 401, 403]
+      register: ldap_login_test
+      when:
+        - not ((aap_ldap_skip_api_token_test | default(false)) | bool)
+        - ldap_session_post is defined
+        - ldap_session_post.status in [200, 302, 301, 204]
+
+    - name: LDAP session test — record failed POST /api/login/
+      ansible.builtin.set_fact:
+        ldap_login_test:
+          status: "{{ ldap_session_post.status }}"
+          json: "{{ ldap_session_post.json | default({}) }}"
+      when:
+        - not ((aap_ldap_skip_api_token_test | default(false)) | bool)
+        - ldap_session_post is defined
+        - ldap_session_post.status not in [200, 302, 301, 204]
+        - ldap_login_test is not defined
+
+    - name: LDAP session test — no CSRF cookie from GET /api/login/
+      ansible.builtin.set_fact:
+        ldap_login_test:
+          status: 599
+          json: {"detail": "No csrftoken from GET /api/login/; cannot complete session login test"}
+      when:
+        - not ((aap_ldap_skip_api_token_test | default(false)) | bool)
+        - ldap_login_csrf is defined
+        - (ldap_login_csrf.cookies | default({})).csrftoken | default('') | length == 0
+        - ldap_login_test is not defined
 
     - name: Placeholder when API token test skipped
       ansible.builtin.set_fact:
@@ -196,24 +245,25 @@
           json: {}
       when: (aap_ldap_skip_api_token_test | default(false)) | bool
 
-    - name: DBG LDAP token test response (stdout evidence)
+    - name: DBG LDAP session test response (stdout evidence)
       ansible.builtin.debug:
-        msg: "Token test HTTP={{ ldap_login_test.status }} response={{ ldap_login_test.json | default({}) }}"
+        msg: "LDAP session verify HTTP={{ ldap_login_test.status }} response={{ ldap_login_test.json | default({}) }}"
       when:
         - not ((aap_ldap_skip_api_token_test | default(false)) | bool)
-        - ldap_login_test.status | default(0) != 201
+        - ldap_login_test.status | default(0) != 200
+        - not (ldap_login_test.skipped | default(false))
 
     # #region agent log
-    - name: DBG stage token test result for session log
+    - name: DBG stage LDAP session test result for session log
       ansible.builtin.copy:
         dest: /tmp/zta-agent-dbg-token.json
-        content: "{{ {'http_status': ldap_login_test.status, 'response': ldap_login_test.json | default({}), 'pwd_len': aap_ldap_test_user_password | length } | to_json }}"
+        content: "{{ {'http_status': ldap_login_test.status, 'response': ldap_login_test.json | default({}), 'pwd_len': aap_ldap_test_user_password | length, 'flow': 'session_login_me'} | to_json }}"
         mode: '0600'
       delegate_to: localhost
       changed_when: false
       when: not ((aap_ldap_skip_api_token_test | default(false)) | bool)
 
-    - name: DBG append token test to session log
+    - name: DBG append LDAP session test to session log
       ansible.builtin.shell: |
         export ZTA_LOG='{{ zta_aap_debug_log }}'
         python3 <<'PY'
@@ -222,10 +272,10 @@
         data = json.load(open("/tmp/zta-agent-dbg-token.json"))
         rec = {
             "sessionId": "636aff",
-            "runId": "pre-fix",
-            "hypothesisId": "H2-H4",
-            "location": "configure-aap-ldap.yml:token-response",
-            "message": "ztauser POST /api/controller/v2/tokens/ basic auth",
+            "runId": "post-fix",
+            "hypothesisId": "session-me",
+            "location": "configure-aap-ldap.yml:session-verify",
+            "message": "ztauser GET/POST /api/login/ then GET /api/controller/v2/me/",
             "data": data,
             "timestamp": int(time.time() * 1000),
         }
@@ -235,19 +285,6 @@
       changed_when: false
       when: not ((aap_ldap_skip_api_token_test | default(false)) | bool)
     # #endregion agent log
-
-    - name: Clean up test token
-      uri:
-        url: "{{ aap_host }}{{ ldap_login_test.json.url }}"
-        method: DELETE
-        user: "{{ aap_user }}"
-        password: "{{ aap_password }}"
-        force_basic_auth: true
-        validate_certs: "{{ aap_verify_ssl }}"
-        status_code: [204, 404]
-      when:
-        - ldap_login_test.status == 201
-        - ldap_login_test.json.url is defined
 
     # ── Summary ──────────────────────────────────────────────────────
 
@@ -272,15 +309,13 @@
           ║    Security       ← team-security                       ║
           ║    Applications   ← team-applications                   ║
           ║                                                         ║
-          ║  LDAP Login Test (ztauser API token):                   ║
+          ║  LDAP session test (ztauser /api/login/ + /me/):        ║
           {% if ldap_login_test.skipped | default(false) %}║    SKIPPED (aap_ldap_skip_api_token_test=true)            ║
-          {% elif ldap_login_test.status == 201 %}║    PASSED                                                 ║
-          {% else %}║    FAILED HTTP {{ ldap_login_test.status }} — {{ ldap_login_test.json.detail | default(ldap_login_test.msg | default('see DBG LDAP token test response')) }}║
+          {% elif ldap_login_test.status == 200 %}║    PASSED                                                 ║
+          {% else %}║    FAILED HTTP {{ ldap_login_test.status }} — {{ ldap_login_test.json.detail | default(ldap_login_test.msg | default('see DBG LDAP session test response')) }}║
           {% endif %}║                                                         ║
-          ║  If FAILED 401: try UI login as ztauser; if UI works but  ║
-          ║  API fails, configure gateway LDAP (Exercise 1.2) or skip║
-          ║  this check: -e aap_ldap_skip_api_token_test=true        ║
-          ║  If UI fails: create/sync ztauser in IdM; password should║
-          ║  match idm_admin_password (or pass aap_ldap_test_password)║
+          ║  If FAILED: confirm ztauser exists in IdM and password     ║
+          ║  (workshop: idm_admin_password or -e aap_ldap_test_password)║
+          ║  Gateway UI LDAP still needs Exercise 1.2 + maps if used. ║
           ║                                                         ║
           ╚══════════════════════════════════════════════════════════╝

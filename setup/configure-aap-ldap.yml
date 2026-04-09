@@ -10,6 +10,8 @@
 #
 # Usage:
 #   ansible-playbook setup/configure-aap-ldap.yml
+#   AAP 2.6+ gateway (Envoy): session login defaults to /api/gateway/v1/login/
+#   Classic controller only: -e 'aap_login_path=/api/login/'
 #
 # Prerequisites:
 #   - IdM (central.zta.lab) is installed and running
@@ -23,6 +25,8 @@
 
   vars:
     aap_host: "{{ aap_controller_url | default('https://control.zta.lab') }}"
+    # Platform gateway (Envoy) session login — see RHAAP 2.6 Automation execution API / controller-api-auth-methods
+    aap_session_login_url: "{{ aap_host }}{{ aap_login_path | default('/api/gateway/v1/login/') }}"
     aap_user: admin
     aap_password: "{{ lookup('env', 'AAP_ADMIN_PASSWORD') | default('ansible123!', true) }}"
     aap_verify_ssl: false
@@ -33,7 +37,7 @@
     idm_ldap_password: "{{ idm_admin_password | default('ansible123!') }}"
     # NDJSON debug log (override with -e or env ZTA_AAP_DEBUG_LOG); must be writable on the Ansible controller
     zta_aap_debug_log: "{{ lookup('env', 'ZTA_AAP_DEBUG_LOG') | default('/tmp/debug-636aff.log', true) }}"
-    # Skip session-based LDAP verification (GET/POST /api/login/ + GET /me/)
+    # Skip session-based LDAP verification (GET/POST session login + GET /me/)
     aap_ldap_skip_api_token_test: false
     # Password for API token test (defaults to IdM admin password — same as ztauser when created by workshop IdM playbooks)
     aap_ldap_test_user_password: "{{ aap_ldap_test_password | default(idm_ldap_password) }}"
@@ -141,7 +145,7 @@
     - name: DBG stage LDAP API snapshot for session log
       ansible.builtin.copy:
         dest: /tmp/zta-agent-dbg-snap.json
-        content: "{{ {'aap_host': aap_host, 'server_uri_sent': ldap_config.AUTH_LDAP_SERVER_URI, 'patch_status': ldap_update.status } | to_json }}"
+        content: "{{ {'aap_host': aap_host, 'session_login_url': aap_session_login_url, 'server_uri_sent': ldap_config.AUTH_LDAP_SERVER_URI, 'patch_status': ldap_update.status } | to_json }}"
         mode: '0600'
       delegate_to: localhost
       changed_when: false
@@ -171,20 +175,20 @@
 
     # ── Verify LDAP integration works ────────────────────────────────
     # Controller may have AUTH_BASIC_ENABLED=false: POST /tokens/ with Basic
-    # returns 401 "visit /api/login/". Use session flow per AWX REST API docs.
+    # returns 401 "visit /api/login/". Use session flow (gateway: /api/gateway/v1/login/).
 
     - name: Get CSRF cookie for LDAP session test
       ansible.builtin.uri:
-        url: "{{ aap_host }}/api/login/"
+        url: "{{ aap_session_login_url }}"
         method: GET
         validate_certs: "{{ aap_verify_ssl }}"
         status_code: [200]
       register: ldap_login_csrf
       when: not ((aap_ldap_skip_api_token_test | default(false)) | bool)
 
-    - name: POST /api/login/ as ztauser (LDAP)
+    - name: POST session login as ztauser (LDAP)
       ansible.builtin.uri:
-        url: "{{ aap_host }}/api/login/"
+        url: "{{ aap_session_login_url }}"
         method: POST
         body_format: form-urlencoded
         body:
@@ -192,7 +196,7 @@
           password: "{{ aap_ldap_test_user_password }}"
         headers:
           X-CSRFToken: "{{ (ldap_login_csrf.cookies | default({})).csrftoken }}"
-          Referer: "{{ aap_host }}/api/login/"
+          Referer: "{{ aap_session_login_url }}"
         cookies:
           csrftoken: "{{ (ldap_login_csrf.cookies | default({})).csrftoken }}"
         validate_certs: "{{ aap_verify_ssl }}"
@@ -215,7 +219,7 @@
         - ldap_session_post is defined
         - ldap_session_post.status in [200, 302, 301, 204]
 
-    - name: LDAP session test — record failed POST /api/login/
+    - name: LDAP session test — record failed POST session login
       ansible.builtin.set_fact:
         ldap_login_test:
           status: "{{ ldap_session_post.status }}"
@@ -226,11 +230,12 @@
         - ldap_session_post.status not in [200, 302, 301, 204]
         - ldap_login_test is not defined
 
-    - name: LDAP session test — no CSRF cookie from GET /api/login/
+    - name: LDAP session test — no CSRF cookie from GET session login
       ansible.builtin.set_fact:
         ldap_login_test:
           status: 599
-          json: {"detail": "No csrftoken from GET /api/login/; cannot complete session login test"}
+          json:
+            detail: "No csrftoken from GET {{ aap_session_login_url }}; cannot complete session login test"
       when:
         - not ((aap_ldap_skip_api_token_test | default(false)) | bool)
         - ldap_login_csrf is defined
@@ -275,7 +280,7 @@
             "runId": "post-fix",
             "hypothesisId": "session-me",
             "location": "configure-aap-ldap.yml:session-verify",
-            "message": "ztauser GET/POST /api/login/ then GET /api/controller/v2/me/",
+            "message": "ztauser GET/POST session login then GET /api/controller/v2/me/",
             "data": data,
             "timestamp": int(time.time() * 1000),
         }
@@ -309,7 +314,7 @@
           ║    Security       ← team-security                       ║
           ║    Applications   ← team-applications                   ║
           ║                                                         ║
-          ║  LDAP session test (ztauser /api/login/ + /me/):        ║
+          ║  LDAP session test (ztauser gateway login + /me/):     ║
           {% if ldap_login_test.skipped | default(false) %}║    SKIPPED (aap_ldap_skip_api_token_test=true)            ║
           {% elif ldap_login_test.status == 200 %}║    PASSED                                                 ║
           {% else %}║    FAILED HTTP {{ ldap_login_test.status }} — {{ ldap_login_test.json.detail | default(ldap_login_test.msg | default('see DBG LDAP session test response')) }}║

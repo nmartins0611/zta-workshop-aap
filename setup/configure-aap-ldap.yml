@@ -197,8 +197,8 @@
         headers:
           X-CSRFToken: "{{ (ldap_login_csrf.cookies | default({})).csrftoken }}"
           Referer: "{{ aap_session_login_url }}"
-        cookies:
-          csrftoken: "{{ (ldap_login_csrf.cookies | default({})).csrftoken }}"
+          # ansible.legacy.uri on Ansible 2.14 has no `cookies` parameter — use Cookie header
+          Cookie: "csrftoken={{ (ldap_login_csrf.cookies | default({})).csrftoken }}"
         validate_certs: "{{ aap_verify_ssl }}"
         status_code: [200, 302, 301, 204, 401, 403]
       register: ldap_session_post
@@ -211,7 +211,8 @@
         url: "{{ aap_host }}/api/controller/v2/me/"
         method: GET
         validate_certs: "{{ aap_verify_ssl }}"
-        cookies: "{{ ldap_session_post.cookies | default({}) }}"
+        headers:
+          Cookie: "{{ ldap_session_post.cookies | default({}) | dictsort | map('join', '=') | join('; ') }}"
         status_code: [200, 401, 403]
       register: ldap_login_test
       when:

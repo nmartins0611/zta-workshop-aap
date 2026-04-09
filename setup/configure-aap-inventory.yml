@@ -31,8 +31,9 @@
     aap_organization: Default
 
     inventory_name: ZTA Lab Inventory
-    # Must match setup/configure-aap-project.yml project_name.
+    # Must match setup/configure-aap-project.yml project_name and ee_name.
     aap_workshop_project_name: ZTA Workshop
+    aap_workshop_ee_name: ZTA Workshop EE
     aap_inventory_scm_path: inventory/hosts.ini
     aap_inventory_scm_source_name: Workshop hosts.ini (project)
 
@@ -241,6 +242,7 @@
         source: scm
         source_project: "{{ aap_workshop_project_name }}"
         source_path: "{{ aap_inventory_scm_path }}"
+        execution_environment: "{{ aap_workshop_ee_name }}"
         overwrite: true
         update_on_launch: true
         state: present

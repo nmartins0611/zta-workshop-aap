@@ -31,6 +31,12 @@
     idm_ldap_domain: "{{ idm_domain | default('zta.lab') }}"
     idm_ldap_base_dn: "dc={{ idm_ldap_domain.split('.') | join(',dc=') }}"
     idm_ldap_password: "{{ idm_admin_password | default('ansible123!') }}"
+    # NDJSON debug log (override with -e or env ZTA_AAP_DEBUG_LOG); must be writable on the Ansible controller
+    zta_aap_debug_log: "{{ lookup('env', 'ZTA_AAP_DEBUG_LOG') | default('/tmp/debug-636aff.log', true) }}"
+    # Set true on gateway-led installs where UI LDAP works but controller token API rejects LDAP basic auth
+    aap_ldap_skip_api_token_test: false
+    # Password for API token test (defaults to IdM admin password — same as ztauser when created by workshop IdM playbooks)
+    aap_ldap_test_user_password: "{{ aap_ldap_test_password | default(idm_ldap_password) }}"
 
     # LDAP settings for AAP's authentication backend
     ldap_config:
@@ -142,10 +148,11 @@
 
     - name: DBG append LDAP snapshot to session log
       ansible.builtin.shell: |
+        export ZTA_LOG='{{ zta_aap_debug_log }}'
         python3 <<'PY'
         import json, time, os
-        path = "/home/nmartins/Development/.cursor/debug-636aff.log"
-        os.makedirs(os.path.dirname(path), exist_ok=True)
+        path = os.environ["ZTA_LOG"]
+        os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
         data = json.load(open("/tmp/zta-agent-dbg-snap.json"))
         rec = {
             "sessionId": "636aff",
@@ -169,7 +176,7 @@
         url: "{{ aap_host }}/api/controller/v2/tokens/"
         method: POST
         user: ztauser
-        password: "{{ idm_ldap_password }}"
+        password: "{{ aap_ldap_test_user_password }}"
         force_basic_auth: true
         validate_certs: "{{ aap_verify_ssl }}"
         body_format: json
@@ -179,21 +186,39 @@
         status_code: [201, 400, 401, 403]
       register: ldap_login_test
       ignore_errors: true
+      when: not ((aap_ldap_skip_api_token_test | default(false)) | bool)
+
+    - name: Placeholder when API token test skipped
+      ansible.builtin.set_fact:
+        ldap_login_test:
+          status: 0
+          skipped: true
+          json: {}
+      when: (aap_ldap_skip_api_token_test | default(false)) | bool
+
+    - name: DBG LDAP token test response (stdout evidence)
+      ansible.builtin.debug:
+        msg: "Token test HTTP={{ ldap_login_test.status }} response={{ ldap_login_test.json | default({}) }}"
+      when:
+        - not ((aap_ldap_skip_api_token_test | default(false)) | bool)
+        - ldap_login_test.status | default(0) != 201
 
     # #region agent log
     - name: DBG stage token test result for session log
       ansible.builtin.copy:
         dest: /tmp/zta-agent-dbg-token.json
-        content: "{{ {'http_status': ldap_login_test.status, 'response': ldap_login_test.json | default({}), 'pwd_len': idm_ldap_password | length } | to_json }}"
+        content: "{{ {'http_status': ldap_login_test.status, 'response': ldap_login_test.json | default({}), 'pwd_len': aap_ldap_test_user_password | length } | to_json }}"
         mode: '0600'
       delegate_to: localhost
       changed_when: false
+      when: not ((aap_ldap_skip_api_token_test | default(false)) | bool)
 
     - name: DBG append token test to session log
       ansible.builtin.shell: |
+        export ZTA_LOG='{{ zta_aap_debug_log }}'
         python3 <<'PY'
         import json, time, os
-        path = "/home/nmartins/Development/.cursor/debug-636aff.log"
+        path = os.environ["ZTA_LOG"]
         data = json.load(open("/tmp/zta-agent-dbg-token.json"))
         rec = {
             "sessionId": "636aff",
@@ -208,6 +233,7 @@
         PY
       delegate_to: localhost
       changed_when: false
+      when: not ((aap_ldap_skip_api_token_test | default(false)) | bool)
     # #endregion agent log
 
     - name: Clean up test token
@@ -246,7 +272,15 @@
           ║    Security       ← team-security                       ║
           ║    Applications   ← team-applications                   ║
           ║                                                         ║
-          ║  LDAP Login Test (ztauser):                             ║
-          ║    {{ ('PASSED' if ldap_login_test.status == 201 else 'FAILED (' + (ldap_login_test.status | string) + ') — user may need password change in IdM first') }}║
+          ║  LDAP Login Test (ztauser API token):                   ║
+          {% if ldap_login_test.skipped | default(false) %}║    SKIPPED (aap_ldap_skip_api_token_test=true)            ║
+          {% elif ldap_login_test.status == 201 %}║    PASSED                                                 ║
+          {% else %}║    FAILED HTTP {{ ldap_login_test.status }} — {{ ldap_login_test.json.detail | default(ldap_login_test.msg | default('see DBG LDAP token test response')) }}║
+          {% endif %}║                                                         ║
+          ║  If FAILED 401: try UI login as ztauser; if UI works but  ║
+          ║  API fails, configure gateway LDAP (Exercise 1.2) or skip║
+          ║  this check: -e aap_ldap_skip_api_token_test=true        ║
+          ║  If UI fails: create/sync ztauser in IdM; password should║
+          ║  match idm_admin_password (or pass aap_ldap_test_password)║
           ║                                                         ║
           ╚══════════════════════════════════════════════════════════╝

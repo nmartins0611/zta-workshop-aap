@@ -6,7 +6,8 @@
 #   /api/controller/v2/settings/ldap/
 # AAP 2.6 gateway installs often require **Access Management → Authentication
 # Methods** instead; see Section 1 **Exercise 1.2** (lab/index.adoc or README.md)
-# for IdM field values that mirror the ldap_config below.
+# for IdM field values that mirror the ldap_config below. Automate that path with
+# setup/configure-aap-gateway-ldap.yml (POST/PATCH /api/gateway/v1/authenticators/).
 #
 # Usage:
 #   ansible-playbook setup/configure-aap-ldap.yml

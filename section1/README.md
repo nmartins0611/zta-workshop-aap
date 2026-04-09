@@ -6,17 +6,19 @@
 >
 > | Exercise | Status | Est. Time |
 > |----------|--------|-----------|
+> | Prerequisite — LDAP + Policy as Code on controller (verify) | **Core** | 2 min |
 > | 1.1 — Verify AAP credentials (Vault lookups) | **Core** | 5 min |
-> | 1.2 — Configure Inventory & Project | **Core** | 5 min |
-> | 1.3 — Create Job Templates | **Core** | 3 min |
-> | 1.4 — Verify All ZTA Services | **Core** | 2 min |
-> | 1.5 — Test Vault Dynamic Credentials | **Core** | 3 min |
-> | 1.6 — Test Vault SSH Signed Certificates | **Core** | 3 min |
-> | 1.7 — Test OPA Policy Decisions | **Core** | 2 min |
-> | 1.8 — Certificate Trust Chain Debugging | **Extended** | 25 min |
+> | 1.2 — IdM LDAP (Authentication Methods UI) | **Core** | 5 min |
+> | 1.3 — Configure Inventory & Project | **Core** | 5 min |
+> | 1.4 — Create Job Templates | **Core** | 3 min |
+> | 1.5 — Verify All ZTA Services | **Core** | 2 min |
+> | 1.6 — Test Vault Dynamic Credentials | **Core** | 3 min |
+> | 1.7 — Test Vault SSH Signed Certificates | **Core** | 3 min |
+> | 1.8 — Test OPA Policy Decisions | **Core** | 2 min |
+> | 1.9 — Certificate Trust Chain Debugging | **Extended** | 25 min |
 >
-> For a **2-hour workshop**, complete exercises **1.1–1.7** (~20–25 min).
-> Skip exercise 1.8 unless you have extra time or are running a longer format.
+> For a **2-hour workshop**, confirm the **LDAP + Policy as Code** prerequisite (below), then complete exercises **1.1–1.8** (~27–32 min).
+> Skip exercise 1.9 unless you have extra time or are running a longer format.
 
 ## Objective
 
@@ -63,6 +65,42 @@ IdM, Vault, OPA, Netbox, and Gitea.
     │central │  │vault   │  │ central    │  │ netbox     │
     └────────┘  └────────┘  └────────────┘  └────────────┘
 ```
+
+---
+
+## Controller identity and Policy as Code (prerequisite)
+
+Later sections assume the automation controller accepts **IdM users** for login and enforces **Policy as Code** (OPA gateway) before jobs run. In a typical lab build this is applied **during deployment** (Layer 7), not during Section 1 in the UI.
+
+**Playbooks** (see [`docs/deployment-guide.md`](../docs/deployment-guide.md) — *Layer 7 — Policy*):
+
+| Playbook | Purpose |
+|----------|---------|
+| `setup/configure-opa-base.yml` | Load OPA policies (including `aap.gateway`). |
+| `setup/configure-aap-policy.yml` | Enable controller ↔ OPA (Policy as Code). |
+| `setup/configure-aap-ldap.yml` | Controller **LDAP** authentication against IdM (LDAPS). |
+
+Running **LDAP earlier** in setup is fine; Section 1 still asks you to **verify** both integrations so Sections 2–4 match the lab narrative.
+
+### Verify LDAP (controller → IdM)
+
+- **Goal:** Workshop users sign in at `https://control.zta.lab` with **IdM accounts** (e.g. `ztauser` / `ansible123!`), not only platform `admin`.
+- **If login fails:** Complete **Exercise 1.2** (Authentication Methods UI), or confirm `configure-aap-ldap.yml` (legacy API) ran, IdM is reachable, and the controller trusts the IdM CA (e.g. after `setup/enroll-idm-clients.yml`). See [`HANDOFF.md`](../HANDOFF.md) (*LDAP: controller → IdM*) and the deployment guide.
+
+### Verify Policy as Code (controller → OPA)
+
+- **Goal:** Before a job runs, the controller can query OPA at `v1/data/aap/gateway/decision`. Sections 3–4 rely on this **outer ring**.
+- **UI:** As platform **admin**, open **Settings** → **Policy** / **Open Policy Agent** / **Policy as Code** (label varies by patch). Values should match [*Manual Policy as Code (OPA gateway)*](../docs/deployment-guide.md#manual-policy-as-code-opa) in the deployment guide.
+- **API:**
+
+```bash
+curl -sk -u "admin:ansible123!" \
+  "https://control.zta.lab/api/controller/v2/settings/opa/" | python3 -m json.tool
+```
+
+Expect `OPA_ENABLED` and `OPA_PRE_ACTION_ENABLED` true; `OPA_POLICY_PATH` is `v1/data/aap/gateway/decision`; `OPA_URL` matches your lab OPA (typically `http://central.zta.lab:8181` per `inventory/group_vars/all.yml`).
+
+If automation was skipped, use the **manual UI or API** steps in `docs/deployment-guide.md` Layer 7 or run `setup/configure-aap-policy.yml`.
 
 ---
 
@@ -134,10 +172,10 @@ vault kv get secret/db/admin
 
 > **Gitea:** `setup/configure-aap-credentials.yml` does **not** create **ZTA
 > Gitea Credential**. Add or verify that credential when you configure the
-> **ZTA Workshop** project (Exercise 1.2), if your Git URL requires authentication.
+> **ZTA Workshop** project (Exercise 1.3), if your Git URL requires authentication.
 
-Proof that lookups work from AAP appears in **Exercise 1.4** (**Verify ZTA
-Services**) and **Exercises 1.5–1.6**.
+Proof that lookups work from AAP appears in **Exercise 1.5** (**Verify ZTA
+Services**) and **Exercises 1.6–1.7**.
 
 ---
 
@@ -145,7 +183,7 @@ Services**) and **Exercises 1.5–1.6**.
 
 If the **NetBox** type or **ZTA NetBox Credential** is missing, create the type
 first, then re-run `setup/configure-aap-credentials.yml` (or create the
-credential to match the table in Exercise 1.2).
+credential to match the table in Exercise 1.3).
 
 > The NetBox credential type injects `NETBOX_API` and `NETBOX_TOKEN` for
 > `netbox.netbox` inventory and modules.
@@ -180,13 +218,13 @@ env:
   NETBOX_TOKEN: "{{ netbox_token }}"
 ```
 
-5. Click **Save**, then restore **ZTA NetBox Credential** via automation or Exercise 1.2.
+5. Click **Save**, then restore **ZTA NetBox Credential** via automation or Exercise 1.3.
 
 </details>
 
 ---
 
-### Step 4 — Vault SSH CA (for Exercise 1.6)
+### Step 4 — Vault SSH CA (for Exercise 1.7)
 
 Confirm Vault’s SSH CA and the signing role **ssh-signer** exist:
 
@@ -198,7 +236,7 @@ vault read ssh/roles/ssh-signer
 # Expected: allowed_users includes rhel; lab TTL (e.g. 30m)
 ```
 
-Run **Exercise 1.6 — Test Vault SSH Certificates** to see AAP obtain a signed cert.
+Run **Exercise 1.7 — Test Vault SSH Certificates** to see AAP obtain a signed cert.
 
 ---
 
@@ -218,7 +256,84 @@ Run **Exercise 1.6 — Test Vault SSH Certificates** to see AAP obtain a signed 
 
 ---
 
-## Exercise 1.2 — Configure Inventory & Project
+## Exercise 1.2 — IdM LDAP (Authentication Methods UI)
+
+**Goal:** On AAP 2.6, IdM LDAP is often configured under **Access Management → Authentication Methods → Create authentication**. That path is **not** the same as `PATCH /api/controller/v2/settings/ldap/` used by `setup/configure-aap-ldap.yml`. Use this exercise when you need the **gateway UI** values that match the workshop IdM layout.
+
+**Prerequisites:** IdM on `central.zta.lab`, domain `zta.lab` → base DN `dc=zta,dc=lab`. Controller trusts IdM CA for LDAPS (`setup/enroll-idm-clients.yml`). IdM `admin` password matches `idm_admin_password` (default `ansible123!`).
+
+### Steps
+
+1. Log in as platform **admin**. Go to **Access Management** → **Authentication Methods** → **Create authentication**.
+2. **Authentication type:** LDAP.
+3. Fill the main fields:
+
+| Field | Workshop value |
+|-------|----------------|
+| Name | `IdM LDAP` (any label) |
+| LDAP Server URI | `ldaps://central.zta.lab` |
+| LDAP Bind DN | `uid=admin,cn=users,cn=accounts,dc=zta,dc=lab` |
+| LDAP Bind Password | IdM `admin` password (`ansible123!` default) |
+| LDAP Group Type | `GroupOfNamesType` |
+| LDAP User DN Template | *(empty)* |
+| LDAP Start TLS | Off (use LDAPS URI above) |
+
+4. **LDAP Connection Options** (YAML):
+
+```yaml
+OPT_REFERRALS: 0
+OPT_NETWORK_TIMEOUT: 30
+```
+
+5. **LDAP Group Type Parameters** (required). These are **key/value arguments for the chosen group type’s init method**—invalid keys are rejected. For **GroupOfNamesType** (IdM `groupOfNames`), use **`name_attr` only**; **do not** set `member_attr` (you will see *Invalid option for specified GROUP_TYPE*).
+
+**YAML:**
+
+```yaml
+name_attr: cn
+```
+
+**JSON (equivalent):**
+
+```json
+{"name_attr": "cn"}
+```
+
+If you pick a different **LDAP Group Type**, allowed keys change—see [AAP 2.6 Access management and authentication](https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.6/html/access_management_and_authentication/).
+
+6. **LDAP User Search** (YAML):
+
+```yaml
+- cn=users,cn=accounts,dc=zta,dc=lab
+- SCOPE_SUBTREE
+- (uid=%(user)s)
+```
+
+7. **LDAP Group Search** (YAML):
+
+```yaml
+- cn=groups,cn=accounts,dc=zta,dc=lab
+- SCOPE_SUBTREE
+- (objectClass=groupOfNames)
+```
+
+8. **LDAP User Attribute Map** (required, YAML):
+
+```yaml
+first_name: givenName
+last_name: sn
+email: mail
+```
+
+9. Enable **Enabled** (and **Create objects** if you want local users on first login). **Create Authentication Method**.
+
+**Organisation / team mapping:** `setup/configure-aap-ldap.yml` also configures superuser group (`zta-admins`), organisation map, and team maps. On gateway installs those may be **authenticator maps** or advanced fields—see [Red Hat AAP 2.6 Access management and authentication](https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.6/html/access_management_and_authentication/).
+
+**Verify:** Sign out; log in as `ztauser` / `ansible123!` at `https://control.zta.lab`.
+
+---
+
+## Exercise 1.3 — Configure Inventory & Project
 
 ### Project from Gitea (create first — the inventory source depends on it)
 
@@ -299,7 +414,7 @@ curl -s -H "Authorization: Token 0123456789abcdef0123456789abcdef01234567" \
 
 ---
 
-## Exercise 1.3 — Create Job Templates
+## Exercise 1.4 — Create Job Templates
 
 | Template Name | Playbook | Inventory | Credentials |
 |---------------|----------|-----------|-------------|
@@ -310,7 +425,7 @@ curl -s -H "Authorization: Token 0123456789abcdef0123456789abcdef01234567" \
 
 ---
 
-## Exercise 1.4 — Verify All ZTA Services
+## Exercise 1.5 — Verify All ZTA Services
 
 Launch **Verify ZTA Services** and confirm every component is healthy:
 
@@ -325,7 +440,7 @@ Launch **Verify ZTA Services** and confirm every component is healthy:
 
 ---
 
-## Exercise 1.5 — Test Vault Dynamic Credentials
+## Exercise 1.6 — Test Vault Dynamic Credentials
 
 Launch **Test Vault Integration**.
 
@@ -341,7 +456,7 @@ never reuses credentials.
 
 ---
 
-## Exercise 1.6 — Test Vault SSH Signed Certificates
+## Exercise 1.7 — Test Vault SSH Signed Certificates
 
 Launch **Test Vault SSH Certificates**.
 
@@ -384,7 +499,7 @@ rm -f /tmp/ephemeral /tmp/ephemeral.pub /tmp/ephemeral-cert.pub
 
 ---
 
-## Exercise 1.7 — Test OPA Policy Decisions
+## Exercise 1.8 — Test OPA Policy Decisions
 
 Launch **Test OPA Policy**.
 
@@ -403,6 +518,7 @@ membership in IdM determines what each user can do.
 
 ## Validation Checklist
 
+- [ ] IdM LDAP: **Exercise 1.2** (Authentication Methods UI) or `configure-aap-ldap.yml`; `ztauser` can log into the controller
 - [ ] Vault Credential created (bootstrap — only stored password)
 - [ ] Machine Credential created with Vault KV external lookup (key icon visible)
 - [ ] Arista Credential created with Vault KV external lookup (key icon visible)
@@ -419,7 +535,7 @@ membership in IdM determines what each user can do.
 
 # Extended Exercises (Longer Formats Only)
 
-# Exercise 1.8 — Certificate Trust Chain Debugging (Hands-On)
+# Exercise 1.9 — Certificate Trust Chain Debugging (Hands-On)
 
 ## The Scenario
 

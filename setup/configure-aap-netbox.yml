@@ -2,7 +2,7 @@
 # Configure AAP Controller with NetBox CMDB integration.
 #
 # Creates:
-#   - Custom "NetBox" credential type (injects NETBOX_API + NETBOX_TOKEN env vars)
+#   - Custom "NetBox" credential type (inputs NETBOX_API + NETBOX_TOKEN; injects as env)
 #   - "ZTA NetBox Credential" with the workshop API token
 #   - "ZTA Lab Inventory" (empty — add the NetBox source in Exercise 1.2)
 #
@@ -54,11 +54,20 @@
       debug:
         msg: "AAP Controller {{ aap_ping.json.version }} detected"
 
-    - name: Verify NetBox API is reachable
+    - name: Verify NetBox API with token (same URL/token as ZTA NetBox Credential)
       uri:
-        url: "{{ nb_api_url }}/api/status/"
+        url: "{{ nb_api_url.rstrip('/') }}/api/status/"
         method: GET
+        headers:
+          Authorization: "Token {{ nb_api_token }}"
         status_code: 200
+      register: netbox_cred_connectivity
+
+    - name: Assert NetBox returned status payload
+      assert:
+        that:
+          - netbox_cred_connectivity.json is mapping
+        fail_msg: "NetBox /api/status/ did not return JSON; check NETBOX_API URL and NETBOX_TOKEN."
 
     # ── Create NetBox credential type ─────────────────────────────────
 
@@ -69,21 +78,20 @@
         kind: cloud
         inputs:
           fields:
-            - id: netbox_url
-              label: NetBox URL
+            - id: NETBOX_API
               type: string
-              help_text: "Full URL (e.g. http://netbox.zta.lab:8880)"
-            - id: netbox_token
-              label: API Token
+              label: NetBox Host URL
+            - id: NETBOX_TOKEN
               type: string
+              label: NetBox API Token
               secret: true
           required:
-            - netbox_url
-            - netbox_token
+            - NETBOX_API
+            - NETBOX_TOKEN
         injectors:
           env:
-            NETBOX_API: "{% raw %}{{ netbox_url }}{% endraw %}"
-            NETBOX_TOKEN: "{% raw %}{{ netbox_token }}{% endraw %}"
+            NETBOX_API: "{% raw %}{{ NETBOX_API }}{% endraw %}"
+            NETBOX_TOKEN: "{% raw %}{{ NETBOX_TOKEN }}{% endraw %}"
         state: present
 
     # ── Create NetBox credential ──────────────────────────────────────
@@ -95,8 +103,8 @@
         credential_type: NetBox
         organization: Default
         inputs:
-          netbox_url: "{{ nb_api_url }}"
-          netbox_token: "{{ nb_api_token }}"
+          NETBOX_API: "{{ nb_api_url }}"
+          NETBOX_TOKEN: "{{ nb_api_token }}"
         state: present
 
     # ── Create inventory ──────────────────────────────────────────────
@@ -121,11 +129,11 @@
           ║  Credential:       ZTA NetBox Credential                     ║
           ║  Inventory:        ZTA Lab Inventory                         ║
           ║                                                              ║
-          ║  NetBox URL:       {{ nb_api_url }}
+          ║  NetBox Host URL:  {{ nb_api_url }}
           ║                                                              ║
           ║  Injected env vars (available to playbooks & inventory):     ║
-          ║    NETBOX_API   → NetBox URL                                 ║
-          ║    NETBOX_TOKEN → API token (secret)                         ║
+          ║    NETBOX_API   → NetBox Host URL (credential input)          ║
+          ║    NETBOX_TOKEN → NetBox API Token (secret)                   ║
           ║                                                              ║
           ║  Next Steps (Exercise 1.2):                                  ║
           ║    1. Create the ZTA Workshop project (Gitea)                ║

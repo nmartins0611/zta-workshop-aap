@@ -109,4 +109,4 @@ When the instructor runs `setup/configure-aap-project.yml` and `setup/configure-
 | Job templates (Section 1) | Verify ZTA Services; Test Vault Integration; Test Vault SSH Certificates; Test OPA Policy
 |===
 
-**Credentials on jobs (Section 1):** attach **ZTA Machine Credential** to all four templates; add **ZTA Arista Credential** only to **Verify ZTA Services** (EOS facts play). **ZTA Vault Credential** is never attached directly—it backs Machine/Network lookups. **ZTA Gitea Credential** is for **project** sync only. Details: link:../../section1/lab/index.adoc#exercise-1-3-job-templates[Section 1 lab — Job templates].
+**Credentials on jobs (Section 1):** attach **ZTA Machine Credential** to all four templates; add **ZTA Arista Credential** only to **Verify ZTA Services** (EOS facts play). **ZTA Vault Credential** is never attached directly—it backs Machine/Network lookups. **ZTA Gitea Credential** is for **project** sync only. Details: link:../../section1/lab/index.adoc#exercise-1-4-job-templates[Section 1 lab — Job templates].

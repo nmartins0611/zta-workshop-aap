@@ -325,9 +325,25 @@ last_name: sn
 email: mail
 ```
 
+This is the only “mapping” inside the LDAP form itself: it copies IdM attributes into the platform user profile (name and email). It does **not** assign organizations, teams, or superuser.
+
 9. Enable **Enabled** (and **Create objects** if you want local users on first login). **Create Authentication Method**.
 
-**Organisation / team mapping:** `setup/configure-aap-ldap.yml` also configures superuser group (`zta-admins`), organisation map, and team maps. On gateway installs those may be **authenticator maps** or advanced fields—see [Red Hat AAP 2.6 Access management and authentication](https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.6/html/access_management_and_authentication/).
+### Organisation, team, and superuser mapping (gateway)
+
+On AAP 2.6, permissions after LDAP login come from **authentication mapping** (authenticator maps), not from the LDAP User Attribute Map above. After you create the LDAP authenticator, use the workflow in Red Hat’s doc: [Define authentication mapping rules and triggers](https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.6/html/access_management_and_authentication/gw-configure-authentication#gw-define-rules-triggers) (from **Access Management** → **Authentication Methods**). For each rule you pick a **map type** (see [Authenticator map types](https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.6/html/access_management_and_authentication/gw-configure-authentication#gw-authenticator-map-types)) and a **trigger** such as **Group** when membership in an IdM group should decide access (see [Authenticator map triggers](https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.6/html/access_management_and_authentication/gw-configure-authentication#gw-authenticator-map-triggers)).
+
+The playbook `setup/configure-aap-ldap.yml` encodes the workshop targets below; mirror them in the UI (or run that playbook for the legacy controller LDAP API, which sets `AUTH_LDAP_*` maps directly).
+
+| Intent | IdM group DN (domain `dc=zta,dc=lab`) |
+|--------|----------------------------------------|
+| Platform superusers | `cn=zta-admins,cn=groups,cn=accounts,dc=zta,dc=lab` |
+| AAP team **Infrastructure** | `cn=team-infrastructure,cn=groups,cn=accounts,dc=zta,dc=lab` |
+| AAP team **DevOps** | `cn=team-devops,cn=groups,cn=accounts,dc=zta,dc=lab` |
+| AAP team **Security** | `cn=team-security,cn=groups,cn=accounts,dc=zta,dc=lab` |
+| AAP team **Applications** | `cn=team-applications,cn=groups,cn=accounts,dc=zta,dc=lab` |
+
+Organization **Default** should admit IdM users and treat **zta-admins** as organization admins, matching `AUTH_LDAP_ORGANIZATION_MAP` in `setup/configure-aap-ldap.yml`. If **Remove users** on the authenticator is enabled, maps that do not mention a permission can strip it on login—see the **Remove Users** / **Create objects** discussion in [Access management and authentication](https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.6/html/access_management_and_authentication/).
 
 **Verify:** Sign out; log in as `ztauser` / `ansible123!` at `https://control.zta.lab`.
 

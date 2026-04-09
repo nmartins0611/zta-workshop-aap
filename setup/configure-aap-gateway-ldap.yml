@@ -83,7 +83,7 @@
   tasks:
     - name: Resolve optional PAT (-e aap_gateway_oauth_token or env AAP_TOKEN)
       ansible.builtin.set_fact:
-        gw_pat_provided: "{{ aap_gateway_oauth_token | default(lookup('env', 'AAP_TOKEN') | default('', true)) | string | trim }}"
+        gw_pat_provided: "{{ aap_gateway_oauth_token | default(lookup('env', 'AAP_TOKEN') | default('', true), true) | string | trim }}"
 
     - name: Verify AAP controller is reachable
       ansible.builtin.uri:

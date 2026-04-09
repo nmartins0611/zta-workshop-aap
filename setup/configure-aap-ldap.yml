@@ -218,17 +218,17 @@
       when:
         - not ((aap_ldap_skip_api_token_test | default(false)) | bool)
         - ldap_session_post is defined
-        - ldap_session_post.status in [200, 302, 301, 204]
+        - ldap_session_post.status | int in [200, 302, 301, 204]
 
     - name: LDAP session test — record failed POST session login
       ansible.builtin.set_fact:
         ldap_login_test:
-          status: "{{ ldap_session_post.status }}"
+          status: "{{ ldap_session_post.status | int }}"
           json: "{{ ldap_session_post.json | default({}) }}"
       when:
         - not ((aap_ldap_skip_api_token_test | default(false)) | bool)
         - ldap_session_post is defined
-        - ldap_session_post.status not in [200, 302, 301, 204]
+        - ldap_session_post.status | int not in [200, 302, 301, 204]
         - ldap_login_test is not defined
 
     - name: LDAP session test — no CSRF cookie from GET session login
@@ -253,21 +253,24 @@
 
     - name: DBG LDAP session test response (stdout evidence)
       ansible.builtin.debug:
-        msg: "LDAP session verify HTTP={{ ldap_login_test.status }} response={{ ldap_login_test.json | default({}) }}"
+        msg: "LDAP session verify HTTP={{ ldap_login_test['status'] | default(-1) }} response={{ ldap_login_test['json'] | default({}) }}"
       when:
         - not ((aap_ldap_skip_api_token_test | default(false)) | bool)
-        - ldap_login_test.status | default(0) != 200
-        - not (ldap_login_test.skipped | default(false))
+        - ldap_login_test is defined
+        - ldap_login_test['status'] | default(0) | int != 200
+        - not (ldap_login_test['skipped'] | default(false))
 
     # #region agent log
     - name: DBG stage LDAP session test result for session log
       ansible.builtin.copy:
         dest: /tmp/zta-agent-dbg-token.json
-        content: "{{ {'http_status': ldap_login_test.status, 'response': ldap_login_test.json | default({}), 'pwd_len': aap_ldap_test_user_password | length, 'flow': 'session_login_me'} | to_json }}"
+        content: "{{ {'http_status': ldap_login_test['status'] | default(-1), 'response': ldap_login_test['json'] | default({}), 'pwd_len': aap_ldap_test_user_password | length, 'flow': 'session_login_me'} | to_json }}"
         mode: '0600'
       delegate_to: localhost
       changed_when: false
-      when: not ((aap_ldap_skip_api_token_test | default(false)) | bool)
+      when:
+        - not ((aap_ldap_skip_api_token_test | default(false)) | bool)
+        - ldap_login_test is defined
 
     - name: DBG append LDAP session test to session log
       ansible.builtin.shell: |
@@ -289,7 +292,9 @@
         PY
       delegate_to: localhost
       changed_when: false
-      when: not ((aap_ldap_skip_api_token_test | default(false)) | bool)
+      when:
+        - not ((aap_ldap_skip_api_token_test | default(false)) | bool)
+        - ldap_login_test is defined
     # #endregion agent log
 
     # ── Summary ──────────────────────────────────────────────────────
@@ -316,9 +321,10 @@
           ║    Applications   ← team-applications                   ║
           ║                                                         ║
           ║  LDAP session test (ztauser gateway login + /me/):     ║
-          {% if ldap_login_test.skipped | default(false) %}║    SKIPPED (aap_ldap_skip_api_token_test=true)            ║
-          {% elif ldap_login_test.status == 200 %}║    PASSED                                                 ║
-          {% else %}║    FAILED HTTP {{ ldap_login_test.status }} — {{ ldap_login_test.json.detail | default(ldap_login_test.msg | default('see DBG LDAP session test response')) }}║
+          {% if ldap_login_test is not defined %}║    FAILED (no test result — check skipped conditions)     ║
+          {% elif ldap_login_test['skipped'] | default(false) %}║    SKIPPED (aap_ldap_skip_api_token_test=true)            ║
+          {% elif ldap_login_test['status'] | default(0) | int == 200 %}║    PASSED                                                 ║
+          {% else %}║    FAILED HTTP {{ ldap_login_test['status'] | default('?') }} — {{ (ldap_login_test['json'] | default({}))['detail'] | default(ldap_login_test['msg'] | default('see DBG LDAP session test response')) }}║
           {% endif %}║                                                         ║
           ║  If FAILED: confirm ztauser exists in IdM and password     ║
           ║  (workshop: idm_admin_password or -e aap_ldap_test_password)║

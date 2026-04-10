@@ -274,7 +274,7 @@ Run **Exercise 1.7 — Test Vault SSH Certificates** to see AAP obtain a signed 
 | LDAP Server URI | `ldaps://central.zta.lab` |
 | LDAP Bind DN | `uid=admin,cn=users,cn=accounts,dc=zta,dc=lab` |
 | LDAP Bind Password | IdM `admin` password (`ansible123!` default) |
-| LDAP Group Type | `GroupOfNamesType` |
+| LDAP Group Type | `GroupOfNamesType` (or `MemberDNGroupType` — see step 5) |
 | LDAP User DN Template | *(empty)* |
 | LDAP Start TLS | Off (use LDAPS URI above) |
 
@@ -285,21 +285,26 @@ OPT_REFERRALS: 0
 OPT_NETWORK_TIMEOUT: 30
 ```
 
-5. **LDAP Group Type Parameters** (required). These are **key/value arguments for the chosen group type’s init method**—invalid keys are rejected. For **GroupOfNamesType** (IdM `groupOfNames`), use **`name_attr` only**; **do not** set `member_attr` (you will see *Invalid option for specified GROUP_TYPE*).
+5. **LDAP Group Type Parameters** (required). These are **key/value arguments for the chosen group type’s constructor** (`LDAP_GROUP_TYPE_PARAMS` in the docs). **Only keys that type accepts are valid**—extra keys produce *Invalid option for specified GROUP_TYPE*.
 
-**YAML:**
+Per [django-auth-ldap `LDAPGroupType`](https://django-auth-ldap.readthedocs.io/en/latest/reference.html#django_auth_ldap.config.LDAPGroupType) and the Red Hat LDAP group-type table ([AAP 2.5](https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.5/html/access_management_and_authentication/gw-configure-authentication#controller-set-up-LDAP) / [AAP 2.6](https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.6/html/access_management_and_authentication/gw-configure-authentication)):
+
+- **`GroupOfNamesType`** — for `groupOfNames`; equivalent to `MemberDNGroupType('member')`. Its constructor only takes **`name_attr`** (membership attribute is fixed to `member`). Use:
 
 ```yaml
 name_attr: cn
 ```
 
-**JSON (equivalent):**
+- **`MemberDNGroupType`** — generic “member DNs live in `member_attr` on the group entry”. Constructor takes **`member_attr`** and **`name_attr`**. To match the same IdM layout explicitly (and the doc’s two-field example), use:
 
-```json
-{"name_attr": "cn"}
+```yaml
+name_attr: cn
+member_attr: member
 ```
 
-If you pick a different **LDAP Group Type**, allowed keys change—see [AAP 2.6 Access management and authentication](https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.6/html/access_management_and_authentication/).
+For **FreeIPA/IdM `groupOfNames`**, those two choices are **functionally the same**. Use **`GroupOfNamesType` + `name_attr` only** for the shortest config; use **`MemberDNGroupType` + `name_attr` and `member_attr`** if you want to mirror Red Hat’s `{"name_attr": "cn", "member_attr": "member"}` style.
+
+If you pick another **LDAP Group Type**, allowed keys change—see [AAP 2.6 Access management and authentication](https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.6/html/access_management_and_authentication/).
 
 6. **LDAP User Search** (YAML):
 

@@ -30,7 +30,7 @@
 set -euo pipefail
 
 IDM_DNS="${IDM_DNS:-192.168.1.11}"
-FALLBACK_DNS="${FALLBACK_DNS:-8.8.8.8}"
+FALLBACK_DNS="${FALLBACK_DNS:-172.30.0.10}"
 IDM_HOST="${IDM_HOST:-central.zta.lab}"
 IDM_CA_URL="${IDM_CA_URL:-http://${IDM_HOST}/ipa/config/ca.crt}"
 GATEWAY_CONTAINER="${GATEWAY_CONTAINER:-automation-gateway}"

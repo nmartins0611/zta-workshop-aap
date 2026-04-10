@@ -8,6 +8,8 @@
 #
 # Usage:
 #   ansible-playbook -i inventory/hosts.ini setup/configure-aap-podman-gateway-prereqs.yml
+# Prefer SSH as the rootless Podman user (usually rhel) for [automation], e.g. add -u rhel to
+# ansible-playbook, or set ansible_user: rhel for that host — avoids sudo-wrapped podman vs login shell.
 #
 # Extra vars:
 #   idm_ip                      Override central/IdM IP (default from [zta_services] or 192.168.1.11)
@@ -19,6 +21,8 @@
 #   aap_podman_ca_src_file      If set, copy this file on the target to stage CA (skip ipa + get_url)
 #   aap_podman_gateway_container_name  Default automation-gateway
 #   aap_podman_skip_dns / aap_podman_skip_ca / aap_podman_skip_restart
+#   aap_podman_gateway_restart_pause   Seconds between stop and start (default 3)
+#   aap_podman_gateway_restart_retries / aap_podman_gateway_restart_delay — start retries (default 3 / 5s)
 #
 # Chain with LDAP:
 #   ansible-playbook ... setup/configure-aap-ldap.yml -e aap_podman_gateway_prereqs=true

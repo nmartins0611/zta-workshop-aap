@@ -118,8 +118,11 @@ fi
 
 if [[ "${SKIP_RESTART:-0}" != "1" ]]; then
   require_podman_gateway
-  podman restart "$GATEWAY_CONTAINER"
-  log "Restarted ${GATEWAY_CONTAINER}"
+  # stop+start avoids podman restart races (merged/etc/passwd missing, rc 125)
+  podman stop -t 90 "$GATEWAY_CONTAINER" || true
+  sleep "${RESTART_PAUSE:-3}"
+  podman start "$GATEWAY_CONTAINER"
+  log "Stopped then started ${GATEWAY_CONTAINER}"
 else
   log "SKIP_RESTART=1 — restart the gateway yourself to apply DNS + trust."
 fi

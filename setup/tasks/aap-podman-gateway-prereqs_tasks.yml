@@ -1,8 +1,9 @@
 ---
 # Included by configure-aap-podman-gateway-prereqs.yml and optionally configure-aap-ldap.yml.
-# Target: [automation] (AAP on Podman). Podman commands MUST run as the rootless owner
-# (aap_podman_run_user, default rhel), not as root — otherwise Podman uses root's storage and
-# cannot see automation-gateway (overlay / temp passwd errors). become: true + become_user for podman only.
+# Target: [automation] (AAP on Podman). Podman must use the rootless owner's graphroot
+# (aap_podman_run_user, default rhel). If ansible_user is root, tasks use become to that user.
+# If ansible_user is already that owner, become is skipped so podman matches an interactive rhel
+# shell (sudo -u rhel -i can differ and trigger overlay / merged/etc/passwd errors).
 
 - name: Resolve IdM / central IP for container DNS and CA download
   ansible.builtin.set_fact:
@@ -20,6 +21,10 @@
 - name: Default IdM CA download URL (HTTP to central)
   ansible.builtin.set_fact:
     aap_podman_idm_ca_url_effective: "{{ aap_podman_idm_ca_url | default('http://' ~ aap_podman_central_ip ~ '/ipa/config/ca.crt') }}"
+
+- name: Decide whether Podman tasks need become to the rootless owner
+  ansible.builtin.set_fact:
+    aap_podman_need_owner_become: "{{ (ansible_user | default('', true)) != (aap_podman_run_user | default('rhel')) }}"
 
 - name: Ensure Podman containers.conf.d drop-in directory exists
   when: not (aap_podman_skip_dns | default(false) | bool)
@@ -100,9 +105,9 @@
   register: aap_podman_gw_inspect
   changed_when: false
   failed_when: aap_podman_gw_inspect.rc != 0
-  become: true
+  become: "{{ aap_podman_need_owner_become | bool }}"
   become_user: "{{ aap_podman_run_user | default('rhel') }}"
-  become_flags: '-i'
+  become_flags: "{{ '-i' if (aap_podman_need_owner_become | bool) else omit }}"
   environment:
     XDG_RUNTIME_DIR: "/run/user/{{ aap_podman_run_uid }}"
 
@@ -114,9 +119,9 @@
       {{ aap_podman_gateway_container }}:/etc/pki/ca-trust/source/anchors/{{ aap_podman_ca_anchor_name }}
   register: aap_podman_cp_ca
   changed_when: aap_podman_cp_ca.rc == 0
-  become: true
+  become: "{{ aap_podman_need_owner_become | bool }}"
   become_user: "{{ aap_podman_run_user | default('rhel') }}"
-  become_flags: '-i'
+  become_flags: "{{ '-i' if (aap_podman_need_owner_become | bool) else omit }}"
   environment:
     XDG_RUNTIME_DIR: "/run/user/{{ aap_podman_run_uid }}"
 
@@ -125,22 +130,43 @@
   ansible.builtin.command:
     cmd: podman exec -u 0 {{ aap_podman_gateway_container }} update-ca-trust extract
   changed_when: true
-  become: true
+  become: "{{ aap_podman_need_owner_become | bool }}"
   become_user: "{{ aap_podman_run_user | default('rhel') }}"
-  become_flags: '-i'
+  become_flags: "{{ '-i' if (aap_podman_need_owner_become | bool) else omit }}"
   environment:
     XDG_RUNTIME_DIR: "/run/user/{{ aap_podman_run_uid }}"
 
-- name: Restart automation-gateway
+# podman restart can race overlay teardown and fail with:
+# "open .../merged/etc/passwd: no such file or directory" (rc 125). Stop + pause + start avoids that.
+- name: Restart automation-gateway (stop then start)
   when: not (aap_podman_skip_restart | default(false) | bool)
-  ansible.builtin.command:
-    cmd: podman restart {{ aap_podman_gateway_container }}
-  changed_when: true
-  become: true
+  become: "{{ aap_podman_need_owner_become | bool }}"
   become_user: "{{ aap_podman_run_user | default('rhel') }}"
-  become_flags: '-i'
+  become_flags: "{{ '-i' if (aap_podman_need_owner_become | bool) else omit }}"
   environment:
     XDG_RUNTIME_DIR: "/run/user/{{ aap_podman_run_uid }}"
+  block:
+    - name: Stop automation-gateway
+      ansible.builtin.command:
+        cmd: podman stop -t 90 {{ aap_podman_gateway_container }}
+      register: aap_podman_gate_stop
+      changed_when: aap_podman_gate_stop.rc == 0
+      failed_when: >-
+        aap_podman_gate_stop.rc != 0
+        and ('not running' not in (aap_podman_gate_stop.stderr | default('') | lower))
+
+    - name: Wait for gateway container filesystem to unmount
+      ansible.builtin.pause:
+        seconds: "{{ aap_podman_gateway_restart_pause | default(3) | int }}"
+
+    - name: Start automation-gateway
+      ansible.builtin.command:
+        cmd: podman start {{ aap_podman_gateway_container }}
+      register: aap_podman_gate_start
+      changed_when: true
+      until: aap_podman_gate_start.rc == 0
+      retries: "{{ aap_podman_gateway_restart_retries | default(3) | int }}"
+      delay: "{{ aap_podman_gateway_restart_delay | default(5) | int }}"
 
 - name: Summary — Podman gateway IdM LDAPS prerequisites
   ansible.builtin.debug:

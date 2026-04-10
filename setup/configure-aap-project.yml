@@ -37,6 +37,12 @@
 #   section1 … section7— Only that section’s job templates
 #   remove_section     — Delete templates for aap_remove_section (integer, required)
 #   remove_last_section— Delete templates for the highest section number in the catalog
+#   rbac               — Project + inventory permissions for LDAP teams and Default org only
+#
+# LDAP authenticator maps (Exercise 1.2) place users in teams named below. Those teams
+# must have Read/Execute on the workshop project and Read/Use on the lab inventory or IdM
+# users (e.g. appdev) cannot run jobs. Organization-only users (e.g. neteng) need the
+# Default org granted on the project and inventory as well.
 
 - name: Create AAP Project and Execution Environment for ZTA Workshop
   hosts: localhost
@@ -68,6 +74,17 @@
 
     # Set -e aap_remove_section=N with --tags remove_section to delete that section’s templates
     aap_remove_section: 0
+
+    # AAP team names must match teams created when IdM users log in (Exercise 1.2 team maps).
+    # Override if your UI uses different names (e.g. team-applications).
+    zta_workshop_rbac_teams:
+      - Infrastructure
+      - DevOps
+      - Security
+      - Applications
+
+    # Grant Default organization read+execute on project and read+use on inventory (covers neteng and other org-only members).
+    zta_workshop_grant_org_project_access: true
 
   module_defaults:
     group/ansible.controller.controller:
@@ -145,6 +162,255 @@
         timeout: 120
         state: present
       tags: [project, aap-bootstrap, aap, aap-project]
+
+    # ══════════════════════════════════════════════════════════════════════
+    #  2b. RBAC — teams + Default org can use project and inventory (LDAP lab users)
+    # ══════════════════════════════════════════════════════════════════════
+
+    - name: Ensure workshop LDAP teams exist (names must match authenticator maps)
+      ansible.controller.team:
+        name: "{{ item }}"
+        organization: "{{ aap_organization }}"
+        state: present
+      loop: "{{ zta_workshop_rbac_teams }}"
+      loop_control:
+        label: "{{ item }}"
+      tags: [project, rbac, aap-bootstrap, aap, aap-project]
+
+    - name: Grant workshop teams read access to project
+      ansible.controller.role:
+        role: read
+        projects:
+          - "{{ project_name }}"
+        teams:
+          - "{{ item }}"
+        lookup_organization: "{{ aap_organization }}"
+        state: present
+      loop: "{{ zta_workshop_rbac_teams }}"
+      loop_control:
+        label: "{{ item }}"
+      tags: [project, rbac, aap-bootstrap, aap, aap-project]
+
+    - name: Grant workshop teams execute access to project
+      ansible.controller.role:
+        role: execute
+        projects:
+          - "{{ project_name }}"
+        teams:
+          - "{{ item }}"
+        lookup_organization: "{{ aap_organization }}"
+        state: present
+      loop: "{{ zta_workshop_rbac_teams }}"
+      loop_control:
+        label: "{{ item }}"
+      tags: [project, rbac, aap-bootstrap, aap, aap-project]
+
+    - name: Grant workshop teams read access to lab inventory
+      ansible.controller.role:
+        role: read
+        inventories:
+          - "{{ inventory_name }}"
+        teams:
+          - "{{ item }}"
+        lookup_organization: "{{ aap_organization }}"
+        state: present
+      loop: "{{ zta_workshop_rbac_teams }}"
+      loop_control:
+        label: "{{ item }}"
+      tags: [project, rbac, aap-bootstrap, aap, aap-project]
+
+    - name: Grant workshop teams use access to lab inventory
+      ansible.controller.role:
+        role: use
+        inventories:
+          - "{{ inventory_name }}"
+        teams:
+          - "{{ item }}"
+        lookup_organization: "{{ aap_organization }}"
+        state: present
+      loop: "{{ zta_workshop_rbac_teams }}"
+      loop_control:
+        label: "{{ item }}"
+      tags: [project, rbac, aap-bootstrap, aap, aap-project]
+
+    - name: Look up Default organization id (for org-level RBAC)
+      ansible.builtin.uri:
+        url: "{{ aap_host }}/api/controller/v2/organizations/?name={{ aap_organization | urlencode }}"
+        method: GET
+        user: "{{ aap_user }}"
+        password: "{{ aap_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ aap_verify_ssl }}"
+        status_code: 200
+      register: zta_org_lookup
+      when: zta_workshop_grant_org_project_access | bool
+      tags: [project, rbac, aap-bootstrap, aap, aap-project]
+
+    - name: Look up workshop project API id and object_roles
+      ansible.builtin.uri:
+        url: "{{ aap_host }}/api/controller/v2/projects/?name={{ project_name | urlencode }}&organization__name={{ aap_organization | urlencode }}"
+        method: GET
+        user: "{{ aap_user }}"
+        password: "{{ aap_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ aap_verify_ssl }}"
+        status_code: 200
+      register: zta_project_api
+      when: zta_workshop_grant_org_project_access | bool
+      tags: [project, rbac, aap-bootstrap, aap, aap-project]
+
+    - name: Look up lab inventory API id and object_roles
+      ansible.builtin.uri:
+        url: "{{ aap_host }}/api/controller/v2/inventories/?name={{ inventory_name | urlencode }}&organization__name={{ aap_organization | urlencode }}"
+        method: GET
+        user: "{{ aap_user }}"
+        password: "{{ aap_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ aap_verify_ssl }}"
+        status_code: 200
+      register: zta_inventory_api
+      when: zta_workshop_grant_org_project_access | bool
+      tags: [project, rbac, aap-bootstrap, aap, aap-project]
+
+    - name: Grant Default org read on workshop project (idempotent)
+      when:
+        - zta_workshop_grant_org_project_access | bool
+        - zta_project_api.json.results | default([]) | length > 0
+        - zta_org_lookup.json.results | default([]) | length > 0
+      vars:
+        _org_id: "{{ zta_org_lookup.json.results[0].id }}"
+        _read_role_id: "{{ zta_project_api.json.results[0].summary_fields.object_roles.read_role.id }}"
+      block:
+        - name: Check if organization already has project read role
+          ansible.builtin.uri:
+            url: "{{ aap_host }}/api/controller/v2/roles/{{ _read_role_id }}/organizations/"
+            method: GET
+            user: "{{ aap_user }}"
+            password: "{{ aap_password }}"
+            force_basic_auth: true
+            validate_certs: "{{ aap_verify_ssl }}"
+            status_code: 200
+          register: zta_proj_read_orgs
+
+        - name: Associate Default org with project read role
+          ansible.builtin.uri:
+            url: "{{ aap_host }}/api/controller/v2/roles/{{ _read_role_id }}/organizations/"
+            method: POST
+            user: "{{ aap_user }}"
+            password: "{{ aap_password }}"
+            force_basic_auth: true
+            validate_certs: "{{ aap_verify_ssl }}"
+            body_format: json
+            body:
+              id: "{{ _org_id | int }}"
+            status_code: [201, 204]
+          when: _org_id | int not in (zta_proj_read_orgs.json.results | default([]) | map(attribute='id') | map('int') | list)
+      tags: [project, rbac, aap-bootstrap, aap, aap-project]
+
+    - name: Grant Default org execute on workshop project (idempotent)
+      when:
+        - zta_workshop_grant_org_project_access | bool
+        - zta_project_api.json.results | default([]) | length > 0
+        - zta_org_lookup.json.results | default([]) | length > 0
+      vars:
+        _org_id: "{{ zta_org_lookup.json.results[0].id }}"
+        _exec_role_id: "{{ zta_project_api.json.results[0].summary_fields.object_roles.execute_role.id }}"
+      block:
+        - name: Check if organization already has project execute role
+          ansible.builtin.uri:
+            url: "{{ aap_host }}/api/controller/v2/roles/{{ _exec_role_id }}/organizations/"
+            method: GET
+            user: "{{ aap_user }}"
+            password: "{{ aap_password }}"
+            force_basic_auth: true
+            validate_certs: "{{ aap_verify_ssl }}"
+            status_code: 200
+          register: zta_proj_exec_orgs
+
+        - name: Associate Default org with project execute role
+          ansible.builtin.uri:
+            url: "{{ aap_host }}/api/controller/v2/roles/{{ _exec_role_id }}/organizations/"
+            method: POST
+            user: "{{ aap_user }}"
+            password: "{{ aap_password }}"
+            force_basic_auth: true
+            validate_certs: "{{ aap_verify_ssl }}"
+            body_format: json
+            body:
+              id: "{{ _org_id | int }}"
+            status_code: [201, 204]
+          when: _org_id | int not in (zta_proj_exec_orgs.json.results | default([]) | map(attribute='id') | map('int') | list)
+      tags: [project, rbac, aap-bootstrap, aap, aap-project]
+
+    - name: Grant Default org read on lab inventory (idempotent)
+      when:
+        - zta_workshop_grant_org_project_access | bool
+        - zta_inventory_api.json.results | default([]) | length > 0
+        - zta_org_lookup.json.results | default([]) | length > 0
+      vars:
+        _org_id: "{{ zta_org_lookup.json.results[0].id }}"
+        _inv_read_role_id: "{{ zta_inventory_api.json.results[0].summary_fields.object_roles.read_role.id }}"
+      block:
+        - name: Check if organization already has inventory read role
+          ansible.builtin.uri:
+            url: "{{ aap_host }}/api/controller/v2/roles/{{ _inv_read_role_id }}/organizations/"
+            method: GET
+            user: "{{ aap_user }}"
+            password: "{{ aap_password }}"
+            force_basic_auth: true
+            validate_certs: "{{ aap_verify_ssl }}"
+            status_code: 200
+          register: zta_inv_read_orgs
+
+        - name: Associate Default org with inventory read role
+          ansible.builtin.uri:
+            url: "{{ aap_host }}/api/controller/v2/roles/{{ _inv_read_role_id }}/organizations/"
+            method: POST
+            user: "{{ aap_user }}"
+            password: "{{ aap_password }}"
+            force_basic_auth: true
+            validate_certs: "{{ aap_verify_ssl }}"
+            body_format: json
+            body:
+              id: "{{ _org_id | int }}"
+            status_code: [201, 204]
+          when: _org_id | int not in (zta_inv_read_orgs.json.results | default([]) | map(attribute='id') | map('int') | list)
+      tags: [project, rbac, aap-bootstrap, aap, aap-project]
+
+    - name: Grant Default org use on lab inventory (idempotent)
+      when:
+        - zta_workshop_grant_org_project_access | bool
+        - zta_inventory_api.json.results | default([]) | length > 0
+        - zta_org_lookup.json.results | default([]) | length > 0
+      vars:
+        _org_id: "{{ zta_org_lookup.json.results[0].id }}"
+        _use_role_id: "{{ zta_inventory_api.json.results[0].summary_fields.object_roles.use_role.id }}"
+      block:
+        - name: Check if organization already has inventory use role
+          ansible.builtin.uri:
+            url: "{{ aap_host }}/api/controller/v2/roles/{{ _use_role_id }}/organizations/"
+            method: GET
+            user: "{{ aap_user }}"
+            password: "{{ aap_password }}"
+            force_basic_auth: true
+            validate_certs: "{{ aap_verify_ssl }}"
+            status_code: 200
+          register: zta_inv_use_orgs
+
+        - name: Associate Default org with inventory use role
+          ansible.builtin.uri:
+            url: "{{ aap_host }}/api/controller/v2/roles/{{ _use_role_id }}/organizations/"
+            method: POST
+            user: "{{ aap_user }}"
+            password: "{{ aap_password }}"
+            force_basic_auth: true
+            validate_certs: "{{ aap_verify_ssl }}"
+            body_format: json
+            body:
+              id: "{{ _org_id | int }}"
+            status_code: [201, 204]
+          when: _org_id | int not in (zta_inv_use_orgs.json.results | default([]) | map(attribute='id') | map('int') | list)
+      tags: [project, rbac, aap-bootstrap, aap, aap-project]
 
     # ══════════════════════════════════════════════════════════════════════
     #  3. Job templates — catalog in vars/zta_workshop_job_templates.yml

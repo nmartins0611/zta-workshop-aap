@@ -14,7 +14,7 @@
 set -euo pipefail
 
 IDM_DNS="${IDM_DNS:-192.168.1.11}"
-FALLBACK_DNS="${FALLBACK_DNS:-8.8.8.8}"
+FALLBACK_DNS="${FALLBACK_DNS:-172.30.0.10}"
 DROPIN_DIR="/etc/containers/containers.conf.d"
 DROPIN_FILE="${DROPIN_DIR}/99-lab-dns.conf"
 

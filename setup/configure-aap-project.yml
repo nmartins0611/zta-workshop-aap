@@ -37,7 +37,7 @@
 #   rbac               — Project + inventory permissions for LDAP teams and Default org only
 #
 # LDAP authenticator maps (Exercise 1.2) place users in teams named below. Those teams
-# must have Read/Execute on the workshop project and Read/Use on the lab inventory or IdM
+# must have Read/Use on the workshop project and Read/Use on the lab inventory or IdM
 # users (e.g. appdev) cannot run jobs. Organization-only users (e.g. neteng) need the
 # Default org granted on the project and inventory as well.
 
@@ -77,7 +77,7 @@
       - Security
       - Applications
 
-    # Grant Default organization read+execute on project and read+use on inventory (covers neteng and other org-only members).
+    # Grant Default organization read+use on project and read+use on inventory (covers neteng and other org-only members).
     zta_workshop_grant_org_project_access: true
 
   module_defaults:
@@ -176,9 +176,9 @@
         label: "{{ item }}"
       tags: [project, rbac, aap-bootstrap, aap, aap-project]
 
-    - name: Grant workshop teams execute access to project
+    - name: Grant workshop teams use access to project
       ansible.controller.role:
-        role: execute
+        role: use
         projects:
           - "{{ project_name }}"
         teams:
@@ -292,29 +292,29 @@
           when: _org_id | int not in (zta_proj_read_orgs.json.results | default([]) | map(attribute='id') | map('int') | list)
       tags: [project, rbac, aap-bootstrap, aap, aap-project]
 
-    - name: Grant Default org execute on workshop project (idempotent)
+    - name: Grant Default org use on workshop project (idempotent)
       when:
         - zta_workshop_grant_org_project_access | bool
         - zta_project_api.json.results | default([]) | length > 0
         - zta_org_lookup.json.results | default([]) | length > 0
       vars:
         _org_id: "{{ zta_org_lookup.json.results[0].id }}"
-        _exec_role_id: "{{ zta_project_api.json.results[0].summary_fields.object_roles.execute_role.id }}"
+        _use_role_id: "{{ zta_project_api.json.results[0].summary_fields.object_roles.use_role.id }}"
       block:
-        - name: Check if organization already has project execute role
+        - name: Check if organization already has project use role
           ansible.builtin.uri:
-            url: "{{ aap_host }}/api/controller/v2/roles/{{ _exec_role_id }}/organizations/"
+            url: "{{ aap_host }}/api/controller/v2/roles/{{ _use_role_id }}/organizations/"
             method: GET
             user: "{{ aap_user }}"
             password: "{{ aap_password }}"
             force_basic_auth: true
             validate_certs: "{{ aap_verify_ssl }}"
             status_code: 200
-          register: zta_proj_exec_orgs
+          register: zta_proj_use_orgs
 
-        - name: Associate Default org with project execute role
+        - name: Associate Default org with project use role
           ansible.builtin.uri:
-            url: "{{ aap_host }}/api/controller/v2/roles/{{ _exec_role_id }}/organizations/"
+            url: "{{ aap_host }}/api/controller/v2/roles/{{ _use_role_id }}/organizations/"
             method: POST
             user: "{{ aap_user }}"
             password: "{{ aap_password }}"
@@ -324,7 +324,7 @@
             body:
               id: "{{ _org_id | int }}"
             status_code: [201, 204]
-          when: _org_id | int not in (zta_proj_exec_orgs.json.results | default([]) | map(attribute='id') | map('int') | list)
+          when: _org_id | int not in (zta_proj_use_orgs.json.results | default([]) | map(attribute='id') | map('int') | list)
       tags: [project, rbac, aap-bootstrap, aap, aap-project]
 
     - name: Grant Default org read on lab inventory (idempotent)

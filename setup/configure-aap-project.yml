@@ -3,7 +3,7 @@
 # environment for the ZTA workshop lab.
 #
 # Creates:
-#   0. aapadmin                    — Local controller superuser (System Administrator)
+#   0. aapadmin                    — Local System Administrator (password ansible123!)
 #   1. ZTA Workshop EE             — Custom execution environment (cEOS + RHEL)
 #   2. ZTA Workshop Project        — SCM project (Git)
 #   3. Job templates               — All playbooks under section*/playbooks/ (tagged per section)
@@ -30,7 +30,7 @@
 #   ansible-playbook -i inventory/hosts.ini setup/configure-aap-project.yml --tags remove_last_section
 #
 # Tags:
-#   superadmin         — Local superuser aapadmin only (password via AAP_SUPERADMIN_PASSWORD or default)
+#   superadmin         — Local System Administrator (aapadmin / ansible123!) only
 #   ee                 — Execution environment only
 #   project            — SCM project only (sync included)
 #   templates          — All workshop job templates (all sections)
@@ -51,7 +51,7 @@
     aap_user: admin
     aap_password: "{{ lookup('env', 'AAP_ADMIN_PASSWORD') | default('ansible123!', true) }}"
     aap_superadmin_username: aapadmin
-    aap_superadmin_password: "{{ lookup('env', 'AAP_SUPERADMIN_PASSWORD') | default('ansible123!', true) }}"
+    aap_superadmin_password: ansible123!
     aap_superadmin_email: aapadmin@zta.lab
     aap_verify_ssl: false
     aap_organization: Default
@@ -96,7 +96,7 @@
         msg: "AAP Controller {{ aap_ping.json.version }} detected"
       tags: [always]
 
-    - name: Create local AAP superuser
+    - name: Create local AAP System Administrator user
       ansible.controller.user:
         username: "{{ aap_superadmin_username }}"
         password: "{{ aap_superadmin_password }}"
@@ -313,7 +313,7 @@
           ║  ┌───┬──────────────────────────┬──────────────────────────────┐║
           ║  │ # │ Resource                 │ Details                      │║
           ║  ├───┼──────────────────────────┼──────────────────────────────┤║
-          ║  │ 0 │ Superuser (local)        │ {{ aap_superadmin_username }}{{ ' ' * (29 - aap_superadmin_username | length) }}│║
+          ║  │ 0 │ System admin (local)     │ {{ aap_superadmin_username }}{{ ' ' * (29 - aap_superadmin_username | length) }}│║
           ║  │ 1 │ Execution Environment    │ {{ ee_name }}{{ ' ' * (29 - ee_name | length) }}│║
           ║  │   │   Image                  │ {{ ee_image }}{{ ' ' * (29 - ee_image | length) }}│║
           ║  │ 2 │ Project                  │ {{ project_name }}{{ ' ' * (29 - project_name | length) }}│║

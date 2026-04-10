@@ -19,6 +19,14 @@
   ansible.builtin.set_fact:
     aap_podman_idm_ca_url_effective: "{{ aap_podman_idm_ca_url | default('http://' ~ aap_podman_central_ip ~ '/ipa/config/ca.crt') }}"
 
+- name: Ensure Podman containers.conf.d drop-in directory exists
+  when: not (aap_podman_skip_dns | default(false) | bool)
+  ansible.builtin.file:
+    path: /etc/containers/containers.conf.d
+    state: directory
+    mode: '0755'
+  become: true
+
 - name: Install Podman network DNS drop-in
   when: not (aap_podman_skip_dns | default(false) | bool)
   ansible.builtin.copy:

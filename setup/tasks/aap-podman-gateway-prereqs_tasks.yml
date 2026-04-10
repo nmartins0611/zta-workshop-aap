@@ -1,6 +1,8 @@
 ---
 # Included by configure-aap-podman-gateway-prereqs.yml and optionally configure-aap-ldap.yml.
-# Target: [automation] (AAP on Podman). Uses ansible_user for podman (rootless); become root only for /etc/containers.
+# Target: [automation] (AAP on Podman). Podman commands MUST run as the rootless owner
+# (aap_podman_run_user, default rhel), not as root — otherwise Podman uses root's storage and
+# cannot see automation-gateway (overlay / temp passwd errors). become: true + become_user for podman only.
 
 - name: Resolve IdM / central IP for container DNS and CA download
   ansible.builtin.set_fact:
@@ -75,6 +77,22 @@
     dest: "{{ aap_podman_ca_staged_path }}"
     mode: '0644'
 
+- name: Resolve rootless Podman user uid (for XDG_RUNTIME_DIR when Ansible runs as root)
+  when: >-
+    (not (aap_podman_skip_ca | default(false) | bool))
+    or (not (aap_podman_skip_restart | default(false) | bool))
+  ansible.builtin.command: getent passwd {{ aap_podman_run_user | default('rhel') }}
+  register: aap_podman_getent_passwd
+  changed_when: false
+  failed_when: aap_podman_getent_passwd.rc != 0
+
+- name: Set facts for rootless Podman environment
+  when: >-
+    (not (aap_podman_skip_ca | default(false) | bool))
+    or (not (aap_podman_skip_restart | default(false) | bool))
+  ansible.builtin.set_fact:
+    aap_podman_run_uid: "{{ aap_podman_getent_passwd.stdout.split(':')[2] }}"
+
 - name: Check automation-gateway container exists (rootless podman user)
   when: not (aap_podman_skip_ca | default(false) | bool)
   ansible.builtin.command:
@@ -82,6 +100,11 @@
   register: aap_podman_gw_inspect
   changed_when: false
   failed_when: aap_podman_gw_inspect.rc != 0
+  become: true
+  become_user: "{{ aap_podman_run_user | default('rhel') }}"
+  become_flags: '-i'
+  environment:
+    XDG_RUNTIME_DIR: "/run/user/{{ aap_podman_run_uid }}"
 
 - name: Install IdM CA into gateway container trust store
   when: not (aap_podman_skip_ca | default(false) | bool)
@@ -91,18 +114,33 @@
       {{ aap_podman_gateway_container }}:/etc/pki/ca-trust/source/anchors/{{ aap_podman_ca_anchor_name }}
   register: aap_podman_cp_ca
   changed_when: aap_podman_cp_ca.rc == 0
+  become: true
+  become_user: "{{ aap_podman_run_user | default('rhel') }}"
+  become_flags: '-i'
+  environment:
+    XDG_RUNTIME_DIR: "/run/user/{{ aap_podman_run_uid }}"
 
 - name: Refresh CA trust inside gateway container
   when: not (aap_podman_skip_ca | default(false) | bool)
   ansible.builtin.command:
     cmd: podman exec -u 0 {{ aap_podman_gateway_container }} update-ca-trust extract
   changed_when: true
+  become: true
+  become_user: "{{ aap_podman_run_user | default('rhel') }}"
+  become_flags: '-i'
+  environment:
+    XDG_RUNTIME_DIR: "/run/user/{{ aap_podman_run_uid }}"
 
 - name: Restart automation-gateway
   when: not (aap_podman_skip_restart | default(false) | bool)
   ansible.builtin.command:
     cmd: podman restart {{ aap_podman_gateway_container }}
   changed_when: true
+  become: true
+  become_user: "{{ aap_podman_run_user | default('rhel') }}"
+  become_flags: '-i'
+  environment:
+    XDG_RUNTIME_DIR: "/run/user/{{ aap_podman_run_uid }}"
 
 - name: Summary — Podman gateway IdM LDAPS prerequisites
   ansible.builtin.debug:

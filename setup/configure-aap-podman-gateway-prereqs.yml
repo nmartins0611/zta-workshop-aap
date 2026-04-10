@@ -11,6 +11,9 @@
 #
 # Extra vars:
 #   idm_ip                      Override central/IdM IP (default from [zta_services] or 192.168.1.11)
+#   aap_podman_run_user         OS user that owns rootless Podman / AAP containers (default rhel).
+#                               If you run ansible-playbook as root (e.g. boot script), podman tasks
+#                               use become to this user; root needs passwordless sudo -u <user>.
 #   aap_podman_container_dns_servers  List e.g. ["192.168.1.11","8.8.8.8"]
 #   aap_podman_idm_ca_url       Override CA URL (default http://<idm_ip>/ipa/config/ca.crt)
 #   aap_podman_ca_src_file      If set, copy this file on the target to stage CA (skip ipa + get_url)

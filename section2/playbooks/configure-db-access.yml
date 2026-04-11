@@ -35,14 +35,14 @@
                         destination:
                           host: "{{ db_data_ip }}"
                           port_protocol:
-                            eq: "{{ db_port }}"
+                            eq: "{{ db_port | string }}"
                       - sequence: 20
                         grant: permit
                         protocol: tcp
                         source:
                           host: "{{ db_data_ip }}"
                           port_protocol:
-                            eq: "{{ db_port }}"
+                            eq: "{{ db_port | string }}"
                         destination:
                           host: "{{ app_data_ip }}"
                       - sequence: 100

@@ -33,34 +33,30 @@
         mode: '0600'
         owner: root
         group: root
-      notify: Restart application
       no_log: true
 
-    - name: Update systemd service to use environment file
-      lineinfile:
+    - name: Ensure systemd unit references environment file (non-optional path)
+      ansible.builtin.lineinfile:
         path: /etc/systemd/system/ztaapp.service
         regexp: "^EnvironmentFile="
         line: "EnvironmentFile={{ app_deploy_dir }}/env"
-      notify: Restart application
 
-    - name: Remove hardcoded DB vars from systemd unit
-      lineinfile:
+    # Older workshop images shipped Environment=DB_USER=placeholder after
+    # EnvironmentFile=, which overrides Vault creds from the file — remove it.
+    - name: Remove hardcoded DB user/password from systemd unit (if present)
+      ansible.builtin.lineinfile:
         path: /etc/systemd/system/ztaapp.service
         regexp: "^Environment=DB_(USER|PASSWORD)="
         state: absent
-      notify: Restart application
 
-    - name: Reload systemd and ensure unit is loaded
+    # Always restart: handlers only run on "changed", and podman "CONTAINER uptime"
+    # will not change — only the in-container ztaapp process should restart.
+    - name: Reload systemd and restart application to apply credentials
       ansible.builtin.systemd:
         name: ztaapp
-        state: started
+        state: restarted
         enabled: true
         daemon_reload: true
-
-    # Handlers run at end of play by default; systemd "started" does not reload
-    # EnvironmentFile into an already-running process — restart before /health.
-    - name: Apply new credentials (restart app before health check)
-      ansible.builtin.meta: flush_handlers
 
     - name: Wait for application to be healthy
       uri:
@@ -86,9 +82,3 @@
             DB User: {{ db_user }} (dynamic, short-lived)
             Records: {{ app_data.json.data | length }} rows accessible
 
-  handlers:
-    - name: Restart application
-      ansible.builtin.systemd:
-        name: ztaapp
-        state: restarted
-        daemon_reload: true

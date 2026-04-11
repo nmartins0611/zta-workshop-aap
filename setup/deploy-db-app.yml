@@ -167,8 +167,24 @@
           - gunicorn
         state: present
 
+    # DB_USER / DB_PASSWORD must NOT appear as Environment= after EnvironmentFile:
+    # systemd applies later Environment= lines over the file and would keep "placeholder".
+    - name: Create initial application environment file (bootstrap DB credentials)
+      ansible.builtin.copy:
+        dest: "{{ app_deploy_dir }}/env"
+        content: |
+          DB_HOST={{ db_data_ip }}
+          DB_PORT={{ db_port }}
+          DB_NAME={{ db_name }}
+          DB_USER={{ db_admin_user }}
+          DB_PASSWORD={{ db_admin_password }}
+          APP_PORT={{ app_port }}
+        mode: '0600'
+        owner: root
+        group: root
+
     - name: Create systemd service
-      copy:
+      ansible.builtin.copy:
         dest: /etc/systemd/system/ztaapp.service
         content: |
           [Unit]
@@ -185,8 +201,6 @@
           Environment=DB_HOST={{ db_data_ip }}
           Environment=DB_PORT={{ db_port }}
           Environment=DB_NAME={{ db_name }}
-          Environment=DB_USER=placeholder
-          Environment=DB_PASSWORD=placeholder
           Environment=APP_PORT={{ app_port }}
 
           [Install]

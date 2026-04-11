@@ -274,6 +274,48 @@ email: mail
 
 `setup/configure-aap-ldap.yml` also sets **organisation map**, **team map**, and **superuser group** (`zta-admins`, `team-infrastructure`, etc.). Those may appear as **separate authenticator maps** (or advanced fields) in Access Management. If IdM users log in but lack roles or organisations, mirror the `ldap_config` block in `setup/configure-aap-ldap.yml` using the https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.6/html/access_management_and_authentication/[AAP 2.6 Access management and authentication] guide.
 
+==== Which groups you reference (by DN)
+
+These are the IdM groups the workshop uses in **Group** triggers (`dc=zta,dc=lab`). Use the **full DN** in the **Groups** list for each map (one DN per entry; if you combine several groups in one rule, include each DN the UI expects for that operation).
+
+[cols="2,4",options="header"]
+|===
+| IdM group (`cn`) | Full DN (paste into **Groups**)
+| `zta-admins` | `cn=zta-admins,cn=groups,cn=accounts,dc=zta,dc=lab`
+| `team-infrastructure` | `cn=team-infrastructure,cn=groups,cn=accounts,dc=zta,dc=lab`
+| `team-devops` | `cn=team-devops,cn=groups,cn=accounts,dc=zta,dc=lab`
+| `team-security` | `cn=team-security,cn=groups,cn=accounts,dc=zta,dc=lab`
+| `team-applications` | `cn=team-applications,cn=groups,cn=accounts,dc=zta,dc=lab`
+|===
+
+[NOTE]
+.Login vs role grants
+====
+You are **not** “allowing” only these users to log in **unless** you add a separate **Allow** map that lists those DNs. **Organization**, **Team**, **Superuser**, and similar maps mean: *if* the authenticated user is in that LDAP group, *then* grant the mapped organisation role, team membership, or superuser flag. Everyone else can still log in if LDAP authentication itself permits them; they simply will not receive those grants without a matching map.
+
+For **Allow** maps and other trigger types, see https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.6/html/access_management_and_authentication/gw-configure-authentication#gw-authenticator-map-types[Authenticator map types] in the AAP 2.6 Access management guide.
+====
+
+==== Suggested maps (UI)
+
+Use **Add authentication mapping** on your LDAP authenticator as needed:
+
+* **Organization** + **Group** = `zta-admins` DN → **Default** organization, **Organization Admin**.
+* **Superuser** + **Group** = same `zta-admins` DN → platform superuser (**optional**; use only if IdM `zta-admins` should equal full platform admin).
+* **Team** + **Group** = each `team-*` DN → the matching AAP team in **Default** with **Team Member** (use the DN from the table above):
+
++
+[cols="2,2",options="header"]
+|===
+| IdM group (`cn`) | AAP team name (Default org)
+| `team-infrastructure` | Infrastructure
+| `team-devops` | DevOps
+| `team-security` | Security
+| `team-applications` | Applications
+|===
+
+Paste the **full DN** into the **Groups** field for each **Group** trigger (per map, or combined in one rule if your design merges triggers).
+
 === Verify
 
 . Open an incognito window (or sign out). Log into `https://control.zta.lab` as **`ztauser`** / `ansible123!` (see link:../../docs/lab/common-environment.adoc#lab-common-environment[Lab environment reference]).

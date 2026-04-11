@@ -6,12 +6,22 @@
   gather_facts: false
 
   vars:
-    db_user: "{{ db_dynamic_user | default(lookup('env', 'DB_USER')) }}"
-    db_password: "{{ db_dynamic_password | default(lookup('env', 'DB_PASSWORD')) }}"
+    db_user: "{{ db_dynamic_user | default(lookup('ansible.builtin.env', 'DB_USER', default=''), true) }}"
+    db_password: "{{ db_dynamic_password | default(lookup('ansible.builtin.env', 'DB_PASSWORD', default=''), true) }}"
 
   tasks:
+    - name: Require database credentials (workflow set_stats or extra vars / env)
+      ansible.builtin.assert:
+        that:
+          - db_user | length > 0
+          - db_password | length > 0
+        fail_msg: >-
+          Missing DB credentials. Run this job after "Create DB Credential" in the
+          workflow (set_stats), or pass -e db_dynamic_user=... -e db_dynamic_password=...
+          or set DB_USER / DB_PASSWORD in the execution environment.
+
     - name: Write application environment file with dynamic credentials
-      copy:
+      ansible.builtin.copy:
         dest: "{{ app_deploy_dir }}/env"
         content: |
           DB_HOST={{ db_data_ip }}
@@ -23,6 +33,7 @@
         mode: '0600'
         owner: root
         group: root
+      notify: Restart application
       no_log: true
 
     - name: Update systemd service to use environment file
@@ -39,12 +50,17 @@
         state: absent
       notify: Restart application
 
-    - name: Reload systemd and start application
-      systemd:
+    - name: Reload systemd and ensure unit is loaded
+      ansible.builtin.systemd:
         name: ztaapp
         state: started
         enabled: true
         daemon_reload: true
+
+    # Handlers run at end of play by default; systemd "started" does not reload
+    # EnvironmentFile into an already-running process — restart before /health.
+    - name: Apply new credentials (restart app before health check)
+      ansible.builtin.meta: flush_handlers
 
     - name: Wait for application to be healthy
       uri:
@@ -72,7 +88,7 @@
 
   handlers:
     - name: Restart application
-      systemd:
+      ansible.builtin.systemd:
         name: ztaapp
         state: restarted
         daemon_reload: true

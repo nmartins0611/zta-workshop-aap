@@ -29,8 +29,8 @@
           {{
             (
               ipa_user_raw.stdout_lines | default([])
-              | select('match', '^(?i)memberof: cn=')
-              | map('regex_replace', '^(?i)memberof: cn=([^,]+),.*', '\\1')
+              | select('match', '(?i)^memberof: cn=')
+              | map('regex_replace', '(?i)^memberof: cn=([^,]+),.*', '\\1')
               | list
               | unique
             )

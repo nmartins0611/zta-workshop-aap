@@ -5,9 +5,12 @@
   become: false
   gather_facts: false
 
+  # Fail closed: do not invent IdM groups or a privileged user when Controller
+  # omits awx_user_* (common with some auth backends). Fabricating app-deployers
+  # would allow any launcher (e.g. neteng) through OPA.
   vars:
-    requesting_user: "{{ awx_user_name | default('appdev') }}"
-    requesting_groups: "{{ awx_user_groups | default(['app-deployers']) }}"
+    requesting_user: "{{ awx_user_name | default('', true) }}"
+    requesting_groups: "{{ awx_user_groups | default([], true) }}"
 
   tasks:
     - name: Query OPA for database access decision

@@ -10,8 +10,10 @@
 
   vars:
     acl_name: ZTA-APP-TO-DB
-    app_data_ip: "{{ hostvars['app']['ansible_host'] | default(app_data_ip) | default('10.20.0.10') }}"
-    db_data_ip: "{{ hostvars['db']['ansible_host'] | default(db_data_ip) | default('10.30.0.10') }}"
+    # Data-plane IPs come from inventory (group_vars/all.yml: app_data_ip, db_data_ip).
+    # Do not redefine them here with hostvars['app'] — that host is often absent when
+    # this play runs against [network] only (AAP job), and | default(app_data_ip) on
+    # the same variable name causes recursive templating.
     target_switch: ceos2
 
   tasks:

@@ -5,14 +5,43 @@
   become: false
   gather_facts: false
 
-  # Fail closed: do not invent IdM groups or a privileged user when Controller
-  # omits awx_user_* (common with some auth backends). Fabricating app-deployers
-  # would allow any launcher (e.g. neteng) through OPA.
+  # Launcher username comes from AAP (awx_user_name). Group membership for this
+  # PDP step is taken from IdM (ipa user-show --raw), not awx_user_groups: some
+  # controller/LDAP setups mis-report groups, and learners often add neteng to
+  # app-deployers while testing Exercise 2.5 — IdM is the SoT the policy models.
   vars:
     requesting_user: "{{ awx_user_name | default('', true) }}"
-    requesting_groups: "{{ awx_user_groups | default([], true) }}"
+    controller_reported_groups: "{{ awx_user_groups | default([], true) }}"
 
   tasks:
+    - name: Query IdM for launcher group membership (authoritative for OPA input)
+      ansible.builtin.command:
+        cmd: "ipa user-show {{ requesting_user | quote }} --raw"
+      register: ipa_user_raw
+      changed_when: false
+      failed_when: false
+      become: true
+      when: requesting_user | length > 0
+
+    - name: Build requesting_groups from IdM memberof
+      ansible.builtin.set_fact:
+        requesting_groups: >-
+          {{
+            (
+              ipa_user_raw.stdout_lines | default([])
+              | select('match', '^(?i)memberof: cn=')
+              | map('regex_replace', '^(?i)memberof: cn=([^,]+),.*', '\\1')
+              | list
+              | unique
+            )
+            if (
+              requesting_user | length > 0
+              and not (ipa_user_raw.skipped | default(false))
+              and (ipa_user_raw.rc | default(-1) == 0)
+            )
+            else []
+          }}
+
     - name: Query OPA for database access decision
       uri:
         url: "{{ opa_url }}/v1/data/zta/db_access/decision"
@@ -30,11 +59,15 @@
       debug:
         msg: |
           OPA Database Access Decision:
-            User:       {{ requesting_user }}
-            Groups:     {{ requesting_groups | join(', ') }}
-            Database:   {{ db_name }}
-            Decision:   {{ 'ALLOWED' if opa_decision.json.result.allow else 'DENIED' }}
-            Reason:     {{ opa_decision.json.result.reason }}
+            User:            {{ requesting_user }}
+            Groups (IdM):  {{ requesting_groups | join(', ') }}
+            {% if controller_reported_groups | length > 0
+                  and (controller_reported_groups | sort | join(',') != requesting_groups | sort | join(',')) %}
+            Controller saw: {{ controller_reported_groups | join(', ') }} (not used for this check)
+            {% endif %}
+            Database:        {{ db_name }}
+            Decision:        {{ 'ALLOWED' if opa_decision.json.result.allow else 'DENIED' }}
+            Reason:          {{ opa_decision.json.result.reason }}
 
     - name: Enforce OPA decision
       assert:

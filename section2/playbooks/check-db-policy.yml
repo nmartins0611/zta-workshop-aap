@@ -6,9 +6,9 @@
   gather_facts: false
 
   # Launcher username comes from AAP (awx_user_name). Group membership for this
-  # PDP step is taken from IdM (ipa user-show --raw), not awx_user_groups: some
-  # controller/LDAP setups mis-report groups, and learners often add neteng to
-  # app-deployers while testing Exercise 2.5 — IdM is the SoT the policy models.
+  # PDP step is taken from IdM (ipa user-show "Member of groups:" line), not
+  # awx_user_groups: some controller/LDAP setups mis-report groups, and learners
+  # often add neteng to app-deployers while testing Exercise 2.5 — IdM is the SoT.
   vars:
     requesting_user: "{{ awx_user_name | default('', true) }}"
     controller_reported_groups: "{{ awx_user_groups | default([], true) }}"
@@ -16,30 +16,44 @@
   tasks:
     - name: Query IdM for launcher group membership (authoritative for OPA input)
       ansible.builtin.command:
-        cmd: "ipa user-show {{ requesting_user | quote }} --raw"
-      register: ipa_user_raw
+        cmd: "ipa user-show {{ requesting_user | quote }}"
+      register: ipa_user_out
       changed_when: false
       failed_when: false
       become: true
       when: requesting_user | length > 0
 
-    - name: Build requesting_groups from IdM memberof
+    # Human-readable "Member of groups: a, b" is stable across IPA versions; LDIF
+    # --raw memberof attribute spelling varies and was yielding [] for some users.
+    - name: Build requesting_groups from IdM Member of groups line
       ansible.builtin.set_fact:
         requesting_groups: >-
           {{
             (
-              ipa_user_raw.stdout_lines | default([])
-              | select('match', '(?i)^memberof: cn=')
-              | map('regex_replace', '(?i)^memberof: cn=([^,]+),.*', '\\1')
-              | list
-              | unique
+              (
+                (
+                  ipa_user_out.stdout_lines | default([])
+                  | select('search', '(?i)Member of groups:')
+                  | list
+                  | first
+                  | default('')
+                )
+                | split(':', 1)
+                | last
+                | default('')
+                | trim
+                | split(',')
+                | map('trim')
+                | select('length')
+                | list
+              )
+              if (
+                requesting_user | length > 0
+                and not (ipa_user_out.skipped | default(false))
+                and (ipa_user_out.rc | default(-1) == 0)
+              )
+              else []
             )
-            if (
-              requesting_user | length > 0
-              and not (ipa_user_raw.skipped | default(false))
-              and (ipa_user_raw.rc | default(-1) == 0)
-            )
-            else []
           }}
 
     - name: Query OPA for database access decision

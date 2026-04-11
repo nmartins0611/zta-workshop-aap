@@ -12,30 +12,14 @@
     ansible_network_os: arista.eos.eos
 
   tasks:
+    # eos_acls maps 5432 → "postgres" in CLI; cEOS rejects that. Use numeric eq via eos_config.
     - name: Restore correct ACL on ceos2
-      arista.eos.eos_acls:
-        config:
-          - afi: ipv4
-            acls:
-              - name: ZTA-APP-TO-DB
-                aces:
-                  - sequence: 10
-                    grant: permit
-                    protocol: tcp
-                    source:
-                      host: "{{ app_data_ip }}"
-                    destination:
-                      host: "{{ db_data_ip }}"
-                      port_protocol:
-                        eq: "{{ db_port | string }}"
-                  - sequence: 20
-                    grant: deny
-                    protocol: ip
-                    source:
-                      any: true
-                    destination:
-                      host: "{{ db_data_ip }}"
-        state: overridden
+      arista.eos.eos_config:
+        replace: block
+        parents: ip access-list ZTA-APP-TO-DB
+        lines:
+          - "10 permit tcp host {{ app_data_ip }} host {{ db_data_ip }} eq {{ db_port }}"
+          - "20 deny ip any host {{ db_data_ip }}"
       when: inventory_hostname == 'ceos2'
 
     - name: Display fix confirmation

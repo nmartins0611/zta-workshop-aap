@@ -25,36 +25,45 @@
 
     # Human-readable "Member of groups: a, b" is stable across IPA versions; LDIF
     # --raw memberof attribute spelling varies and was yielding [] for some users.
-    - name: Build requesting_groups from IdM Member of groups line
+    # Use Jinja string.split(':', 1) — the Ansible | split(':', 1) filter is not
+    # portable across versions and can raise opaque template errors.
+    - name: Capture IdM Member of groups line from ipa user-show output
+      ansible.builtin.set_fact:
+        ipa_member_of_groups_line: >-
+          {{
+            ipa_user_out.stdout_lines | default([])
+            | select('search', 'Member of groups')
+            | list
+            | first
+            | default('')
+          }}
+      when:
+        - requesting_user | length > 0
+        - not (ipa_user_out.skipped | default(false))
+        - ipa_user_out.rc | default(-1) == 0
+
+    - name: Build requesting_groups list from Member of groups line
       ansible.builtin.set_fact:
         requesting_groups: >-
           {{
             (
-              (
-                (
-                  ipa_user_out.stdout_lines | default([])
-                  | select('search', '(?i)Member of groups:')
-                  | list
-                  | first
-                  | default('')
-                )
-                | split(':', 1)
-                | last
-                | default('')
-                | trim
-                | split(',')
-                | map('trim')
-                | select('length')
-                | list
-              )
-              if (
-                requesting_user | length > 0
-                and not (ipa_user_out.skipped | default(false))
-                and (ipa_user_out.rc | default(-1) == 0)
-              )
-              else []
-            )
+              ipa_member_of_groups_line.split(':', 1)[1] | trim
+            ).split(',')
+            | map('trim')
+            | reject('equalto', '')
+            | list
           }}
+      when:
+        - requesting_user | length > 0
+        - not (ipa_user_out.skipped | default(false))
+        - ipa_user_out.rc | default(-1) == 0
+        - (ipa_member_of_groups_line | default('')) | length > 0
+        - (ipa_member_of_groups_line | default('')) is search(':')
+
+    - name: Default requesting_groups when IdM line missing or query skipped
+      ansible.builtin.set_fact:
+        requesting_groups: []
+      when: requesting_groups is not defined
 
     - name: Query OPA for database access decision
       uri:

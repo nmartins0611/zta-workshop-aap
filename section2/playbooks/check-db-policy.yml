@@ -55,6 +55,27 @@
             requested_permissions: ["SELECT", "INSERT", "UPDATE"]
       register: opa_decision
 
+    # OPA query API normally returns {"result": {...}}; some errors return only
+    # {"errors": [...]} with no result — avoid .result on a bare dict.
+    - name: Normalize OPA decision document
+      ansible.builtin.set_fact:
+        opa_result: >-
+          {{
+            (
+              opa_decision.json['result']
+              if (
+                opa_decision.json | default({}) is mapping
+                and 'result' in opa_decision.json
+                and opa_decision.json['result'] is not none
+              )
+              else (
+                opa_decision.json
+                if (opa_decision.json | default({}) is mapping and 'allow' in opa_decision.json)
+                else {}
+              )
+            )
+          }}
+
     - name: Display OPA decision
       debug:
         msg: |
@@ -66,16 +87,19 @@
             Controller saw: {{ controller_reported_groups | join(', ') }} (not used for this check)
             {% endif %}
             Database:        {{ db_name }}
-            Decision:        {{ 'ALLOWED' if opa_decision.json.result.allow else 'DENIED' }}
-            Reason:          {{ opa_decision.json.result.reason }}
+            Decision:        {{ 'ALLOWED' if (opa_result.allow | default(false)) else 'DENIED' }}
+            Reason:          {{ opa_result.reason | default('OPA returned no decision document (check policy load and URL).') }}
+            {% if opa_decision.json is mapping and ('errors' in opa_decision.json) %}
+            OPA errors:      {{ opa_decision.json.errors | to_json }}
+            {% endif %}
 
     - name: Enforce OPA decision
       assert:
         that:
-          - opa_decision.json.result.allow == true
+          - opa_result.allow | default(false)
         fail_msg: |
           ACCESS DENIED by OPA policy.
           User '{{ requesting_user }}' is not authorised to request database credentials.
-          Reason: {{ opa_decision.json.result.reason }}
-          Conditions: {{ opa_decision.json.result.conditions }}
+          Reason: {{ opa_result.reason | default('unknown') }}
+          Conditions: {{ opa_result.conditions | default({}) }}
         success_msg: "OPA policy check passed — proceeding with credential issuance"

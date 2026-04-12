@@ -269,7 +269,7 @@
       loop: "{{ zta_workshop_job_templates | selectattr('section', 'equalto', 2) | list }}"
       loop_control:
         label: "{{ item.name }}"
-      tags: [templates, section2]
+      tags: [templates, section2, rbac]
 
     - name: Create Section 3 job templates
       ansible.controller.job_template:
@@ -285,7 +285,7 @@
       loop: "{{ zta_workshop_job_templates | selectattr('section', 'equalto', 3) | list }}"
       loop_control:
         label: "{{ item.name }}"
-      tags: [templates, section3]
+      tags: [templates, section3, rbac]
 
     - name: Create Section 4 job templates
       ansible.controller.job_template:
@@ -301,7 +301,7 @@
       loop: "{{ zta_workshop_job_templates | selectattr('section', 'equalto', 4) | list }}"
       loop_control:
         label: "{{ item.name }}"
-      tags: [templates, section4]
+      tags: [templates, section4, rbac]
 
     - name: Create Section 5 job templates
       ansible.controller.job_template:
@@ -317,7 +317,7 @@
       loop: "{{ zta_workshop_job_templates | selectattr('section', 'equalto', 5) | list }}"
       loop_control:
         label: "{{ item.name }}"
-      tags: [templates, section5]
+      tags: [templates, section5, rbac]
 
     - name: Create Section 6 job templates
       ansible.controller.job_template:
@@ -333,7 +333,7 @@
       loop: "{{ zta_workshop_job_templates | selectattr('section', 'equalto', 6) | list }}"
       loop_control:
         label: "{{ item.name }}"
-      tags: [templates, section6]
+      tags: [templates, section6, rbac]
 
     - name: Create Section 7 job templates
       ansible.controller.job_template:
@@ -349,7 +349,7 @@
       loop: "{{ zta_workshop_job_templates | selectattr('section', 'equalto', 7) | list }}"
       loop_control:
         label: "{{ item.name }}"
-      tags: [templates, section7]
+      tags: [templates, section7, rbac]
 
     # ══════════════════════════════════════════════════════════════════════
     #  2c. RBAC — LDAP teams can list and launch job templates
@@ -368,7 +368,7 @@
       loop: "{{ zta_workshop_rbac_teams | product(zta_workshop_job_templates) | list }}"
       loop_control:
         label: "{{ item.0 }} → read → {{ item.1.name }}"
-      tags: [templates, aap-bootstrap, aap, aap-project]
+      tags: [templates, rbac, aap-bootstrap, aap, aap-project]
 
     - name: Grant workshop teams execute role on each catalog job template
       ansible.controller.role:
@@ -382,7 +382,7 @@
       loop: "{{ zta_workshop_rbac_teams | product(zta_workshop_job_templates) | list }}"
       loop_control:
         label: "{{ item.0 }} → execute → {{ item.1.name }}"
-      tags: [templates, aap-bootstrap, aap, aap-project]
+      tags: [templates, rbac, aap-bootstrap, aap, aap-project]
 
     # ══════════════════════════════════════════════════════════════════════
     #  4. Remove job templates (optional)

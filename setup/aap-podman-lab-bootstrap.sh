@@ -25,7 +25,9 @@
 #   GATEWAY_CONTAINER  Default automation-gateway
 #   SKIP_DNS=1      Do not write containers.conf.d drop-in
 #   SKIP_CA=1       Do not install CA into gateway
-#   SKIP_RESTART=1  Do not podman restart gateway after changes
+#   CONTROLLER_CONTAINER  Default automation-controller (restarted after gateway if present)
+#   SKIP_CONTROLLER_RESTART=1  Do not restart controller (gateway only)
+#   SKIP_RESTART=1  Do not podman restart gateway/controller after changes
 
 set -euo pipefail
 
@@ -34,6 +36,7 @@ FALLBACK_DNS="${FALLBACK_DNS:-172.30.0.10}"
 IDM_HOST="${IDM_HOST:-central.zta.lab}"
 IDM_CA_URL="${IDM_CA_URL:-http://${IDM_HOST}/ipa/config/ca.crt}"
 GATEWAY_CONTAINER="${GATEWAY_CONTAINER:-automation-gateway}"
+CONTROLLER_CONTAINER="${CONTROLLER_CONTAINER:-automation-controller}"
 
 DROPIN_DIR="/etc/containers/containers.conf.d"
 DROPIN_FILE="${DROPIN_DIR}/99-lab-dns.conf"
@@ -119,12 +122,21 @@ fi
 if [[ "${SKIP_RESTART:-0}" != "1" ]]; then
   require_podman_gateway
   # stop+start avoids podman restart races (merged/etc/passwd missing, rc 125)
-  podman stop -t 90 "$GATEWAY_CONTAINER" || true
-  sleep "${RESTART_PAUSE:-3}"
-  podman start "$GATEWAY_CONTAINER"
-  log "Stopped then started ${GATEWAY_CONTAINER}"
+  podman_stop_start() {
+    local cname="$1"
+    podman stop -t 90 "$cname" || true
+    sleep "${RESTART_PAUSE:-3}"
+    podman start "$cname"
+    log "Stopped then started ${cname}"
+  }
+  podman_stop_start "$GATEWAY_CONTAINER"
+  if [[ "${SKIP_CONTROLLER_RESTART:-0}" != "1" ]] && podman inspect "$CONTROLLER_CONTAINER" &>/dev/null; then
+    podman_stop_start "$CONTROLLER_CONTAINER"
+  elif [[ "${SKIP_CONTROLLER_RESTART:-0}" != "1" ]]; then
+    log "No container '${CONTROLLER_CONTAINER}' — skipped controller restart"
+  fi
 else
-  log "SKIP_RESTART=1 — restart the gateway yourself to apply DNS + trust."
+  log "SKIP_RESTART=1 — restart gateway (and controller if used) yourself to apply DNS + trust."
 fi
 
 log ""

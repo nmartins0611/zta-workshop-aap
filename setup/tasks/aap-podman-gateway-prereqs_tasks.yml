@@ -1,5 +1,7 @@
 ---
 # Included by configure-aap-podman-gateway-prereqs.yml and optionally configure-aap-ldap.yml.
+# Restarts automation-gateway (always) and automation-controller when present — refreshes Podman DNS
+# inside those containers. IdM CA is installed only in the gateway.
 # Target: [automation] (AAP on Podman). Podman must use the rootless owner's graphroot
 # (aap_podman_run_user, default rhel). If ansible_user is root, tasks use become to that user.
 # If ansible_user is already that owner, become is skipped so podman matches an interactive rhel
@@ -138,7 +140,39 @@
 
 # podman restart can race overlay teardown and fail with:
 # "open .../merged/etc/passwd: no such file or directory" (rc 125). Stop + pause + start avoids that.
-- name: Restart automation-gateway (stop then start)
+# Controller is restarted too so it picks up Podman [network] dns_servers (gateway still gets IdM CA only).
+- name: Probe automation-controller for optional restart
+  when:
+    - not (aap_podman_skip_restart | default(false) | bool)
+    - not (aap_podman_skip_controller_restart | default(false) | bool)
+  ansible.builtin.command:
+    cmd: podman inspect {{ aap_podman_controller_container | default('automation-controller') }}
+  register: aap_podman_ctl_inspect
+  changed_when: false
+  failed_when: false
+  become: "{{ aap_podman_need_owner_become | bool }}"
+  become_user: "{{ aap_podman_run_user | default('rhel') }}"
+  become_flags: "{{ '-i' if (aap_podman_need_owner_become | bool) else omit }}"
+  environment:
+    XDG_RUNTIME_DIR: "/run/user/{{ aap_podman_run_uid }}"
+
+- name: Build list of containers to restart (gateway + controller if present)
+  when: not (aap_podman_skip_restart | default(false) | bool)
+  ansible.builtin.set_fact:
+    aap_podman_restart_containers: >-
+      {{
+        [aap_podman_gateway_container]
+        + (
+          [aap_podman_controller_container | default('automation-controller')]
+          if (
+            (not (aap_podman_skip_controller_restart | default(false) | bool))
+            and (aap_podman_ctl_inspect is defined)
+            and (aap_podman_ctl_inspect.rc | int == 0)
+          ) else []
+        )
+      }}
+
+- name: Restart AAP containers (stop, pause, start — sequential)
   when: not (aap_podman_skip_restart | default(false) | bool)
   become: "{{ aap_podman_need_owner_become | bool }}"
   become_user: "{{ aap_podman_run_user | default('rhel') }}"
@@ -146,25 +180,31 @@
   environment:
     XDG_RUNTIME_DIR: "/run/user/{{ aap_podman_run_uid }}"
   block:
-    - name: Stop automation-gateway
+    - name: Stop each container
       ansible.builtin.command:
-        cmd: podman stop -t 90 {{ aap_podman_gateway_container }}
-      register: aap_podman_gate_stop
-      changed_when: aap_podman_gate_stop.rc == 0
+        cmd: podman stop -t 90 {{ item }}
+      loop: "{{ aap_podman_restart_containers }}"
+      loop_control:
+        label: "{{ item }}"
+      register: aap_podman_restart_stops
+      changed_when: rc == 0
       failed_when: >-
-        aap_podman_gate_stop.rc != 0
-        and ('not running' not in (aap_podman_gate_stop.stderr | default('') | lower))
+        rc != 0
+        and ('not running' not in (stderr | default('') | lower))
 
-    - name: Wait for gateway container filesystem to unmount
+    - name: Wait for container filesystems to unmount
       ansible.builtin.pause:
         seconds: "{{ aap_podman_gateway_restart_pause | default(3) | int }}"
 
-    - name: Start automation-gateway
+    - name: Start each container
       ansible.builtin.command:
-        cmd: podman start {{ aap_podman_gateway_container }}
-      register: aap_podman_gate_start
+        cmd: podman start {{ item }}
+      loop: "{{ aap_podman_restart_containers }}"
+      loop_control:
+        label: "{{ item }}"
+      register: aap_podman_restart_starts
       changed_when: true
-      until: aap_podman_gate_start.rc == 0
+      until: rc == 0
       retries: "{{ aap_podman_gateway_restart_retries | default(3) | int }}"
       delay: "{{ aap_podman_gateway_restart_delay | default(5) | int }}"
 
@@ -174,5 +214,6 @@
       - "DNS drop-in: {{ '/etc/containers/containers.conf.d/99-lab-dns.conf' if not (aap_podman_skip_dns | default(false) | bool) else 'skipped' }}"
       - "IdM CA staged: {{ aap_podman_ca_staged_path if not (aap_podman_skip_ca | default(false) | bool) else 'skipped' }}"
       - "Gateway container: {{ aap_podman_gateway_container }}"
+      - "Containers restarted: {{ 'skipped' if (aap_podman_skip_restart | default(false) | bool) else (aap_podman_restart_containers | default([]) | join(', ')) }}"
       - "Verify: podman exec -it {{ aap_podman_gateway_container }} getent hosts central.zta.lab"
       - "Verify TLS: podman exec {{ aap_podman_gateway_container }} openssl s_client -connect central.zta.lab:636 -brief </dev/null"

@@ -5,6 +5,10 @@
 #   ansible-playbook setup/debug-aap-gateway-500.yml
 #   ansible-playbook setup/debug-aap-gateway-500.yml -e aap_controller_url=https://control.zta.lab
 #
+# Bash (same log format; requires curl + jq):
+#   export AAP_URL=https://control.zta.lab AAP_USER=admin AAP_ADMIN_PASSWORD='...'
+#   bash setup/scripts/debug_aap_gateway_probe.sh
+#
 # Log file (NDJSON, one object per line):
 #   /home/nmartins/Development/.cursor/debug-aba44c.log
 #

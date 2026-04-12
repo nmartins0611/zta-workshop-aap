@@ -90,18 +90,35 @@
     #  Verify prerequisites
     # ══════════════════════════════════════════════════════════════════════
 
-    - name: Verify AAP Controller is reachable
+    - name: Verify AAP Controller is reachable (API status)
       uri:
         url: "{{ aap_host }}/api/controller/v2/ping/"
         method: GET
         validate_certs: "{{ aap_verify_ssl }}"
-        status_code: 200
+        status_code: [200]
+        return_content: true
       register: aap_ping
       tags: [always]
 
-    - name: Display AAP version
-      debug:
-        msg: "AAP Controller {{ aap_ping.json.version }} detected"
+    - name: Confirm AAP Controller ping reports a ready controller
+      ansible.builtin.assert:
+        that:
+          - aap_ping.json is defined
+          - aap_ping.json is mapping
+          - (aap_ping.json.version | default('')) | length > 0
+          - (not (aap_ping.json.active is defined)) or (aap_ping.json.active | bool)
+        fail_msg: >-
+          AAP Controller status check failed for {{ aap_host }}/api/controller/v2/ping/.
+          HTTP {{ aap_ping.status | default('?') }}.
+          Response: {{ aap_ping.json | default({}) }}
+      tags: [always]
+
+    - name: Display AAP controller status
+      ansible.builtin.debug:
+        msg: >-
+          AAP Controller OK — version {{ aap_ping.json.version }}
+          {% if aap_ping.json.active is defined %} active={{ aap_ping.json.active }}{% endif %}
+          {% if aap_ping.json.ansible_version is defined %} ansible={{ aap_ping.json.ansible_version }}{% endif %}
       tags: [always]
 
     # ══════════════════════════════════════════════════════════════════════

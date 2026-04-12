@@ -34,12 +34,15 @@
 #   section1 … section7— Only that section’s job templates
 #   remove_section     — Delete templates for aap_remove_section (integer, required)
 #   remove_last_section— Delete templates for the highest section number in the catalog
-#   rbac               — Project + inventory permissions for LDAP teams (see zta_workshop_rbac_teams)
+#   rbac               — Project + inventory permissions for LDAP teams
+#   templates (+ full run)— Also assigns Read/Execute on each catalog job template for those teams
 #
 # LDAP authenticator maps (Exercise 1.2) place users in teams named below. Those teams
 # must have Read/Use on the workshop project and Read/Use on the lab inventory or IdM
-# users (e.g. appdev) cannot run jobs. Grant the Default organization Read/Use on the
-# project and inventory in the UI if org-only members (e.g. neteng) must run jobs.
+# users (e.g. appdev) cannot run jobs. Job templates are separate RBAC objects: teams
+# also need Read (see in UI) and Execute (Launch) on each template; OPA Policy as Code
+# still gates whether a launch is allowed. Grant Default org Read/Use on project and
+# inventory in the UI if org-only members must sync without team maps.
 
 - name: Create AAP Project and Execution Environment for ZTA Workshop
   hosts: localhost
@@ -347,6 +350,39 @@
       loop_control:
         label: "{{ item.name }}"
       tags: [templates, section7]
+
+    # ══════════════════════════════════════════════════════════════════════
+    #  2c. RBAC — LDAP teams can list and launch job templates
+    #  (Project/inventory Read+Use above does not imply job template visibility.)
+    # ══════════════════════════════════════════════════════════════════════
+
+    - name: Grant workshop teams read role on each catalog job template
+      ansible.controller.role:
+        role: read
+        job_templates:
+          - "{{ item.1.name }}"
+        teams:
+          - "{{ item.0 }}"
+        lookup_organization: "{{ aap_organization }}"
+        state: present
+      loop: "{{ zta_workshop_rbac_teams | product(zta_workshop_job_templates) | list }}"
+      loop_control:
+        label: "{{ item.0 }} → read → {{ item.1.name }}"
+      tags: [templates, aap-bootstrap, aap, aap-project]
+
+    - name: Grant workshop teams execute role on each catalog job template
+      ansible.controller.role:
+        role: execute
+        job_templates:
+          - "{{ item.1.name }}"
+        teams:
+          - "{{ item.0 }}"
+        lookup_organization: "{{ aap_organization }}"
+        state: present
+      loop: "{{ zta_workshop_rbac_teams | product(zta_workshop_job_templates) | list }}"
+      loop_control:
+        label: "{{ item.0 }} → execute → {{ item.1.name }}"
+      tags: [templates, aap-bootstrap, aap, aap-project]
 
     # ══════════════════════════════════════════════════════════════════════
     #  4. Remove job templates (optional)

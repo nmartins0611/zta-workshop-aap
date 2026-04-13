@@ -177,6 +177,11 @@
       loop: "{{ zta_workshop_rbac_teams }}"
       loop_control:
         label: "{{ item }}"
+      register: _team_result
+      retries: 5
+      delay: 3
+      until: _team_result is not failed
+      throttle: 1
       tags: [project, rbac, aap-bootstrap, aap, aap-project]
 
     - name: Grant workshop teams read access to project
@@ -191,6 +196,11 @@
       loop: "{{ zta_workshop_rbac_teams }}"
       loop_control:
         label: "{{ item }}"
+      register: _rbac_role_result
+      retries: 5
+      delay: 3
+      until: _rbac_role_result is not failed
+      throttle: 1
       tags: [project, rbac, aap-bootstrap, aap, aap-project]
 
     - name: Grant workshop teams use access to project
@@ -205,6 +215,11 @@
       loop: "{{ zta_workshop_rbac_teams }}"
       loop_control:
         label: "{{ item }}"
+      register: _rbac_role_result
+      retries: 5
+      delay: 3
+      until: _rbac_role_result is not failed
+      throttle: 1
       tags: [project, rbac, aap-bootstrap, aap, aap-project]
 
     - name: Grant workshop teams read access to lab inventory
@@ -219,6 +234,11 @@
       loop: "{{ zta_workshop_rbac_teams }}"
       loop_control:
         label: "{{ item }}"
+      register: _rbac_role_result
+      retries: 5
+      delay: 3
+      until: _rbac_role_result is not failed
+      throttle: 1
       tags: [project, rbac, aap-bootstrap, aap, aap-project]
 
     - name: Grant workshop teams use access to lab inventory
@@ -233,6 +253,11 @@
       loop: "{{ zta_workshop_rbac_teams }}"
       loop_control:
         label: "{{ item }}"
+      register: _rbac_role_result
+      retries: 5
+      delay: 3
+      until: _rbac_role_result is not failed
+      throttle: 1
       tags: [project, rbac, aap-bootstrap, aap, aap-project]
 
     # ══════════════════════════════════════════════════════════════════════

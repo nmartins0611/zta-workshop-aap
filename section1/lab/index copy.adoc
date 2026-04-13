@@ -6,7 +6,7 @@
 :idprefix:
 :idseparator: -
 
-This lab mirrors `section1/README.md` in AsciiDoc. Use it for student handouts or PDF/HTML builds. UI steps use the **automation controller** in **Ansible Automation Platform 2.6** (see shared platform note below).
+
 
 include::../../docs/lab/common-environment.adoc[]
 
@@ -19,72 +19,6 @@ Connect Ansible Automation Platform to the Zero Trust stack. Workshop credential
 ====
 Until AAP is wired to the same **identity, policy, secrets, and inventory truth** the rest of the architecture uses, automation would be a *shadow admin path*—easy to bypass Zero Trust intent. Here you make AAP a **first-class citizen** of the ZTA fabric: it authenticates like other services, reads policy from OPA, pulls secrets from Vault, and builds inventory from NetBox so *what you run jobs against* matches *what the organisation says exists*.
 ====
-
-.Workshop delivery (2-hour track)
-[cols="3,1,1",options="header"]
-|===
-| Exercise | Track | Est. time
-
-| Prerequisite — LDAP + Policy as Code (verify) | Core | 2 min
-| 1.1 — Verify AAP credentials (Vault lookups) | Core | 5 min
-| 1.2 — IdM LDAP (Authentication Methods UI) | Core | 5 min
-| 1.3 — Inventory and project | Core | 5 min
-| 1.4 — Job templates | Core | 3 min
-| 1.5 — Verify ZTA services | Core | 2 min
-| 1.6 — Vault dynamic credentials | Core | 3 min
-| 1.7 — Vault SSH signed certificates | Core | 3 min
-| 1.8 — OPA policy decisions | Core | 2 min
-| 1.9 — Certificate trust debugging | Extended | 25 min
-|===
-
-For a short workshop, complete **1.1–1.8** (~25–30 min). Skip **1.9** unless you have extra time. Confirm the **LDAP + Policy as Code** prerequisite below first (often already applied during lab deployment).
-
-== Controller: IdM LDAP and Policy as Code (prerequisite)
-
-Later sections assume the automation controller accepts **IdM users** for login and enforces **Policy as Code** (OPA gateway) before jobs run. In a full lab build this is usually applied **during deployment** (before Section 1), not in the UI during class.
-
-[TIP]
-.Typical automation order
-====
-`docs/deployment-guide.md` **Layer 7 — Policy** documents the playbooks:
-
-* `setup/configure-opa-base.yml` — load OPA policies (including `aap.gateway`).
-* `setup/configure-aap-policy.yml` — enable controller ↔ OPA (Policy as Code).
-* `setup/configure-aap-ldap.yml` — controller **LDAP authentication** against IdM (LDAPS).
-
-Many instructors run **LDAP earlier** in setup (still Layer 7); that is fine. Section 1 asks you to **confirm** both integrations so exercises 2–4 behave as written.
-====
-
-=== LDAP (controller → IdM)
-
-* **What it does:** Users log into `https://control.zta.lab` with **workshop IdM accounts** (for example `ztauser` / `ansible123!`), not only the platform `admin` account.
-* **Prerequisites:** IdM running; controller trusts the IdM CA (for example after `setup/enroll-idm-clients.yml`). Details: `HANDOFF.md` (*LDAP: controller → IdM*).
-
-=== Verify LDAP
-
-. Open the automation controller.
-. Sign in with an **IdM user** (for example `ztauser`, password `ansible123!` per link:../../docs/lab/common-environment.adoc#lab-common-environment[Lab environment reference]).
-. If login fails: complete **Exercise 1.2** (Authentication Methods UI), or confirm `setup/configure-aap-ldap.yml` (legacy API) completed, DNS reaches IdM, and troubleshooting in `docs/deployment-guide.md` / `HANDOFF.md`.
-
-=== Policy as Code (controller → OPA)
-
-* **What it does:** Before starting a job, the controller can query OPA at `v1/data/aap/gateway/decision` (gateway Rego). Section 3 and 4 depend on this **outer ring**.
-* **Automation:** `setup/configure-aap-policy.yml` after `setup/configure-opa-base.yml`.
-
-=== Verify Policy as Code
-
-. As platform **admin**, open **Settings** → **Policy** / **Open Policy Agent** / **Policy as Code** (exact label varies by patch) and confirm OPA URL, policy path, and enable flags match `docs/deployment-guide.md` Layer 7 (*Manual Policy as Code (OPA gateway)*).
-. Or use the API:
-
-[source,bash]
-----
-curl -sk -u "admin:ansible123!" \
-  "https://control.zta.lab/api/controller/v2/settings/opa/" | python3 -m json.tool
-----
-
-Expect `OPA_ENABLED` and `OPA_PRE_ACTION_ENABLED` true; `OPA_POLICY_PATH` is `v1/data/aap/gateway/decision`; `OPA_URL` matches your lab OPA (typically `http://central.zta.lab:8181` per `inventory/group_vars/all.yml`).
-
-If Policy as Code was not applied by automation, use the **manual UI or API** steps in `docs/deployment-guide.md` Layer 7 or run `setup/configure-aap-policy.yml`.
 
 == Exercise 1.1 — Verify AAP credentials (pre-configured, Vault-sourced)
 
@@ -207,18 +141,6 @@ OPT_NETWORK_TIMEOUT: 30
 . **LDAP Group Type Parameters** (required). These are the **key/value arguments for the selected group type’s constructor** (`LDAP_GROUP_TYPE_PARAMS`). Invalid keys for that type produce *Invalid option for specified GROUP_TYPE*.
 
 +
-Per https://django-auth-ldap.readthedocs.io/en/latest/reference.html#django_auth_ldap.config.LDAPGroupType and the LDAP group-type table in https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.5/html/access_management_and_authentication/gw-configure-authentication#controller-set-up-LDAP[Red Hat AAP 2.5 Access management] (same idea in 2.6):
-
-+
-* **GroupOfNamesType** — IdM `groupOfNames`; equivalent to `MemberDNGroupType('member')`. Only **`name_attr`** is a constructor argument (`member` is fixed):
-
-+
-[source,yaml]
-----
-name_attr: cn
-----
-
-+
 * **MemberDNGroupType** — generic type; constructor takes **`member_attr`** and **`name_attr`**. Use this if you want both fields explicitly (matches the doc example `{"name_attr": "cn", "member_attr": "member"}`):
 
 +
@@ -227,16 +149,6 @@ name_attr: cn
 name_attr: cn
 member_attr: member
 ----
-
-+
-For FreeIPA/IdM **groupOfNames**, the two options above are **functionally equivalent**.
-
-+
-[TIP]
-.MemberDNGroupType vs GroupOfNamesType
-====
-**GroupOfNamesType** + `name_attr` only is the shortest correct form. **MemberDNGroupType** + `name_attr` and `member_attr` is equally valid for IdM when `member_attr` is `member`. Do not pass `member_attr` when **LDAP Group Type** is **GroupOfNamesType**—that type does not accept it.
-====
 
 . **LDAP User Search** (YAML list — three elements):
 
@@ -429,17 +341,3 @@ Run **Test OPA Policy**. Expect allow/deny scenarios for patching, VLAN, and DB 
 ====
 OPA returns **allow** only when Rego rules fire; everything else is **implicit deny**. **IdM groups** supply *role-like* attributes the PDP can use, but unlike a static RBAC matrix in one app, the same policy can be **versioned, tested, and shared** across AAP and other PEPs. You are seeing **central policy** backing **distributed enforcement**.
 ====
-
-== Validation checklist (core)
-
-* [ ] **LDAP:** IdM user (e.g. `ztauser`) can log into the automation controller; use **Exercise 1.2** (Authentication Methods UI) or `setup/configure-aap-ldap.yml` / `HANDOFF.md` as needed
-* [ ] **Policy as Code:** OPA settings enabled and `OPA_POLICY_PATH` / `OPA_URL` correct (`setup/configure-aap-policy.yml` or manual Layer 7 steps in `docs/deployment-guide.md`)
-* [ ] Vault KV paths present; controller shows ZTA Vault / Machine / Arista / NetBox / Vault SSH credentials with correct lookups
-* [ ] Vault SSH credential present (from `configure-aap-credentials.yml`)
-* [ ] NetBox inventory sync shows all lab hosts
-* [ ] Gitea project synced
-* [ ] Four verification templates run successfully
-
-== Extended exercises
-
-include::includes/extended-exercise-1-8.adoc[]

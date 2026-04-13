@@ -82,6 +82,9 @@
         status_code: 200
       register: nb_cred_type_check
 
+    # Field IDs match the existing type in AAP (netbox_url / netbox_token).
+    # Injectors map them to NETBOX_API / NETBOX_TOKEN env vars consumed by
+    # the netbox.netbox.nb_inventory plugin and collection modules.
     - name: Create NetBox credential type
       ansible.controller.credential_type:
         name: NetBox
@@ -89,20 +92,21 @@
         kind: cloud
         inputs:
           fields:
-            - id: NETBOX_API
+            - id: netbox_url
               type: string
-              label: NetBox Host URL
-            - id: NETBOX_TOKEN
+              label: "NetBox URL"
+              help_text: "Full URL (e.g. http://netbox.zta.lab:8000)"
+            - id: netbox_token
               type: string
-              label: NetBox API Token
+              label: "API Token"
               secret: true
           required:
-            - NETBOX_API
-            - NETBOX_TOKEN
+            - netbox_url
+            - netbox_token
         injectors:
           env:
-            NETBOX_API: "{% raw %}{{ NETBOX_API }}{% endraw %}"
-            NETBOX_TOKEN: "{% raw %}{{ NETBOX_TOKEN }}{% endraw %}"
+            NETBOX_API: "{% raw %}{{ netbox_url }}{% endraw %}"
+            NETBOX_TOKEN: "{% raw %}{{ netbox_token }}{% endraw %}"
         state: present
       when: nb_cred_type_check.json.count == 0
 
@@ -115,8 +119,8 @@
         credential_type: NetBox
         organization: Default
         inputs:
-          NETBOX_API: "{{ nb_api_url }}"
-          NETBOX_TOKEN: "{{ nb_api_token }}"
+          netbox_url: "{{ nb_api_url }}"
+          netbox_token: "{{ nb_api_token }}"
         state: present
 
     # ── Create inventory ──────────────────────────────────────────────
@@ -183,8 +187,8 @@
           ║  NetBox Host URL:  {{ nb_api_url }}
           ║                                                              ║
           ║  Injected env vars (available to playbooks & inventory):     ║
-          ║    NETBOX_API   → NetBox Host URL (credential input)          ║
-          ║    NETBOX_TOKEN → NetBox API Token (secret)                   ║
+          ║    NETBOX_API   ← credential field netbox_url                 ║
+          ║    NETBOX_TOKEN ← credential field netbox_token (secret)      ║
           ║                                                              ║
           {% if aap_project_lookup.json.count | default(0) | int == 0 %}
           ║  NOTE: Run configure-aap-project.yml first, then re-run     ║

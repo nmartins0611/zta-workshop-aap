@@ -156,7 +156,7 @@
         source_path: inventory/netbox_inventory.yml
         credential: ZTA NetBox Credential
         # netbox.netbox collection is only in the workshop EE, not the Default EE
-        execution_environment: ZTA Workshop EE
+        execution_environment: Netbox
         overwrite: false
         overwrite_vars: false
         update_on_launch: true

@@ -166,21 +166,23 @@
     XDG_RUNTIME_DIR: "/run/user/{{ aap_podman_run_uid }}"
 
 # The AAP installer writes its internal TLS CA to /home/rhel/aap/tls/ca.cert on the host.
-# All AAP containers (gateway and controller) inherit the host system trust store at startup,
-# so installing this CA on the host and restarting is sufficient to fix SSL verification between
-# the gateway and controller (role-team-assignments sync and JWT-claims lookups).
-- name: Install AAP TLS CA into host system trust store
+# Some lab Podman setups inherit the host system trust store at container startup; others use
+# an isolated container trust store. We do both: update the host AND inject directly into the
+# gateway container's trust store, so it works regardless of Podman bind-mount configuration.
+- name: Install AAP TLS CA into host system trust store and gateway container
   when: not (aap_podman_skip_aap_ca | default(false) | bool)
+  vars:
+    aap_podman_aap_ca_src: "{{ aap_podman_aap_ca_path | default('/home/rhel/aap/tls/ca.cert') }}"
   block:
     - name: Stat AAP TLS CA on host
       ansible.builtin.stat:
-        path: "{{ aap_podman_aap_ca_path | default('/home/rhel/aap/tls/ca.cert') }}"
+        path: "{{ aap_podman_aap_ca_src }}"
       register: aap_podman_aap_ca_stat
 
-    - name: Copy AAP TLS CA to system trust anchors
+    - name: Copy AAP TLS CA to host system trust anchors
       when: aap_podman_aap_ca_stat.stat.exists | bool
       ansible.builtin.copy:
-        src: "{{ aap_podman_aap_ca_path | default('/home/rhel/aap/tls/ca.cert') }}"
+        src: "{{ aap_podman_aap_ca_src }}"
         dest: /etc/pki/ca-trust/source/anchors/aap-tls-ca.crt
         remote_src: true
         mode: '0644'
@@ -192,10 +194,25 @@
       changed_when: true
       become: true
 
+    # Copy into the container anchor dir. The gateway restart that follows this block
+    # re-initialises all Django worker SSL contexts so they pick up the new CA.
+    # Running update-ca-trust extract inside the running container is not sufficient on its own
+    # because existing workers have cached SSL contexts — only a restart clears them.
+    - name: Copy AAP TLS CA into gateway container trust anchors
+      when: aap_podman_aap_ca_stat.stat.exists | bool
+      ansible.builtin.command:
+        cmd: podman cp {{ aap_podman_aap_ca_src }} {{ aap_podman_gateway_container }}:/etc/pki/ca-trust/source/anchors/aap-tls-ca.crt
+      changed_when: true
+      become: "{{ aap_podman_need_owner_become | bool }}"
+      become_user: "{{ aap_podman_run_user | default('rhel') }}"
+      become_flags: "{{ '-i' if (aap_podman_need_owner_become | bool) else omit }}"
+      environment:
+        XDG_RUNTIME_DIR: "/run/user/{{ aap_podman_run_uid }}"
+
     - name: Warn if AAP TLS CA not found
       when: not (aap_podman_aap_ca_stat.stat.exists | bool)
       ansible.builtin.debug:
-        msg: "WARNING: AAP TLS CA not found at {{ aap_podman_aap_ca_path | default('/home/rhel/aap/tls/ca.cert') }} — run after AAP install."
+        msg: "WARNING: AAP TLS CA not found at {{ aap_podman_aap_ca_src }} — run after AAP install."
 
 # podman restart can race overlay teardown and fail with:
 # "open .../merged/etc/passwd: no such file or directory" (rc 125). Stop + pause + start avoids that.

@@ -31,7 +31,7 @@
 #   ee                 — Execution environment only
 #   project            — SCM project only (sync included)
 #   templates          — All workshop job templates (all sections)
-#   section1 … section7— Only that section’s job templates
+#   section1 … section7— Only that section's job templates
 #   remove_section     — Delete templates for aap_remove_section (integer, required)
 #   remove_last_section— Delete templates for the highest section number in the catalog
 #   rbac               — Project + inventory permissions for LDAP teams
@@ -65,15 +65,11 @@
     project_name: ZTA Workshop
     project_scm_url: https://github.com/nmartins0611/zta-workshop-aap.git
 
-    # Pre-created on the controller before this playbook (see solve-section1 / lab docs)
     inventory_name: ZTA Lab Inventory
     machine_credential_name: ZTA Machine Credential
 
-    # Set -e aap_remove_section=N with --tags remove_section to delete that section’s templates
     aap_remove_section: 0
 
-    # AAP team names must match teams created when IdM users log in (Exercise 1.2 team maps).
-    # Override if your UI uses different names (e.g. team-applications).
     zta_workshop_rbac_teams:
       - Infrastructure
       - DevOps
@@ -88,6 +84,27 @@
       validate_certs: "{{ aap_verify_ssl }}"
 
   tasks:
+
+    # ══════════════════════════════════════════════════════════════════════
+    #  Determine which sections to process based on --tags
+    # ══════════════════════════════════════════════════════════════════════
+
+    - name: Determine active sections from run tags
+      ansible.builtin.set_fact:
+        _active_sections: >-
+          {%- set section_tags = ansible_run_tags | select('match', '^section[0-9]+$') | list -%}
+          {%- if section_tags | length > 0 -%}
+          {{ section_tags | map('regex_replace', '^section', '') | map('int') | list }}
+          {%- else -%}
+          {{ range(1, 8) | list }}
+          {%- endif -%}
+      tags: [always]
+
+    - name: Build active template list for requested sections
+      ansible.builtin.set_fact:
+        _active_templates: "{{ zta_workshop_job_templates | selectattr('section', 'in', _active_sections) | list }}"
+        _active_template_names: "{{ zta_workshop_job_templates | selectattr('section', 'in', _active_sections) | map(attribute='name') | list }}"
+      tags: [always]
 
     # ══════════════════════════════════════════════════════════════════════
     #  Verify prerequisites
@@ -181,7 +198,6 @@
       retries: 5
       delay: 3
       until: _team_result is not failed
-      throttle: 1
       tags: [project, rbac, aap-bootstrap, aap, aap-project]
 
     - name: Grant workshop teams read access to project
@@ -200,7 +216,6 @@
       retries: 5
       delay: 3
       until: _rbac_role_result is not failed
-      throttle: 1
       tags: [project, rbac, aap-bootstrap, aap, aap-project]
 
     - name: Grant workshop teams use access to project
@@ -219,7 +234,6 @@
       retries: 5
       delay: 3
       until: _rbac_role_result is not failed
-      throttle: 1
       tags: [project, rbac, aap-bootstrap, aap, aap-project]
 
     - name: Grant workshop teams read access to lab inventory
@@ -238,7 +252,6 @@
       retries: 5
       delay: 3
       until: _rbac_role_result is not failed
-      throttle: 1
       tags: [project, rbac, aap-bootstrap, aap, aap-project]
 
     - name: Grant workshop teams use access to lab inventory
@@ -257,17 +270,16 @@
       retries: 5
       delay: 3
       until: _rbac_role_result is not failed
-      throttle: 1
       tags: [project, rbac, aap-bootstrap, aap, aap-project]
 
     # ══════════════════════════════════════════════════════════════════════
-    #  3. Job templates + RBAC — catalog in vars/zta_workshop_job_templates.yml
-    #  Each section block: create templates then immediately grant team RBAC
-    #  so --tags sectionN is fully self-contained (no separate rbac tag needed).
-    #  --tags rbac alone re-applies grants across all catalog templates (bulk fix).
+    #  3. Job templates — single dynamic loop for all active sections
+    #
+    #  _active_sections is computed from --tags (e.g. --tags section2
+    #  sets [2]; --tags templates or no tags sets [1..7]).
     # ══════════════════════════════════════════════════════════════════════
 
-    - name: Create Section 1 job templates
+    - name: Create job templates for active sections
       ansible.controller.job_template:
         name: "{{ item.name }}"
         description: "{{ item.description }}"
@@ -278,283 +290,56 @@
         survey_enabled: "{{ item.survey_enabled | default(false) | bool }}"
         survey_spec: "{{ item.survey_spec | default(omit) }}"
         state: present
-      loop: "{{ zta_workshop_job_templates | selectattr('section', 'equalto', 1) | list }}"
+      loop: "{{ _active_templates }}"
       loop_control:
-        label: "{{ item.name }}"
-      tags: [templates, section1, aap-bootstrap, aap, aap-project]
-
-    - name: Grant teams read+execute on Section 1 templates
-      ansible.controller.role:
-        role: "{{ item.0 }}"
-        job_templates:
-          - "{{ item.1.name }}"
-        teams:
-          - "{{ item.2 }}"
-        lookup_organization: "{{ aap_organization }}"
-        state: present
-      loop: "{{ ['read', 'execute'] | product(zta_workshop_job_templates | selectattr('section', 'equalto', 1) | list) | product(zta_workshop_rbac_teams) | map('flatten') | list }}"
-      loop_control:
-        label: "{{ item.2 }} → {{ item.0 }} → {{ item.1.name }}"
-      register: _rbac_role_result
-      retries: 5
-      delay: 3
-      until: _rbac_role_result is not failed
-      throttle: 1
-      tags: [templates, section1, aap-bootstrap, aap, aap-project]
-
-    - name: Create Section 2 job templates
-      ansible.controller.job_template:
-        name: "{{ item.name }}"
-        description: "{{ item.description }}"
-        project: "{{ project_name }}"
-        playbook: "{{ item.playbook }}"
-        inventory: "{{ inventory_name }}"
-        credentials: "{{ item.credentials }}"
-        survey_enabled: "{{ item.survey_enabled | default(false) | bool }}"
-        survey_spec: "{{ item.survey_spec | default(omit) }}"
-        state: present
-      loop: "{{ zta_workshop_job_templates | selectattr('section', 'equalto', 2) | list }}"
-      loop_control:
-        label: "{{ item.name }}"
-      tags: [templates, section2]
-
-    - name: Grant teams read+execute on Section 2 templates
-      ansible.controller.role:
-        role: "{{ item.0 }}"
-        job_templates:
-          - "{{ item.1.name }}"
-        teams:
-          - "{{ item.2 }}"
-        lookup_organization: "{{ aap_organization }}"
-        state: present
-      loop: "{{ ['read', 'execute'] | product(zta_workshop_job_templates | selectattr('section', 'equalto', 2) | list) | product(zta_workshop_rbac_teams) | map('flatten') | list }}"
-      loop_control:
-        label: "{{ item.2 }} → {{ item.0 }} → {{ item.1.name }}"
-      register: _rbac_role_result
-      retries: 5
-      delay: 3
-      until: _rbac_role_result is not failed
-      throttle: 1
-      tags: [templates, section2]
-
-    - name: Create Section 3 job templates
-      ansible.controller.job_template:
-        name: "{{ item.name }}"
-        description: "{{ item.description }}"
-        project: "{{ project_name }}"
-        playbook: "{{ item.playbook }}"
-        inventory: "{{ inventory_name }}"
-        credentials: "{{ item.credentials }}"
-        survey_enabled: "{{ item.survey_enabled | default(false) | bool }}"
-        survey_spec: "{{ item.survey_spec | default(omit) }}"
-        state: present
-      loop: "{{ zta_workshop_job_templates | selectattr('section', 'equalto', 3) | list }}"
-      loop_control:
-        label: "{{ item.name }}"
-      tags: [templates, section3]
-
-    - name: Grant teams read+execute on Section 3 templates
-      ansible.controller.role:
-        role: "{{ item.0 }}"
-        job_templates:
-          - "{{ item.1.name }}"
-        teams:
-          - "{{ item.2 }}"
-        lookup_organization: "{{ aap_organization }}"
-        state: present
-      loop: "{{ ['read', 'execute'] | product(zta_workshop_job_templates | selectattr('section', 'equalto', 3) | list) | product(zta_workshop_rbac_teams) | map('flatten') | list }}"
-      loop_control:
-        label: "{{ item.2 }} → {{ item.0 }} → {{ item.1.name }}"
-      register: _rbac_role_result
-      retries: 5
-      delay: 3
-      until: _rbac_role_result is not failed
-      throttle: 1
-      tags: [templates, section3]
-
-    - name: Create Section 4 job templates
-      ansible.controller.job_template:
-        name: "{{ item.name }}"
-        description: "{{ item.description }}"
-        project: "{{ project_name }}"
-        playbook: "{{ item.playbook }}"
-        inventory: "{{ inventory_name }}"
-        credentials: "{{ item.credentials }}"
-        survey_enabled: "{{ item.survey_enabled | default(false) | bool }}"
-        survey_spec: "{{ item.survey_spec | default(omit) }}"
-        state: present
-      loop: "{{ zta_workshop_job_templates | selectattr('section', 'equalto', 4) | list }}"
-      loop_control:
-        label: "{{ item.name }}"
-      tags: [templates, section4]
-
-    - name: Grant teams read+execute on Section 4 templates
-      ansible.controller.role:
-        role: "{{ item.0 }}"
-        job_templates:
-          - "{{ item.1.name }}"
-        teams:
-          - "{{ item.2 }}"
-        lookup_organization: "{{ aap_organization }}"
-        state: present
-      loop: "{{ ['read', 'execute'] | product(zta_workshop_job_templates | selectattr('section', 'equalto', 4) | list) | product(zta_workshop_rbac_teams) | map('flatten') | list }}"
-      loop_control:
-        label: "{{ item.2 }} → {{ item.0 }} → {{ item.1.name }}"
-      register: _rbac_role_result
-      retries: 5
-      delay: 3
-      until: _rbac_role_result is not failed
-      throttle: 1
-      tags: [templates, section4]
-
-    - name: Create Section 5 job templates
-      ansible.controller.job_template:
-        name: "{{ item.name }}"
-        description: "{{ item.description }}"
-        project: "{{ project_name }}"
-        playbook: "{{ item.playbook }}"
-        inventory: "{{ inventory_name }}"
-        credentials: "{{ item.credentials }}"
-        survey_enabled: "{{ item.survey_enabled | default(false) | bool }}"
-        survey_spec: "{{ item.survey_spec | default(omit) }}"
-        state: present
-      loop: "{{ zta_workshop_job_templates | selectattr('section', 'equalto', 5) | list }}"
-      loop_control:
-        label: "{{ item.name }}"
-      tags: [templates, section5]
-
-    - name: Grant teams read+execute on Section 5 templates
-      ansible.controller.role:
-        role: "{{ item.0 }}"
-        job_templates:
-          - "{{ item.1.name }}"
-        teams:
-          - "{{ item.2 }}"
-        lookup_organization: "{{ aap_organization }}"
-        state: present
-      loop: "{{ ['read', 'execute'] | product(zta_workshop_job_templates | selectattr('section', 'equalto', 5) | list) | product(zta_workshop_rbac_teams) | map('flatten') | list }}"
-      loop_control:
-        label: "{{ item.2 }} → {{ item.0 }} → {{ item.1.name }}"
-      register: _rbac_role_result
-      retries: 5
-      delay: 3
-      until: _rbac_role_result is not failed
-      throttle: 1
-      tags: [templates, section5]
-
-    - name: Create Section 6 job templates
-      ansible.controller.job_template:
-        name: "{{ item.name }}"
-        description: "{{ item.description }}"
-        project: "{{ project_name }}"
-        playbook: "{{ item.playbook }}"
-        inventory: "{{ inventory_name }}"
-        credentials: "{{ item.credentials }}"
-        survey_enabled: "{{ item.survey_enabled | default(false) | bool }}"
-        survey_spec: "{{ item.survey_spec | default(omit) }}"
-        state: present
-      loop: "{{ zta_workshop_job_templates | selectattr('section', 'equalto', 6) | list }}"
-      loop_control:
-        label: "{{ item.name }}"
-      tags: [templates, section6]
-
-    - name: Grant teams read+execute on Section 6 templates
-      ansible.controller.role:
-        role: "{{ item.0 }}"
-        job_templates:
-          - "{{ item.1.name }}"
-        teams:
-          - "{{ item.2 }}"
-        lookup_organization: "{{ aap_organization }}"
-        state: present
-      loop: "{{ ['read', 'execute'] | product(zta_workshop_job_templates | selectattr('section', 'equalto', 6) | list) | product(zta_workshop_rbac_teams) | map('flatten') | list }}"
-      loop_control:
-        label: "{{ item.2 }} → {{ item.0 }} → {{ item.1.name }}"
-      register: _rbac_role_result
-      retries: 5
-      delay: 3
-      until: _rbac_role_result is not failed
-      throttle: 1
-      tags: [templates, section6]
-
-    - name: Create Section 7 job templates
-      ansible.controller.job_template:
-        name: "{{ item.name }}"
-        description: "{{ item.description }}"
-        project: "{{ project_name }}"
-        playbook: "{{ item.playbook }}"
-        inventory: "{{ inventory_name }}"
-        credentials: "{{ item.credentials }}"
-        survey_enabled: "{{ item.survey_enabled | default(false) | bool }}"
-        survey_spec: "{{ item.survey_spec | default(omit) }}"
-        state: present
-      loop: "{{ zta_workshop_job_templates | selectattr('section', 'equalto', 7) | list }}"
-      loop_control:
-        label: "{{ item.name }}"
-      tags: [templates, section7]
-
-    - name: Grant teams read+execute on Section 7 templates
-      ansible.controller.role:
-        role: "{{ item.0 }}"
-        job_templates:
-          - "{{ item.1.name }}"
-        teams:
-          - "{{ item.2 }}"
-        lookup_organization: "{{ aap_organization }}"
-        state: present
-      loop: "{{ ['read', 'execute'] | product(zta_workshop_job_templates | selectattr('section', 'equalto', 7) | list) | product(zta_workshop_rbac_teams) | map('flatten') | list }}"
-      loop_control:
-        label: "{{ item.2 }} → {{ item.0 }} → {{ item.1.name }}"
-      register: _rbac_role_result
-      retries: 5
-      delay: 3
-      until: _rbac_role_result is not failed
-      throttle: 1
-      tags: [templates, section7]
+        label: "S{{ item.section }} | {{ item.name }}"
+      tags: [templates, section1, section2, section3, section4, section5, section6, section7, aap-bootstrap, aap, aap-project]
 
     # ══════════════════════════════════════════════════════════════════════
-    #  2c. RBAC bulk re-apply — use --tags rbac to re-grant across all
-    #  catalog templates (e.g. after adding a new team or fixing permissions).
-    #  Normal section deployments use the per-section RBAC tasks above.
+    #  3b. RBAC on job templates — batched per team+role
+    #
+    #  Previous approach: Cartesian product of [read, execute] × templates × teams
+    #  = 2 × 31 × 4 = 248 serial API calls.
+    #
+    #  Batched approach: pass ALL active template names as a list in one
+    #  API call per team × role = 2 × 4 = 8 API calls.
     # ══════════════════════════════════════════════════════════════════════
 
-    - name: Grant workshop teams read role on each catalog job template
+    - name: Grant teams read on active section templates (batched)
       ansible.controller.role:
         role: read
-        job_templates:
-          - "{{ item.1.name }}"
+        job_templates: "{{ _active_template_names }}"
         teams:
-          - "{{ item.0 }}"
+          - "{{ item }}"
         lookup_organization: "{{ aap_organization }}"
         state: present
-      loop: "{{ zta_workshop_rbac_teams | product(zta_workshop_job_templates) | list }}"
+      loop: "{{ zta_workshop_rbac_teams }}"
       loop_control:
-        label: "{{ item.0 }} → read → {{ item.1.name }}"
+        label: "{{ item }} → read → {{ _active_template_names | length }} templates"
       register: _rbac_role_result
       retries: 5
       delay: 3
       until: _rbac_role_result is not failed
-      throttle: 1
-      tags: [rbac]
+      when: _active_template_names | length > 0
+      tags: [templates, section1, section2, section3, section4, section5, section6, section7, rbac, aap-bootstrap, aap, aap-project]
 
-    - name: Grant workshop teams execute role on each catalog job template
+    - name: Grant teams execute on active section templates (batched)
       ansible.controller.role:
         role: execute
-        job_templates:
-          - "{{ item.1.name }}"
+        job_templates: "{{ _active_template_names }}"
         teams:
-          - "{{ item.0 }}"
+          - "{{ item }}"
         lookup_organization: "{{ aap_organization }}"
         state: present
-      loop: "{{ zta_workshop_rbac_teams | product(zta_workshop_job_templates) | list }}"
+      loop: "{{ zta_workshop_rbac_teams }}"
       loop_control:
-        label: "{{ item.0 }} → execute → {{ item.1.name }}"
+        label: "{{ item }} → execute → {{ _active_template_names | length }} templates"
       register: _rbac_role_result
       retries: 5
       delay: 3
       until: _rbac_role_result is not failed
-      throttle: 1
-      tags: [rbac]
+      when: _active_template_names | length > 0
+      tags: [templates, section1, section2, section3, section4, section5, section6, section7, rbac, aap-bootstrap, aap, aap-project]
 
     # ══════════════════════════════════════════════════════════════════════
     #  4. Remove job templates (optional)
@@ -597,7 +382,7 @@
     - name: Display configuration summary
       tags: [always]
       vars:
-        _tpl_count: "{{ zta_workshop_job_templates | length }}"
+        _tpl_count: "{{ _active_templates | length }}"
       debug:
         msg: |
           ╔═══════════════════════════════════════════════════════════════════╗
@@ -613,7 +398,8 @@
           ║  │   │   SCM URL                │ (see below)                  │║
           ║  │   │   Branch                 │ main                         │║
           ║  │   │   Update on launch       │ yes                          │║
-          ║  │ 2 │ Job templates (catalog)  │ {{ _tpl_count }} (tags section1–section7)   │║
+          ║  │ 2 │ Job templates created    │ {{ _tpl_count }} (sections {{ _active_sections | join(', ') }}){{ ' ' * (12 - _tpl_count | string | length) }}│║
+          ║  │ 3 │ RBAC (batched)           │ {{ zta_workshop_rbac_teams | length }} teams × 2 roles          │║
           ║  └───┴──────────────────────────┴──────────────────────────────┘║
           ║                                                                 ║
           ║  SCM URL: {{ project_scm_url }}{{ ' ' * (55 - project_scm_url | length) }}║

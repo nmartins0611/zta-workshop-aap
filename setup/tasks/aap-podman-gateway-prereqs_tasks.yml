@@ -194,14 +194,26 @@
       changed_when: true
       become: true
 
-    # Copy into the container anchor dir. The gateway restart that follows this block
-    # re-initialises all Django worker SSL contexts so they pick up the new CA.
-    # Running update-ca-trust extract inside the running container is not sufficient on its own
-    # because existing workers have cached SSL contexts — only a restart clears them.
+    # Copy into the container anchor dir then rebuild the bundle inside the container.
+    # update-ca-trust extract must run BEFORE the gateway restart so that when the container
+    # restarts, the workers start fresh and load the updated ca-bundle.crt from the overlay.
+    # The container does NOT auto-run update-ca-trust on start — the anchor file alone is
+    # not enough; the bundle file must be explicitly regenerated first.
     - name: Copy AAP TLS CA into gateway container trust anchors
       when: aap_podman_aap_ca_stat.stat.exists | bool
       ansible.builtin.command:
         cmd: podman cp {{ aap_podman_aap_ca_src }} {{ aap_podman_gateway_container }}:/etc/pki/ca-trust/source/anchors/aap-tls-ca.crt
+      changed_when: true
+      become: "{{ aap_podman_need_owner_become | bool }}"
+      become_user: "{{ aap_podman_run_user | default('rhel') }}"
+      become_flags: "{{ '-i' if (aap_podman_need_owner_become | bool) else omit }}"
+      environment:
+        XDG_RUNTIME_DIR: "/run/user/{{ aap_podman_run_uid }}"
+
+    - name: Rebuild CA bundle inside gateway container
+      when: aap_podman_aap_ca_stat.stat.exists | bool
+      ansible.builtin.command:
+        cmd: podman exec -u 0 {{ aap_podman_gateway_container }} update-ca-trust extract
       changed_when: true
       become: "{{ aap_podman_need_owner_become | bool }}"
       become_user: "{{ aap_podman_run_user | default('rhel') }}"

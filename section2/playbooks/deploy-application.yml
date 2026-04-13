@@ -67,19 +67,12 @@
       retries: 10
       delay: 3
 
-    - name: Verify application can reach database
-      uri:
-        url: "http://{{ app_host }}:{{ app_port }}/api/metrics"
-        method: GET
-        timeout: 10
-      register: app_data
-
     - name: Display deployment result
       debug:
         msg: |
           Application deployed successfully:
-            URL:     http://{{ app_host }}:{{ app_port }}
-            Health:  {{ app_health.json.status }}
-            DB User: {{ db_user }} (dynamic, short-lived)
-            Records: {{ app_data.json.metrics | length }} metrics accessible
+            URL:      http://{{ app_host }}:{{ app_port }}
+            Health:   {{ app_health.json.status }}
+            Database: {{ app_health.json.database }}
+            DB User:  {{ db_user }} (dynamic, short-lived)
 

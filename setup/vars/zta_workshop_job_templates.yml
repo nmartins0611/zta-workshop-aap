@@ -34,6 +34,11 @@ zta_workshop_job_templates:
     description: "Section 1 — Lab fix step (cert trust)"
     playbook: section1/playbooks/fix-cert-trust.yml
     credentials: [ZTA Machine Credential]
+  - section: 1
+    name: List OPA Policies
+    description: "Admin utility — List all policies loaded in OPA with health check"
+    playbook: utilities/list-opa-policies.yml
+    credentials: [ZTA Machine Credential]
 
   # ── Section 2 ───────────────────────────────────────────────────────
   - section: 2

@@ -69,7 +69,7 @@
 
     - name: Verify application can reach database
       uri:
-        url: "http://{{ app_host }}:{{ app_port }}/data"
+        url: "http://{{ app_host }}:{{ app_port }}/api/metrics"
         method: GET
       register: app_data
 
@@ -80,5 +80,5 @@
             URL:     http://{{ app_host }}:{{ app_port }}
             Health:  {{ app_health.json.status }}
             DB User: {{ db_user }} (dynamic, short-lived)
-            Records: {{ app_data.json.data | length }} rows accessible
+            Records: {{ app_data.json.metrics | length }} metrics accessible
 

@@ -8,10 +8,11 @@
 # What this does:
 #   1. Connects containers to cEOS switch-fabric networks (net2/net3) if
 #      not already connected
-#   2. Adds data-plane IP as a secondary address on eth1 (preserves the
+#   2. Discovers the correct interface by matching the Podman network MAC
+#   3. Adds data-plane IP as a secondary address (preserves the
 #      Podman-assigned IP that backs port-forwarding DNAT rules)
-#   3. Adds the cross-subnet route via the cEOS gateway
-#   4. Writes a persistent NetworkManager keyfile so IPs survive restarts
+#   4. Adds the cross-subnet route via the cEOS gateway
+#   5. Writes a persistent NetworkManager keyfile so IPs survive restarts
 #
 # Prerequisites:
 #   - Containers "app" and "db" must already be running on central
@@ -59,13 +60,18 @@
       failed_when: net_connect.rc != 0 and 'already' not in (net_connect.stderr | default(''))
       changed_when: net_connect.rc == 0 and 'already' not in (net_connect.stderr | default(''))
 
-    - name: Discover data-plane interface inside each container
-      shell: >-
-        podman exec {{ item.name }}
-        ip -o link show | awk -F': ' '{print $2}' | grep -v lo | tail -1 | sed 's/@.*//'
+    # Discover the correct interface by matching the MAC address that Podman
+    # assigned for the data-plane network.  This avoids the fragile tail -1
+    # approach that breaks when interface ordering varies between containers.
+    - name: Discover data-plane interface by Podman network MAC
+      shell: |
+        mac=$(podman inspect {{ item.name }} \
+          --format '{{ '{{' }}(index .NetworkSettings.Networks "{{ item.data_network }}").MacAddress{{ '}}' }}')
+        podman exec {{ item.name }} ip -o link show \
+          | awk -v mac="$mac" 'tolower($0) ~ tolower(mac) {split($2,a,"@"); print a[1]}'
       loop: "{{ containers }}"
       loop_control:
-        label: "{{ item.name }}"
+        label: "{{ item.name }} ({{ item.data_network }})"
       register: data_ifaces
       changed_when: false
 
@@ -78,7 +84,6 @@
       loop: "{{ data_ifaces.results }}"
       loop_control:
         label: "{{ item.item.name }}: {{ item.item.data_ip }}/24 on {{ item.stdout | trim }}"
-      register: ip_result
       changed_when: true
 
     - name: Add route to peer data-plane network inside containers

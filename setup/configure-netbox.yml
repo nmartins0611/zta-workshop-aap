@@ -560,10 +560,9 @@
           Authorization: "Token {{ nb_token }}"
           Content-Type: application/json
         body_format: json
-        body:
-          custom_fields:
-            host: "{{ item.host }}"
-            port: "{{ item.port }}"
+        # Single Jinja2 expression preserves Python types: host stays str, port becomes int.
+        # Quoting "{{ item.port }}" individually would render it as a string and fail NetBox validation.
+        body: "{{ {'custom_fields': {'host': item.host, 'port': item.port | int}} }}"
         status_code: 200
       loop: "{{ nb_ansible_overrides }}"
       loop_control:

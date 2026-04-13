@@ -81,7 +81,7 @@
           OPA_HOST: "central.zta.lab"
           OPA_PORT: 8181
           OPA_SSL: false
-          OPA_AUTH_TYPE: null
+          OPA_AUTH_TYPE: "None"
           OPA_REQUEST_TIMEOUT: 5
           OPA_REQUEST_RETRIES: 2
         status_code: [200]

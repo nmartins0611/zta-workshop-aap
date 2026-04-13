@@ -56,7 +56,8 @@ def check_db_health():
             with conn.cursor() as cur:
                 cur.execute("SELECT 1")
         return True
-    except Exception:
+    except Exception as exc:
+        log.warning("DB health check failed: %s", exc)
         return False
 
 
@@ -92,4 +93,4 @@ def api_health():
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
-    app.run(host=Config.APP_HOST, port=Config.APP_PORT, debug=False)
+    app.run(host=Config.APP_HOST, port=Config.APP_PORT, debug=False, threaded=True)

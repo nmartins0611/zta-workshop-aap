@@ -270,6 +270,11 @@
       loop: "{{ ['read', 'execute'] | product(zta_workshop_job_templates | selectattr('section', 'equalto', 1) | list) | product(zta_workshop_rbac_teams) | map('flatten') | list }}"
       loop_control:
         label: "{{ item.2 }} → {{ item.0 }} → {{ item.1.name }}"
+      register: _rbac_role_result
+      retries: 5
+      delay: 3
+      until: _rbac_role_result is not failed
+      throttle: 1
       tags: [templates, section1, aap-bootstrap, aap, aap-project]
 
     - name: Create Section 2 job templates
@@ -300,6 +305,11 @@
       loop: "{{ ['read', 'execute'] | product(zta_workshop_job_templates | selectattr('section', 'equalto', 2) | list) | product(zta_workshop_rbac_teams) | map('flatten') | list }}"
       loop_control:
         label: "{{ item.2 }} → {{ item.0 }} → {{ item.1.name }}"
+      register: _rbac_role_result
+      retries: 5
+      delay: 3
+      until: _rbac_role_result is not failed
+      throttle: 1
       tags: [templates, section2]
 
     - name: Create Section 3 job templates
@@ -330,6 +340,11 @@
       loop: "{{ ['read', 'execute'] | product(zta_workshop_job_templates | selectattr('section', 'equalto', 3) | list) | product(zta_workshop_rbac_teams) | map('flatten') | list }}"
       loop_control:
         label: "{{ item.2 }} → {{ item.0 }} → {{ item.1.name }}"
+      register: _rbac_role_result
+      retries: 5
+      delay: 3
+      until: _rbac_role_result is not failed
+      throttle: 1
       tags: [templates, section3]
 
     - name: Create Section 4 job templates
@@ -360,6 +375,11 @@
       loop: "{{ ['read', 'execute'] | product(zta_workshop_job_templates | selectattr('section', 'equalto', 4) | list) | product(zta_workshop_rbac_teams) | map('flatten') | list }}"
       loop_control:
         label: "{{ item.2 }} → {{ item.0 }} → {{ item.1.name }}"
+      register: _rbac_role_result
+      retries: 5
+      delay: 3
+      until: _rbac_role_result is not failed
+      throttle: 1
       tags: [templates, section4]
 
     - name: Create Section 5 job templates
@@ -390,6 +410,11 @@
       loop: "{{ ['read', 'execute'] | product(zta_workshop_job_templates | selectattr('section', 'equalto', 5) | list) | product(zta_workshop_rbac_teams) | map('flatten') | list }}"
       loop_control:
         label: "{{ item.2 }} → {{ item.0 }} → {{ item.1.name }}"
+      register: _rbac_role_result
+      retries: 5
+      delay: 3
+      until: _rbac_role_result is not failed
+      throttle: 1
       tags: [templates, section5]
 
     - name: Create Section 6 job templates
@@ -420,6 +445,11 @@
       loop: "{{ ['read', 'execute'] | product(zta_workshop_job_templates | selectattr('section', 'equalto', 6) | list) | product(zta_workshop_rbac_teams) | map('flatten') | list }}"
       loop_control:
         label: "{{ item.2 }} → {{ item.0 }} → {{ item.1.name }}"
+      register: _rbac_role_result
+      retries: 5
+      delay: 3
+      until: _rbac_role_result is not failed
+      throttle: 1
       tags: [templates, section6]
 
     - name: Create Section 7 job templates
@@ -450,6 +480,11 @@
       loop: "{{ ['read', 'execute'] | product(zta_workshop_job_templates | selectattr('section', 'equalto', 7) | list) | product(zta_workshop_rbac_teams) | map('flatten') | list }}"
       loop_control:
         label: "{{ item.2 }} → {{ item.0 }} → {{ item.1.name }}"
+      register: _rbac_role_result
+      retries: 5
+      delay: 3
+      until: _rbac_role_result is not failed
+      throttle: 1
       tags: [templates, section7]
 
     # ══════════════════════════════════════════════════════════════════════
@@ -470,6 +505,11 @@
       loop: "{{ zta_workshop_rbac_teams | product(zta_workshop_job_templates) | list }}"
       loop_control:
         label: "{{ item.0 }} → read → {{ item.1.name }}"
+      register: _rbac_role_result
+      retries: 5
+      delay: 3
+      until: _rbac_role_result is not failed
+      throttle: 1
       tags: [rbac]
 
     - name: Grant workshop teams execute role on each catalog job template
@@ -484,6 +524,11 @@
       loop: "{{ zta_workshop_rbac_teams | product(zta_workshop_job_templates) | list }}"
       loop_control:
         label: "{{ item.0 }} → execute → {{ item.1.name }}"
+      register: _rbac_role_result
+      retries: 5
+      delay: 3
+      until: _rbac_role_result is not failed
+      throttle: 1
       tags: [rbac]
 
     # ══════════════════════════════════════════════════════════════════════

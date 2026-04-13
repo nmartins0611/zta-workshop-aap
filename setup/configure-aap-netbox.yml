@@ -71,6 +71,17 @@
 
     # ── Create NetBox credential type ─────────────────────────────────
 
+    - name: Check if NetBox credential type already exists
+      uri:
+        url: "{{ aap_host }}/api/controller/v2/credential_types/?name=NetBox"
+        method: GET
+        url_username: "{{ aap_user }}"
+        url_password: "{{ aap_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ aap_verify_ssl }}"
+        status_code: 200
+      register: nb_cred_type_check
+
     - name: Create NetBox credential type
       ansible.controller.credential_type:
         name: NetBox
@@ -93,6 +104,7 @@
             NETBOX_API: "{% raw %}{{ NETBOX_API }}{% endraw %}"
             NETBOX_TOKEN: "{% raw %}{{ NETBOX_TOKEN }}{% endraw %}"
         state: present
+      when: nb_cred_type_check.json.count == 0
 
     # ── Create NetBox credential ──────────────────────────────────────
 

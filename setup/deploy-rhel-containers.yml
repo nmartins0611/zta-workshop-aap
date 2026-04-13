@@ -362,11 +362,10 @@
     # assigned IP, which backs the container's port-forwarding DNAT rules.
     - name: Add data-plane IP on containers (secondary, non-destructive)
       shell: |
-        iface={{ item.stdout | trim }}
-        ip={{ item.item.data_ip }}
-        podman exec {{ item.item.name }} ip addr show dev "$iface" | grep -q "$ip/" || \
-          podman exec {{ item.item.name }} ip addr add "$ip/24" dev "$iface"
-        podman exec {{ item.item.name }} ip link set "$iface" up
+        podman exec {{ item.item.name }} ip addr show dev {{ item.stdout | trim }} \
+          | grep -q '{{ item.item.data_ip }}/' \
+          || podman exec {{ item.item.name }} ip addr add {{ item.item.data_ip }}/24 dev {{ item.stdout | trim }}
+        podman exec {{ item.item.name }} ip link set {{ item.stdout | trim }} up
       loop: "{{ data_ifaces.results }}"
       loop_control:
         label: "{{ item.item.name }}: {{ item.item.data_ip }}/24 on {{ item.stdout | trim }}"
@@ -383,35 +382,33 @@
       changed_when: true
       failed_when: false
 
+    # Write a NetworkManager keyfile so the data-plane IP and peer route
+    # survive container restarts.  printf avoids heredoc indentation issues
+    # with YAML (square-bracket INI section headers confuse the YAML parser).
     - name: Write persistent NetworkManager keyfile for data-plane interface
       shell: |
-        iface={{ item.item.stdout | trim }}
-        name={{ item.item.item.name }}
-        data_ip={{ item.item.item.data_ip }}
-        data_gw={{ item.item.item.data_gateway }}
-        peer_net={{ item.item.item.peer_network }}
-        podman exec "$name" bash -c "
+        podman exec {{ item.item.name }} bash -c '
           mkdir -p /etc/NetworkManager/system-connections
-          cat > /etc/NetworkManager/system-connections/dataplane.nmconnection <<EOF
-[connection]
-id=dataplane
-type=ethernet
-interface-name=$iface
-autoconnect=true
-
-[ethernet]
-
-[ipv4]
-method=auto
-address1=$data_ip/24
-route1=$peer_net,$data_gw
-
-[ipv6]
-method=disabled
-EOF
+          printf "%s\n" \
+            "[connection]" \
+            "id=dataplane" \
+            "type=ethernet" \
+            "interface-name={{ item.stdout | trim }}" \
+            "autoconnect=true" \
+            "" \
+            "[ethernet]" \
+            "" \
+            "[ipv4]" \
+            "method=auto" \
+            "address1={{ item.item.data_ip }}/24" \
+            "route1={{ item.item.peer_network }},{{ item.item.data_gateway }}" \
+            "" \
+            "[ipv6]" \
+            "method=disabled" \
+            > /etc/NetworkManager/system-connections/dataplane.nmconnection
           chmod 600 /etc/NetworkManager/system-connections/dataplane.nmconnection
           nmcli connection reload 2>/dev/null || true
-        "
+        '
       loop: "{{ data_ifaces.results }}"
       loop_control:
         label: "{{ item.item.name }}: persist {{ item.item.data_ip }} on {{ item.stdout | trim }}"

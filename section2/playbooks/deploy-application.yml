@@ -71,6 +71,7 @@
       uri:
         url: "http://{{ app_host }}:{{ app_port }}/api/metrics"
         method: GET
+        timeout: 10
       register: app_data
 
     - name: Display deployment result

@@ -70,7 +70,7 @@
 
     - name: Configure OPA as the Policy as Code provider
       uri:
-        url: "{{ aap_host }}/api/controller/v2/settings/opa/"
+        url: "{{ aap_host }}/api/controller/v2/settings/policyascode/"
         method: PATCH
         user: "{{ aap_user }}"
         password: "{{ aap_password }}"
@@ -78,12 +78,13 @@
         validate_certs: "{{ aap_verify_ssl }}"
         body_format: json
         body:
-          OPA_URL: "{{ opa_url }}"
-          OPA_POLICY_PATH: "v1/data/aap/gateway/decision"
-          OPA_ENABLED: true
-          OPA_PRE_ACTION_ENABLED: true
+          OPA_HOST: "central.zta.lab"
+          OPA_PORT: 8181
+          OPA_SSL: false
+          OPA_AUTH_TYPE: null
           OPA_REQUEST_TIMEOUT: 5
-        status_code: [200, 201]
+          OPA_REQUEST_RETRIES: 2
+        status_code: [200]
       register: opa_config
 
     # ── Validate the integration ───────────────────────────────────────
@@ -170,9 +171,10 @@
           ║       AAP Policy as Code — Configuration Complete        ║
           ╠════════════════════════════════════════════════════════════╣
           ║                                                          ║
-          ║  OPA Endpoint:  {{ opa_url }}║
-          ║  Policy Path:   v1/data/aap/gateway/decision             ║
-          ║  Status:        ENABLED                                  ║
+          ║  OPA Host:      central.zta.lab                              ║
+          ║  OPA Port:      8181                                       ║
+          ║  OPA SSL:       false                                      ║
+          ║  Status:        CONFIGURED                                 ║
           ║                                                          ║
           ║  Gateway Policy Tests:                                   ║
           ║                                                          ║

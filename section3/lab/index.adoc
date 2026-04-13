@@ -10,9 +10,66 @@ Companion to `section3/README.md`. Demonstrates **AAP → OPA gateway** blocking
 include::../../docs/lab/common-environment.adoc[]
 
 [IMPORTANT]
-.Prerequisite — Policy as Code on the controller
+.Prerequisites — verify these before starting
 ====
-The automation controller must integrate with OPA for **Policy as Code** (decision path `v1/data/aap/gateway/decision`). Run `setup/configure-aap-policy.yml`, or follow the **manual UI/API** steps in `docs/deployment-guide.md` under **Layer 7 — Policy** (*Manual Policy as Code*). OPA policies including `aap.gateway` must be loaded first (`setup/configure-opa-base.yml`).
+Section 3 depends on several services and configurations from earlier sections.
+Run the checklist below from `central` or `control` before starting the exercises.
+
+*1. LDAP authentication on the controller*
+
+Students must be able to log into AAP as IdM users (`ztauser`, `neteng`, `appdev`, etc.) with their group memberships visible. If you have not completed **Exercise 1.2** (LDAP via **Access Management → Authentication Methods**) the gateway policy cannot evaluate group membership and every launch will be denied.
+
+*2. OPA policies loaded on central*
+
+The gateway policy (`aap.gateway`) and patching policy (`zta.patching`) must be loaded:
+
+[source,bash]
+----
+# Both should return JSON with a "result" key
+curl -s http://central.zta.lab:8181/v1/data/aap/gateway | python3 -m json.tool | head -3
+curl -s http://central.zta.lab:8181/v1/data/zta/patching | python3 -m json.tool | head -3
+----
+
+If either returns empty or errors, load them:
+
+[source,bash]
+----
+ansible-playbook -i inventory/hosts.ini setup/configure-opa-base.yml
+----
+
+*3. AAP Policy as Code integration*
+
+The controller must call OPA before every job launch (decision path `v1/data/aap/gateway/decision`). Verify under *Settings → Policy as Code* in the controller UI, or deploy it:
+
+[source,bash]
+----
+ansible-playbook -i inventory/hosts.ini setup/configure-aap-policy.yml
+----
+
+*4. Section 3 job templates and RBAC*
+
+The **Apply Security Patch** template (and others) must exist in AAP with team RBAC grants so LDAP users can see them:
+
+[source,bash]
+----
+ansible-playbook -i inventory/hosts.ini setup/configure-aap-project.yml --tags section3,rbac
+----
+
+*5. Quick smoke test*
+
+[source,bash]
+----
+# AAP gateway policy responds
+curl -sk -u admin:ansible123! \
+  "https://control.zta.lab/api/controller/v2/settings/opa/" | python3 -m json.tool | head -5
+
+# Section 3 templates exist
+curl -sk -u admin:ansible123! \
+  "https://control.zta.lab/api/controller/v2/job_templates/?name__icontains=patch" \
+  | python3 -m json.tool | grep '"name"'
+----
+
+If all five checks pass you are ready for Section 3.
 ====
 
 == Overview

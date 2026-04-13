@@ -62,6 +62,9 @@
     ee_name: ZTA Workshop EE
     ee_image: quay.io/nmartins/zta_ee
 
+    netbox_ee_name: Netbox
+    netbox_ee_image: quay.io/acme_corp/network-netbox-eda-ee:netbox-3.21
+
     project_name: ZTA Workshop
     project_scm_url: https://github.com/nmartins0611/zta-workshop-aap.git
 
@@ -150,6 +153,16 @@
         name: "{{ ee_name }}"
         description: "Custom EE with Arista cEOS, RHEL, and network collections for ZTA workshop"
         image: "{{ ee_image }}"
+        pull: missing
+        organization: "{{ aap_organization }}"
+        state: present
+      tags: [ee, aap-bootstrap, aap, aap-project]
+
+    - name: Create Netbox Execution Environment
+      ansible.controller.execution_environment:
+        name: "{{ netbox_ee_name }}"
+        description: "NetBox + EDA EE with netbox.netbox collection for inventory sync and CMDB lookups"
+        image: "{{ netbox_ee_image }}"
         pull: missing
         organization: "{{ aap_organization }}"
         state: present

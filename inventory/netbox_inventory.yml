@@ -8,5 +8,8 @@ group_by:
 
 compose:
   ansible_network_os: platform.name
-  ansible_host: custom_fields.host
-  ansible_port: custom_fields.port
+  # Containers (app, db) SSH through central with forwarded ports.
+  # Only override when the custom field is set; other devices keep ansible_host
+  # from primary_ip4 which nb_inventory resolves before compose runs.
+  ansible_host: custom_fields.host if custom_fields.host else ansible_host
+  ansible_port: (custom_fields.port | int) if custom_fields.port else 22

@@ -285,6 +285,16 @@
         status: active
         description: "Data tier — database servers"
 
+    # ── Ansible connection overrides (containers SSH through central) ──
+    # app and db primary IPs are data-plane addresses; SSH is forwarded from central.
+    nb_ansible_overrides:
+      - device: app.zta.lab
+        host: "192.168.1.11"
+        port: 2023
+      - device: db.zta.lab
+        host: "192.168.1.11"
+        port: 2022
+
     # ── Services (running on devices) ──
     nb_services:
       - device: central.zta.lab
@@ -463,6 +473,104 @@
       loop_control:
         label: "{{ item.name }}"
       tags: [phase2, devices]
+
+    # ═══════════════════════════════════════════════════════════════════
+    # Phase 2.5 — Custom fields for nb_inventory Ansible connection
+    # Creates 'host' and 'port' text/integer custom fields on dcim.device,
+    # then seeds overrides for app and db containers whose primary IPs are
+    # data-plane addresses but SSH is forwarded from central (192.168.1.11).
+    # ═══════════════════════════════════════════════════════════════════
+
+    - name: "Phase 2 | Check if 'host' custom field exists"
+      uri:
+        url: "{{ nb_url }}/api/extras/custom-fields/?name=host"
+        method: GET
+        headers:
+          Authorization: "Token {{ nb_token }}"
+        return_content: true
+      register: cf_host_check
+      tags: [phase2, custom-fields]
+
+    - name: "Phase 2 | Create 'host' custom field (Ansible SSH override)"
+      uri:
+        url: "{{ nb_url }}/api/extras/custom-fields/"
+        method: POST
+        headers:
+          Authorization: "Token {{ nb_token }}"
+          Content-Type: application/json
+        body_format: json
+        body:
+          name: host
+          label: "Ansible Host"
+          type: text
+          object_types:
+            - dcim.device
+          description: "Management IP/hostname for Ansible SSH — overrides primary IP (used by nb_inventory compose)"
+        status_code: 201
+      when: cf_host_check.json.count == 0
+      tags: [phase2, custom-fields]
+
+    - name: "Phase 2 | Check if 'port' custom field exists"
+      uri:
+        url: "{{ nb_url }}/api/extras/custom-fields/?name=port"
+        method: GET
+        headers:
+          Authorization: "Token {{ nb_token }}"
+        return_content: true
+      register: cf_port_check
+      tags: [phase2, custom-fields]
+
+    - name: "Phase 2 | Create 'port' custom field (Ansible SSH port override)"
+      uri:
+        url: "{{ nb_url }}/api/extras/custom-fields/"
+        method: POST
+        headers:
+          Authorization: "Token {{ nb_token }}"
+          Content-Type: application/json
+        body_format: json
+        body:
+          name: port
+          label: "Ansible Port"
+          type: integer
+          object_types:
+            - dcim.device
+          description: "SSH port — set to 2022/2023 for db/app containers forwarded from central"
+        status_code: 201
+      when: cf_port_check.json.count == 0
+      tags: [phase2, custom-fields]
+
+    - name: "Phase 2 | Look up container devices for custom field assignment"
+      uri:
+        url: "{{ nb_url }}/api/dcim/devices/?name={{ item.device | urlencode }}"
+        method: GET
+        headers:
+          Authorization: "Token {{ nb_token }}"
+        return_content: true
+      register: container_device_lookups
+      loop: "{{ nb_ansible_overrides }}"
+      loop_control:
+        label: "{{ item.device }}"
+      tags: [phase2, custom-fields]
+
+    - name: "Phase 2 | Set Ansible connection custom fields on container devices"
+      uri:
+        url: "{{ nb_url }}/api/dcim/devices/{{ container_device_lookups.results[idx].json.results[0].id }}/"
+        method: PATCH
+        headers:
+          Authorization: "Token {{ nb_token }}"
+          Content-Type: application/json
+        body_format: json
+        body:
+          custom_fields:
+            host: "{{ item.host }}"
+            port: "{{ item.port }}"
+        status_code: 200
+      loop: "{{ nb_ansible_overrides }}"
+      loop_control:
+        index_var: idx
+        label: "{{ item.device }} → {{ item.host }}:{{ item.port }}"
+      when: container_device_lookups.results[idx].json.count | default(0) | int > 0
+      tags: [phase2, custom-fields]
 
     # ═══════════════════════════════════════════════════════════════════
     # Phase 3 — Interfaces and IP addresses

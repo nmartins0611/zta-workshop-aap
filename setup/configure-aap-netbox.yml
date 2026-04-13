@@ -112,9 +112,46 @@
     - name: Create ZTA Lab Inventory
       ansible.controller.inventory:
         name: ZTA Lab Inventory
-        description: "Dynamic inventory from NetBox CMDB — infrastructure source of truth"
+        description: "ZTA workshop lab — static hosts + NetBox dynamic source"
         organization: Default
         state: present
+
+    # ── Add NetBox inventory source (requires ZTA Workshop project) ───
+
+    - name: Check if ZTA Workshop project exists
+      uri:
+        url: "{{ aap_host }}/api/controller/v2/projects/?name=ZTA+Workshop"
+        method: GET
+        url_username: "{{ aap_user }}"
+        url_password: "{{ aap_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ aap_verify_ssl }}"
+        status_code: 200
+      register: aap_project_lookup
+
+    - name: Add NetBox dynamic inventory source
+      ansible.controller.inventory_source:
+        name: NetBox Dynamic Inventory
+        description: "Hosts from NetBox CMDB via netbox.netbox.nb_inventory plugin"
+        inventory: ZTA Lab Inventory
+        organization: Default
+        source: scm
+        source_project: ZTA Workshop
+        source_path: inventory/netbox_inventory.yml
+        credential: ZTA NetBox Credential
+        overwrite: false
+        overwrite_vars: false
+        update_on_launch: true
+        state: present
+      when: aap_project_lookup.json.count | default(0) | int > 0
+
+    - name: Sync NetBox inventory source
+      ansible.controller.inventory_source_update:
+        inventory_source: NetBox Dynamic Inventory
+        inventory: ZTA Lab Inventory
+        wait: true
+        timeout: 120
+      when: aap_project_lookup.json.count | default(0) | int > 0
 
     # ── Summary ───────────────────────────────────────────────────────
 
@@ -128,6 +165,8 @@
           ║  Credential Type:  NetBox (custom)                           ║
           ║  Credential:       ZTA NetBox Credential                     ║
           ║  Inventory:        ZTA Lab Inventory                         ║
+          ║  Inventory Source: NetBox Dynamic Inventory                  ║
+          ║    {{ 'CREATED + SYNCED' if aap_project_lookup.json.count | default(0) | int > 0 else 'SKIPPED — ZTA Workshop project not found' }}
           ║                                                              ║
           ║  NetBox Host URL:  {{ nb_api_url }}
           ║                                                              ║
@@ -135,12 +174,9 @@
           ║    NETBOX_API   → NetBox Host URL (credential input)          ║
           ║    NETBOX_TOKEN → NetBox API Token (secret)                   ║
           ║                                                              ║
-          ║  Next Steps (Exercise 1.2):                                  ║
-          ║    1. Create the ZTA Workshop project (Gitea)                ║
-          ║    2. Add a NetBox inventory source to ZTA Lab Inventory:    ║
-          ║       Source = "Sourced from a Project"                      ║
-          ║       Project = ZTA Workshop                                 ║
-          ║       Inventory file = inventory/netbox_inventory.yml        ║
-          ║       Credential = ZTA NetBox Credential                     ║
-          ║    3. Sync the inventory and verify hosts appear             ║
+          {% if aap_project_lookup.json.count | default(0) | int == 0 %}
+          ║  NOTE: Run configure-aap-project.yml first, then re-run     ║
+          ║        this playbook to create the inventory source.         ║
+          ║                                                              ║
+          {% endif %}
           ╚════════════════════════════════════════════════════════════════╝

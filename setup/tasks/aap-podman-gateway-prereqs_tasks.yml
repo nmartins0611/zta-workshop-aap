@@ -4,8 +4,13 @@
 # (aap_podman_run_user, default rhel). If ansible_user is root, tasks use become to that user.
 # If ansible_user is already that owner, become is skipped so podman matches an interactive rhel
 # shell (sudo -u rhel -i can differ and trigger overlay / merged/etc/passwd errors).
+#
+# Host resolution strategy: lab hostnames are written to /etc/hosts on the control host.
+# Podman containers inherit the host /etc/hosts at runtime (base_hosts_file default), so all
+# containers resolve lab names without changing the DNS server they use. This is preferred over
+# a containers.conf.d [network] dns_servers drop-in which globally redirects all container DNS.
 
-- name: Resolve IdM / central IP for container DNS and CA download
+- name: Resolve IdM / central IP for /etc/hosts entries and CA download
   ansible.builtin.set_fact:
     aap_podman_central_ip: >-
       {{ idm_ip | default(
@@ -14,9 +19,32 @@
              '192.168.1.11'
            ), true) }}
 
-- name: Build container DNS server list
+- name: Resolve Vault IP for /etc/hosts entries
   ansible.builtin.set_fact:
-    aap_podman_dns_servers_effective: "{{ aap_podman_container_dns_servers | default([aap_podman_central_ip, '8.8.8.8']) }}"
+    aap_podman_vault_ip: >-
+      {{ vault_ip | default(
+           (('vault_servers' in groups) and (groups['vault_servers'] | length > 0)) | ternary(
+             hostvars[groups['vault_servers'][0]]['ansible_host'],
+             '192.168.1.12'
+           ), true) }}
+
+- name: Resolve NetBox IP for /etc/hosts entries
+  ansible.builtin.set_fact:
+    aap_podman_netbox_ip: >-
+      {{ netbox_ip | default(
+           (('netbox_servers' in groups) and (groups['netbox_servers'] | length > 0)) | ternary(
+             hostvars[groups['netbox_servers'][0]]['ansible_host'],
+             '192.168.1.15'
+           ), true) }}
+
+- name: Resolve Wazuh IP for /etc/hosts entries
+  ansible.builtin.set_fact:
+    aap_podman_wazuh_ip: >-
+      {{ wazuh_ip | default(
+           (('wazuh_servers' in groups) and (groups['wazuh_servers'] | length > 0)) | ternary(
+             hostvars[groups['wazuh_servers'][0]]['ansible_host'],
+             '192.168.1.13'
+           ), true) }}
 
 - name: Default IdM CA download URL (HTTP to central)
   ansible.builtin.set_fact:
@@ -26,23 +54,24 @@
   ansible.builtin.set_fact:
     aap_podman_need_owner_become: "{{ (ansible_user | default('', true)) != (aap_podman_run_user | default('rhel')) }}"
 
-- name: Ensure Podman containers.conf.d drop-in directory exists
+# central.zta.lab also covers splunk.zta.lab, app.zta.lab, db.zta.lab — all run as
+# containers on central and are reached via published ports on its management IP.
+- name: Add lab hostnames to /etc/hosts (inherited by all Podman containers)
   when: not (aap_podman_skip_dns | default(false) | bool)
-  ansible.builtin.file:
-    path: /etc/containers/containers.conf.d
-    state: directory
-    mode: '0755'
-  become: true
-
-- name: Install Podman network DNS drop-in
-  when: not (aap_podman_skip_dns | default(false) | bool)
-  ansible.builtin.copy:
-    dest: /etc/containers/containers.conf.d/99-lab-dns.conf
-    mode: '0644'
-    content: |
-      # Ansible — zta-workshop-aap aap-podman-gateway-prereqs
-      [network]
-      dns_servers = {{ aap_podman_dns_servers_effective | to_json }}
+  ansible.builtin.lineinfile:
+    path: /etc/hosts
+    regexp: "{{ item.regexp }}"
+    line: "{{ item.line }}"
+    state: present
+  loop:
+    - regexp: '.*\bcentral\.zta\.lab\b.*'
+      line: "{{ aap_podman_central_ip }}  central.zta.lab splunk.zta.lab app.zta.lab db.zta.lab"
+    - regexp: '.*\bvault\.zta\.lab\b.*'
+      line: "{{ aap_podman_vault_ip }}  vault.zta.lab"
+    - regexp: '.*\bnetbox\.zta\.lab\b.*'
+      line: "{{ aap_podman_netbox_ip }}  netbox.zta.lab"
+    - regexp: '.*\bwazuh\.zta\.lab\b.*'
+      line: "{{ aap_podman_wazuh_ip }}  wazuh.zta.lab"
   become: true
 
 - name: Stat IdM CA on control host (IdM-enrolled clients)
@@ -171,7 +200,7 @@
 - name: Summary — Podman gateway IdM LDAPS prerequisites
   ansible.builtin.debug:
     msg:
-      - "DNS drop-in: {{ '/etc/containers/containers.conf.d/99-lab-dns.conf' if not (aap_podman_skip_dns | default(false) | bool) else 'skipped' }}"
+      - "/etc/hosts entries: {{ 'added (central/vault/netbox/wazuh)' if not (aap_podman_skip_dns | default(false) | bool) else 'skipped' }}"
       - "IdM CA staged: {{ aap_podman_ca_staged_path if not (aap_podman_skip_ca | default(false) | bool) else 'skipped' }}"
       - "Gateway container: {{ aap_podman_gateway_container }}"
       - "Verify: podman exec -it {{ aap_podman_gateway_container }} getent hosts central.zta.lab"

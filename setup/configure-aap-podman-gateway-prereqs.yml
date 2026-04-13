@@ -1,10 +1,17 @@
 ---
-# configure-aap-podman-gateway-prereqs.yml — Podman DNS + IdM CA for gateway LDAPS
+# configure-aap-podman-gateway-prereqs.yml — Host /etc/hosts entries + IdM CA for gateway LDAPS
 #
 # Run against the AAP host that runs rootless Podman (inventory group [automation], e.g. control).
 # Fixes:
-#   - automation-gateway cannot resolve central.zta.lab → Podman [network] dns_servers
+#   - AAP containers cannot resolve lab hostnames → writes entries to host /etc/hosts
+#     (Podman containers inherit the host /etc/hosts at runtime; no DNS server change needed)
 #   - LDAPS fails: certificate verify failed → IdM CA in container trust (update-ca-trust)
+#
+# Hostnames added to /etc/hosts:
+#   central.zta.lab splunk.zta.lab app.zta.lab db.zta.lab → [zta_services] IP (192.168.1.11)
+#   vault.zta.lab                                          → [vault_servers] IP (192.168.1.12)
+#   netbox.zta.lab                                         → [netbox_servers] IP (192.168.1.15)
+#   wazuh.zta.lab                                          → [wazuh_servers] IP (192.168.1.13)
 #
 # Usage:
 #   ansible-playbook -i inventory/hosts.ini setup/configure-aap-podman-gateway-prereqs.yml
@@ -13,19 +20,18 @@
 #
 # Extra vars:
 #   idm_ip                      Override central/IdM IP (default from [zta_services] or 192.168.1.11)
+#   vault_ip                    Override Vault IP (default from [vault_servers] or 192.168.1.12)
+#   netbox_ip                   Override NetBox IP (default from [netbox_servers] or 192.168.1.15)
+#   wazuh_ip                    Override Wazuh IP (default from [wazuh_servers] or 192.168.1.13)
 #   aap_podman_run_user         OS user that owns rootless Podman / AAP containers (default rhel).
 #                               If you run ansible-playbook as root (e.g. boot script), podman tasks
 #                               use become to this user; root needs passwordless sudo -u <user>.
-#   aap_podman_container_dns_servers  List e.g. ["192.168.1.11","8.8.8.8"]
 #   aap_podman_idm_ca_url       Override CA URL (default http://<idm_ip>/ipa/config/ca.crt)
 #   aap_podman_ca_src_file      If set, copy this file on the target to stage CA (skip ipa + get_url)
 #   aap_podman_gateway_container_name  Default automation-gateway
 #   aap_podman_skip_dns / aap_podman_skip_ca / aap_podman_skip_restart
 #   aap_podman_gateway_restart_pause   Seconds between stop and start (default 3)
 #   aap_podman_gateway_restart_retries / aap_podman_gateway_restart_delay — start retries (default 3 / 5s)
-#
-# Chain with LDAP:
-#   ansible-playbook ... setup/configure-aap-ldap.yml -e aap_podman_gateway_prereqs=true
 
 - name: AAP Podman gateway prerequisites for IdM LDAPS
   hosts: automation

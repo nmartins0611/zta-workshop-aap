@@ -9,6 +9,54 @@ Asciidoc companion to `section2/README.md`.
 
 include::../../docs/lab/common-environment.adoc[]
 
+[IMPORTANT]
+.Prerequisites — verify these before starting
+====
+Section 2 depends on services configured during Section 1 and lab setup.
+
+*1. LDAP authentication on the controller*
+
+Students must log into AAP as IdM users (`appdev`, `neteng`, etc.). Complete **Exercise 1.2** if not already done.
+
+*2. Vault database engine configured*
+
+Vault must have the database secrets engine enabled with the `ztaapp` PostgreSQL connection:
+
+[source,bash]
+----
+export VAULT_ADDR=http://vault.zta.lab:8200
+vault login -method=userpass username=admin password=ansible123!
+vault read database/config/ztaapp
+----
+
+If not configured: `ansible-playbook -i inventory/hosts.ini setup/configure-vault.yml`
+
+*3. OPA db_access policy loaded on central*
+
+[source,bash]
+----
+curl -s http://central.zta.lab:8181/v1/data/zta/db_access | python3 -m json.tool | head -3
+----
+
+If empty: `ansible-playbook -i inventory/hosts.ini setup/configure-opa-base.yml`
+
+*4. Section 2 job templates and RBAC*
+
+[source,bash]
+----
+ansible-playbook -i inventory/hosts.ini setup/configure-aap-project.yml --tags section2,rbac
+----
+
+*5. firewalld running on central*
+
+Vault must reach PostgreSQL on `192.168.1.11:5432`. If firewalld is stopped, container ports are unreachable:
+
+[source,bash]
+----
+ssh rhel@central.zta.lab sudo systemctl status firewalld
+----
+====
+
 == Overview
 
 Deploy the **Global Telemetry Platform** using Vault dynamic database credentials. Experience OPA **deny** for the wrong user, then **allow** for `app-deployers`. Observe micro-segmentation (Arista) and credential TTL.

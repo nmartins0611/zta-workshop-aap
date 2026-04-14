@@ -44,15 +44,15 @@ For a short workshop, complete **1.1–1.8** (~25–30 min). Skip **1.9** unless
 Later sections assume the automation controller accepts **IdM users** for login and enforces **Policy as Code** (OPA gateway) before jobs run. In a full lab build this is usually applied **during deployment** (before Section 1), not in the UI during class.
 
 [TIP]
-.Typical automation order
+.Ansible Automation Platform as the integration backbone
 ====
-`docs/deployment-guide.md` **Layer 7 — Policy** documents the playbooks:
+Each prerequisite is deployed by a **single Ansible playbook** — no manual clicking across multiple UIs:
 
 * `setup/configure-opa-base.yml` — load OPA policies (including `aap.gateway`).
 * `setup/configure-aap-policy.yml` — enable controller ↔ OPA (Policy as Code).
 * `setup/configure-aap-ldap.yml` — controller **LDAP authentication** against IdM (LDAPS).
 
-Many instructors run **LDAP earlier** in setup (still Layer 7); that is fine. Section 1 asks you to **confirm** both integrations so exercises 2–4 behave as written.
+This is the **automation-first** principle: Ansible codifies integrations between IdM, OPA, and Vault as **repeatable, auditable playbooks** instead of one-off admin actions that drift over time. Section 1 asks you to **confirm** both integrations so exercises 2–4 behave as written.
 ====
 
 === LDAP (controller → IdM)
@@ -87,6 +87,8 @@ Expect `OPA_ENABLED` and `OPA_PRE_ACTION_ENABLED` true; `OPA_POLICY_PATH` is `v1
 If Policy as Code was not applied by automation, use the **manual UI or API** steps in `docs/deployment-guide.md` Layer 7 or run `setup/configure-aap-policy.yml`.
 
 == Exercise 1.1 — Verify AAP credentials (pre-configured, Vault-sourced)
+
+_ZTA concept: *Secrets management* — credentials are never stored in the automation platform; they are resolved from a secrets manager at job time, limiting exposure if the platform is compromised._
 
 === Goal
 
@@ -298,11 +300,12 @@ For **Allow** maps and other trigger types, see https://docs.redhat.com/en/docum
 
 ==== Suggested maps (UI)
 
-Use **Add authentication mapping** on your LDAP authenticator as needed:
+Use **Add authentication mapping** on your LDAP authenticator. Create them in this order (order matters — the organisation membership map must exist so users land in the Default org on first login):
 
-* **Organization** + **Group** = `zta-admins` DN → **Default** organization, **Organization Admin**.
-* **Superuser** + **Group** = same `zta-admins` DN → platform superuser (**optional**; use only if IdM `zta-admins` should equal full platform admin).
-* **Team** + **Group** = each `team-*` DN → the matching AAP team in **Default** with **Team Member** (use the DN from the table above):
+* **Organization** + trigger **Always** → **Default** organization, **Member**. This ensures every LDAP user gets basic org membership on login. Without it, users authenticate successfully but see an empty platform with no inventories, templates, or credentials visible.
+* **Organization** + trigger **Group** = `zta-admins` DN → **Default** organization, **Organization Admin**. Grants admin-level org access to the ZTA admins group.
+* **Superuser** + trigger **Group** = same `zta-admins` DN → platform superuser (**optional**; use only if IdM `zta-admins` should equal full platform admin).
+* **Team** + trigger **Group** = each `team-*` DN → the matching AAP team in **Default** with **Team Member** (use the DN from the table above):
 
 +
 [cols="2,2",options="header"]

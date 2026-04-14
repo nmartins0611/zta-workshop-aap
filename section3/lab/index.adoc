@@ -163,19 +163,19 @@ Spot-checking `sshd -T` and audit rules proves **the control landed**. Zero Trus
 
 == Exercise 3.6 — Other scenarios
 
-* `appdev` cannot launch patch template.
-* Remove `neteng` from `patch-admins` if added; confirm deny again.
+* `appdev` cannot launch patch template (not in Infrastructure or Security team).
+* If you added `neteng` to `team-infrastructure` in Exercise 3.3, remove them now and confirm deny again: `ipa group-remove-member team-infrastructure --users=neteng`
 
 [TIP]
 .Separation of duties
 ====
-`appdev` can deploy (Section 2) but must **not** silently patch servers—that is a different risk class. Mapping **different IdM groups** to **different template families** encodes **SoD** in machine-readable policy instead of org-chart prose only.
+`appdev` can deploy (Section 2) but must **not** silently patch servers—that is a different risk class. Mapping **different AAP teams** (via IdM groups and LDAP) to **different template families** encodes **SoD** in machine-readable policy instead of org-chart prose only.
 ====
 
 == Validation checklist
 
-* [ ] Platform deny for unauthorised user
-* [ ] Success for `patch-admins`
+* [ ] Platform deny for unauthorised user (e.g. `neteng` blocked at gateway)
+* [ ] Success for user in Infrastructure or Security team (e.g. `ztauser`)
 * [ ] Banner and hardening visible on target
 
 == Extended: Section 3B — OPA Rego authoring

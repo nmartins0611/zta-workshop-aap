@@ -118,12 +118,20 @@ NetBox updates record **who** initiated change and **which workload identity** w
 
 == Exercise 4.2 — Denied (`neteng`)
 
-Follow `section4/README.md`: launch as `neteng` and observe SPIFFE verification vs policy outcome for your deployed gateway rules.
+. Log into AAP as `neteng`.
+. Launch the **Configure VLAN** template with VLAN 200 / DMZ.
+. Observe the result — **two denial paths** are possible depending on your LDAP authenticator maps:
+
+**Path A — Outer ring blocks (expected with correct LDAP maps):** `neteng` has no AAP team membership, so the `aap.gateway` policy denies the launch at the platform level. The playbook never starts and no SPIFFE check occurs. This is the same pattern as Section 3.
+
+**Path B — Inner ring blocks (if LDAP maps place all users in Infrastructure):** The outer ring passes, the playbook starts, SPIFFE verification **succeeds** (the platform is legitimate), but OPA's inner ring denies because `neteng` is not in the IdM `network-admins` group. This is a deliberate teaching point: **trust the platform** and **authorise the person** are separate questions.
+
+Either path demonstrates deny-by-default. Discuss which ring caught the request and why.
 
 [TIP]
-.User vs workload signals
+.Defence in depth means multiple catches
 ====
-You may see **SPIFFE verified** while the **human** lacks `network-admins`—a deliberate teaching point: **trust the platform** and **authorise the person** are separate questions. Alternatively, if your gateway blocks `neteng` earlier, compare that to the README narrative: both patterns exist in real deployments depending how `aap.gateway` is scoped.
+If your outer ring is correctly scoped to **Infrastructure** team only, `neteng` never reaches the inner ring. If your maps are broader, the inner ring still catches the missing group membership. That is **defence in depth** in practice — overlapping checks mean a misconfiguration in one layer does not automatically grant access.
 ====
 
 == Exercise 4.3 — Allowed (`netadmin`)
@@ -162,6 +170,7 @@ Why verify workload and user? What breaks if SPIRE is down? How does NetBox audi
 * **User without workload trust** → stolen credentials are not enough if SPIRE is healthy and policy binds both.
 * **SPIRE down** → automation cannot prove workload identity; **fail closed** is preferable to accepting unsigned requests.
 * **NetBox** → ties human + workload metadata to **configuration items** for compliance and incident response.
+====
 
 == Validation checklist
 

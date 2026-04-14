@@ -156,14 +156,72 @@ A single AAP job verifies the workload identity (SPIFFE), checks policy (OPA), c
 
 _ZTA concept: *Runtime parameter validation* -- the inner ring validates data the outer ring could not know at launch time (specific VLAN ID, SPIFFE health), catching invalid or dangerous requests before they reach the network._
 
-* Invalid VLAN `5000` -> OPA deny (outside range).
-* Stop **spire-agent** on `control` -> SPIFFE step fails; restart after test.
-* Optional: `ipa group-add-member network-admins --users=neteng` then retry; clean up membership afterward.
+The outer ring (AAP gateway policy) answered **"who is allowed to press the button?"** before the job started. But it had no way to know _what_ the user would type into the survey, or whether the automation platform's cryptographic identity would still be valid at execution time. That is the inner ring's job -- it evaluates **runtime data** that only exists once the playbook is running.
+
+This exercise proves the inner ring catches three classes of failure that the outer ring is structurally blind to.
+
+=== 4.4a -- Invalid VLAN ID
+
+. Log in as `netadmin` (who passed the outer ring in Exercise 4.3).
+. Launch **Configure VLAN** with VLAN ID `5000` and any name.
+. The job starts (the outer ring has no opinion on VLAN IDs), but the OPA network policy **denies** the request because `5000` is outside the permitted range (100–999).
+
+*Why this matters:* An attacker or a careless operator who passes the platform gate could still request a VLAN that conflicts with infrastructure reservations, management networks, or trunk ranges. The outer ring cannot enforce this -- it sees a template name and a user, not the VLAN number. OPA's inner ring evaluates the **actual parameter** at runtime and blocks before any switch is touched.
+
+=== 4.4b -- Missing workload identity (SPIFFE)
+
+. From `central`, stop the SPIRE agent on the automation controller:
++
+[source,bash]
+----
+ssh rhel@control.zta.lab sudo systemctl stop spire-agent
+----
++
+. Launch **Configure VLAN** again as `netadmin` with a valid VLAN (e.g. `201`).
+. The outer ring passes (correct user, correct team), but the first playbook task **fails** -- it cannot fetch an X.509 SVID because the agent is down. No OPA check occurs; no switch is touched.
+. Restart the agent after the test:
++
+[source,bash]
+----
+ssh rhel@control.zta.lab sudo systemctl start spire-agent
+----
+
+*Why this matters:* Imagine a compromised host running a copy of the playbook. Even if the attacker has valid AAP credentials (stolen token, session hijack), the playbook requires a **cryptographic proof of workload identity** from the local SPIRE agent. A host that is not attested by the SPIRE server -- or one where the agent has been killed by an attacker trying to avoid detection -- simply cannot produce an SVID. The network change is blocked at the source, not at the switch. This is the difference between **"the right person asked"** and **"the right person asked from the right place"**.
+
+=== 4.4c -- Granting group membership (optional)
+
+. Add `neteng` to the `network-admins` IdM group:
++
+[source,bash]
+----
+ipa group-add-member network-admins --users=neteng
+----
++
+. Log into AAP as `neteng` and retry **Configure VLAN** with VLAN `202`.
+. If `neteng` is now in the **Infrastructure** AAP team (or the outer ring allows the Readonly team), the job starts. The inner ring checks IdM groups and finds `network-admins` -- the request is **allowed**.
+. Clean up afterward:
++
+[source,bash]
+----
+ipa group-remove-member network-admins --users=neteng
+----
+
+*Why this matters:* This demonstrates that policy decisions are **dynamic**, not baked into code. The same playbook, the same template, the same OPA policy -- but a single group membership change in IdM flips the outcome from deny to allow. In a ZTA model, access is **continuously evaluated** against the current state of identity, not a static ACL written months ago.
 
 [TIP]
-.Ansible + OPA: coarse gates and fine-grained runtime checks
+.Ansible + OPA: why two rings are better than one
 ====
-Invalid VLAN IDs and **missing SVIDs** are caught **after** launch but **before** any switch is touched -- runtime PDP inputs include data the gateway did not know yet. Ansible playbooks can embed these fine-grained checks as natural workflow steps. That is why organisations combine **coarse** platform gates (AAP Policy as Code) with **fine** in-playbook policy (OPA `uri` calls) -- and Ansible makes wiring both together straightforward.
+Each edge case exposes a gap that a single policy layer cannot cover alone:
+
+[cols="1,2,2",options="header"]
+!===
+! Scenario ! Outer ring (AAP gateway) ! Inner ring (in-playbook OPA)
+! Invalid VLAN 5000 ! *Blind* -- sees template name and user, not survey values ! *Catches it* -- evaluates the VLAN ID against allowed ranges
+! SPIRE agent down ! *Blind* -- does not know whether the execution host has a valid SVID ! *Catches it* -- playbook fails before reaching OPA because no SVID can be fetched
+! Wrong user group ! *May catch it* (if team mapping is strict) ! *Always catches it* -- checks IdM groups regardless of AAP team membership
+!===
+
+Ansible makes this layered approach **operationally simple**: the outer ring is built into AAP (zero playbook changes), and the inner ring is a few `uri` and `command` tasks in the playbook. Together they implement **defence in depth** -- a misconfiguration or bypass in one layer does not automatically grant access to the network.
 ====
 
 == Playbook flow (summary)

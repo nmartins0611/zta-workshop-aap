@@ -51,6 +51,8 @@ expected_section3_templates:
 
 expected_section4_templates:
   - Configure VLAN
+  - Break ACL
+  - Fix ACL
 
 expected_section5_templates:
   - "Emergency: Revoke App Credentials"

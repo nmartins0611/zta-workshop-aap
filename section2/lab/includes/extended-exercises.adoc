@@ -1,4 +1,4 @@
-=== Exercise 2.7 — Credential rotation (optional)
+=== Exercise 2.6 — Credential rotation (optional)
 
 Schedule **Rotate DB Credentials** (e.g. every 5 minutes) to refresh Vault leases and restart the app.
 
@@ -8,7 +8,7 @@ Schedule **Rotate DB Credentials** (e.g. every 5 minutes) to refresh Vault lease
 Rotation ties **availability** to **ongoing permission to run automation**: if someone loses access to AAP or Vault policies tighten, renewal jobs fail *loudly* instead of leaving a decade-old password in a config file.
 ====
 
-=== Exercise 2.8 — Gitea webhook (optional)
+=== Exercise 2.7 — Gitea webhook (optional)
 
 Enable workflow webhook; register URL/key in Gitea; push to trigger pipeline.
 
@@ -18,7 +18,7 @@ Enable workflow webhook; register URL/key in Gitea; push to trigger pipeline.
 A webhook does **not** bypass Zero Trust—it only changes *who clicks Launch*. The same workflow, OPA checks, and Vault paths still run, which is how you avoid **unauthenticated CI** becoming a backdoor.
 ====
 
-=== Exercise 2.9 — Firewall debugging (hands-on)
+=== Exercise 2.8 — Firewall debugging (hands-on)
 
 *Instructor:* `ansible-playbook section2/playbooks/break-firewall.yml`
 
@@ -32,7 +32,7 @@ Symptom: app health fails; DB port missing from `firewalld` on DB host.
 Micro-segmentation on the switch does not remove the need for **host-level** controls. If `firewalld` blocks the port, the app cannot reach PostgreSQL even when ACLs and credentials are correct—showing **defence in depth** and why ZTA operations must **map the whole path** (app -> network -> host -> database).
 ====
 
-=== Exercise 2.10 — Vault policy path (hands-on)
+=== Exercise 2.9 — Vault policy path (hands-on)
 
 This exercise demonstrates that **OPA authorisation** and **Vault policy** are independent enforcement layers. OPA checks whether the _user role_ may request database credentials; Vault policy controls which _secret paths_ the user's token can read. Breaking one while the other is intact exposes a real diagnostic scenario.
 
@@ -138,7 +138,7 @@ After the exercise, optionally restore the original job template playbook (`sect
 **OPA** can say "this human role may request DB creds" while **Vault policy** still enforces _which paths_ the automation token may read. That separation is healthy: **authorisation** (intent) vs **secret issuance** (mechanism). A typo in Vault policy is a reminder that Zero Trust systems must be **tested end-to-end**, not assumed from one green checkmark. The fact that `appdev` can see their own policy names in the job output but still gets denied reinforces that **visibility is not access**.
 ====
 
-=== Exercise 2.11 — SELinux context (hands-on)
+=== Exercise 2.10 — SELinux context (hands-on)
 
 *Instructor:* `ansible-playbook section2/playbooks/break-selinux.yml`
 

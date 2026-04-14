@@ -71,14 +71,14 @@ runtime (the specific VLAN ID, the SPIFFE workload identity).
 
 ### Outer Ring — `aap.gateway` (platform level)
 
-Matches job template names to required IdM groups:
+Matches job template names to required AAP teams (populated from IdM groups via LDAP):
 
-| Template pattern | Required group |
-|-----------------|----------------|
-| Contains "VLAN" or "Network" | `network-admins` |
-| Contains "Patch" | `patch-admins` |
-| Contains "Deploy", "Database", "Credential" | `app-deployers` |
-| Contains "Verify", "Test", "Check" | Any authenticated user |
+| Template pattern | Required AAP team |
+|-----------------|-------------------|
+| Contains "VLAN" or "Network" | Infrastructure |
+| Contains "Patch" | Infrastructure or Security |
+| Contains "Deploy", "Credential", "Application" | Applications or DevOps |
+| Everything else | Any authenticated user |
 
 ### Inner Ring — `zta.network` (runtime level)
 

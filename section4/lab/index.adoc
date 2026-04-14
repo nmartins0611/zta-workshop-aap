@@ -9,16 +9,86 @@ Companion to `section4/README.md`. **Outer ring:** AAP Policy as Code (gateway).
 
 include::../../docs/lab/common-environment.adoc[]
 
-[NOTE]
-.Policy as Code (outer ring)
+[IMPORTANT]
+.Prerequisites — verify these before starting
 ====
-The **outer ring** requires the same controller ↔ OPA integration as Section 3: run `setup/configure-aap-policy.yml` or the manual steps in `docs/deployment-guide.md` (Layer 7 — *Manual Policy as Code*).
+Section 4 builds on Sections 1–3 infrastructure. Run the checklist below before starting exercises.
+
+*1. LDAP authentication on the controller*
+
+Students must log into AAP as IdM users (`netadmin`, `neteng`, etc.) with group memberships visible. Complete **Exercise 1.2** if not already done.
+
+*2. OPA policies loaded on central*
+
+The gateway policy (`aap.gateway`) and network policy (`zta.network`) must be loaded:
+
+[source,bash]
+----
+curl -s http://central.zta.lab:8181/v1/data/aap/gateway | python3 -m json.tool | head -3
+curl -s http://central.zta.lab:8181/v1/data/zta/network | python3 -m json.tool | head -3
+----
+
+If either returns empty or errors:
+
+[source,bash]
+----
+ansible-playbook -i inventory/hosts.ini setup/configure-opa-base.yml
+----
+
+*3. AAP Policy as Code integration (outer ring)*
+
+The controller must call OPA before every job launch. Verify under *Settings → Policy as Code*, or deploy:
+
+[source,bash]
+----
+ansible-playbook -i inventory/hosts.ini setup/configure-aap-policy.yml
+----
+
+*4. SPIRE running on central and control*
+
+The SPIRE server on `central` and agent on `control` must be healthy:
+
+[source,bash]
+----
+ssh rhel@central.zta.lab sudo /opt/spire/bin/spire-server healthcheck -socketPath /tmp/spire-server/private/api.sock
+ssh rhel@control.zta.lab sudo /opt/spire/bin/spire-agent healthcheck -socketPath /run/spire/agent/api.sock
+----
+
+If not deployed yet:
+
+[source,bash]
+----
+ansible-playbook -i inventory/hosts.ini setup/deploy-spire.yml
+----
+
+*5. Section 4 job templates and RBAC*
+
+[source,bash]
+----
+ansible-playbook -i inventory/hosts.ini setup/configure-aap-project.yml --tags section4,rbac
+----
+
+*6. Quick smoke test*
+
+[source,bash]
+----
+# SPIRE agent can fetch SVID on control
+ssh rhel@control.zta.lab sudo /opt/spire/bin/spire-agent api fetch x509 \
+  -socketPath /run/spire/agent/api.sock 2>&1 | grep 'SPIFFE ID'
+
+# OPA network policy responds
+curl -s -X POST http://central.zta.lab:8181/v1/data/zta/network/decision \
+  -d '{"input":{"user":"netadmin","user_groups":["network-admins"],"spiffe_id":"spiffe://zta.lab/workload/network-automation","action":"create_vlan","vlan_id":200}}' \
+  | python3 -m json.tool | head -5
+----
+
+If all six checks pass you are ready for Section 4.
 ====
 
 == Architecture summary
 
-* **Outer ring:** user must be in `network-admins` to launch VLAN/Network templates (see `aap.gateway` in deployment).
-* **Inner ring:** trusted SPIFFE ID, `network-admins`, VLAN 100–999, allowed action.
+* **Outer ring:** user must be in the **Infrastructure** AAP team to launch VLAN/Network templates (`aap.gateway` policy, evaluated by the controller before launch).
+* **Inner ring:** trusted SPIFFE ID, IdM `network-admins` group, VLAN 100–999, allowed action (`zta.network` policy, evaluated inside the playbook).
 
 Trusted workload SPIFFE ID (lab): `spiffe://zta.lab/workload/network-automation`
 

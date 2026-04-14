@@ -2,9 +2,16 @@
 :toc: left
 :toclevels: 3
 :icons: font
+:experimental:
 :idprefix:
 :idseparator: -
 
+[NOTE]
+====
+In NIST SP 800-207 terms, this section moves from *verifying* the ZTA stack (Section 1) to *using* it under load. **AAP** acts as the *Policy Enforcement Point (PEP)* that gates every deployment step. **OPA** (the *Policy Decision Point*) evaluates group membership before secrets are issued. **Vault** generates *short-lived, per-run* database credentials instead of long-lived passwords. **Arista** enforces *micro-segmentation* so that even valid credentials are only usable from the correct network segment.
+
+**Why that matters:** An attacker who compromises one layer — network, identity, or secrets — still faces enforcement at every other layer. The deployment pipeline is not a single trust decision; it is a **chain of independent verifications** that must all pass.
+====
 
 [#lab-common-environment]
 == Lab environment reference
@@ -57,7 +64,6 @@ These hostnames assume workshop DNS (`*.zta.lab`) is configured. Replace with in
 | No auth (dashboard)
 |===
 
-
 == Overview
 
 Deploy the **Global Telemetry Platform** using Vault dynamic database credentials. Experience OPA **deny** for the wrong user, then **allow** for `app-deployers`. Observe micro-segmentation (Arista) and credential TTL.
@@ -72,20 +78,20 @@ Deploying an app is where **identity (who)**, **policy (may they)**, **secrets (
 [cols="2,1,1",options="header"]
 |===
 | Exercise | Track | Est.
-| 2.1–2.6 | Core | ~30 min (2-hour path)
-| 2.7–2.8 | Extended | optional
-| 2.9–2.11 | Extended | break/fix labs
+| 2.1–2.5 | Core | ~30 min (2-hour path)
+| 2.6–2.7 | Extended | optional
+| 2.8–2.10 | Extended | break/fix labs
 |===
 
 [TIP]
 .Separation of concerns in templates
 ====
-Each step has a single job: **decide** (OPA), **issue** (Vault), **enforce path** (Arista), **configure app**. That mirrors ZTA’s idea that **no single giant playbook** should skip gates—each stage can fail closed, be audited, and be replaced without collapsing the whole story.
+Each step has a single job: **decide** (OPA), **issue** (Vault), **enforce path** (Arista), **configure app**. That mirrors ZTA's idea that **no single giant playbook** should skip gates—each stage can fail closed, be audited, and be replaced without collapsing the whole story.
 ====
 
 == Exercise 2.1 — Workflow
 
-As the ztuser, login to the automation platform and navigate to Automation Execution -> Templates and click on Create template to create and Workflow Template. 
+As the ztuser, login to the automation platform and navigate to Automation Execution -> Templates and click on Create template to create and Workflow Template.
 
 Create the workflow with the following details:
 
@@ -93,27 +99,32 @@ Name: **Deploy Application Pipeline**:
 inventory: ZTA Lab Inventory
 Organization: Default
 
-Click on Create workflow job template, this will take you to the Workflow Visualizer - We will now add templates. click on Add Step - select Job Template and select Check DB Access Policy, click Next and continue. 
+Click on Create workflow job template, this will take you to the Workflow Visualizer - We will now add templates. click on Add Step - select Job Template and select Check DB Access Policy, click Next and continue.
 
-Right click on the template in the visualiser by the kebab menu ⋮. - and select Add step and link - this time select the Create DB Credential template and add the status Run on success. Repeat the process to add tempaltes 
-Configure DB Access List and Deploy Application. Once done, save the workflow.
+Right click on the template in the visualiser by the kebab menu ⋮. - and select Add step and link - this time select the Create DB Credential template and add the status Run on success. Repeat the process to add tempaltes Configure DB Access List and Deploy Application. Once done, save the workflow.
 
+[NOTE]
+.AAP workflows as auditable trust chains
+====
+**Ansible Automation Platform's workflow visualizer** makes the trust chain *visible*: each node is a discrete policy gate or operational step. If any node fails, the chain stops — there is no "skip to deploy." This is not just convenience; it is **auditability by design**. Every run records which gates passed, which failed, who launched it, and when. In a post-incident review, that trail is the difference between "we think it was authorised" and "here is proof."
+====
 
 [TIP]
 .Order of operations = trust boundaries
 ====
-**Check DB Access Policy runs first** on purpose: if the human (via AAP) is not entitled to database credentials, the workflow **never touches Vault**. That is *defence in depth*—the secret manager is not a substitute for authorisation. In breach terms, an attacker who tricks someone into clicking “deploy” still hits a **PDP (OPA)** before any **secret issuance**.
+**Check DB Access Policy runs first** on purpose: if the human (via AAP) is not entitled to database credentials, the workflow **never touches Vault**. That is *defence in depth*—the secret manager is not a substitute for authorisation. In breach terms, an attacker who tricks someone into clicking "deploy" still hits a **PDP (OPA)** before any **secret issuance**.
 ====
 
-== Exercise 2.2 
+== Exercise 2.2
 
-. Log into AAP as `neteng` and navigate to the Templates section. Notice you have no permissions. Navigate to the IDM tab and login with the admin details.AAp is using the LDAP for authenticationa and mapping access for users based on their groups in the iDM. Search for neteng on active users. Select the account and click on User Groups - We can seee they are just part of the ipa user group so they have access but not much else. Lets add them to the ifnrastructure group. Click add search infrastructure, then select the group and click on the array to assign it. 
+. Log into AAP as `neteng` and navigate to the Templates section. Notice you have no permissions. Navigate to the IDM tab and login with the admin details.AAp is using the LDAP for authenticationa and mapping access for users based on their groups in the iDM. Search for neteng on active users. Select the account and click on User Groups - We can seee they are just part of the ipa user group so they have access but not much else. Lets add them to the ifnrastructure group. Click add search infrastructure, then select the group and click on the array to assign it.
 
 Navigate back to the controller. Log out and log back in as the neteng user. We now have access to the content the infrastructure team has access to. Navigate to Templates and execute the Depoly Application Pipeline workflow.
 
 Expect first step to show OPA **DENIED**; workflow stops; Vault not contacted.
 
-
+[source,yaml]
+----
 msg: |
   OPA Database Access Decision:
     User:            neteng
@@ -121,68 +132,57 @@ msg: |
       Database:        ztaapp
     Decision:        DENIED
     Reason:          OPA returned no decision document (check policy load and URL).
-    
+
 _ansible_verbose_always: true
 _ansible_no_log: false
 changed: false
+----
 
+[NOTE]
+.AAP + IdM: real-time RBAC without local accounts
+====
+When you changed `neteng`'s group membership in IdM, AAP picked up that change on next login — no local account editing, no CSV import, no manual team assignment. This is **centralised identity lifecycle** in action: the identity provider (IdM) is the single source of truth, and AAP's LDAP integration ensures that **access follows identity changes in near real-time**. In Zero Trust, stale permissions are almost as dangerous as no permissions — this integration closes that gap.
+====
 
-Now logout and lets login in with the appdev user. Navigate to the same template and trigger it. Notice this user has been approved to trigger this automation. Click on the Check DB policy now to see the details. 
+Now logout and lets login in with the appdev user. Navigate to the same template and trigger it. Notice this user has been approved to trigger this automation. Click on the Check DB policy now to see the details.
 
-
-Now logout and lets login in with the appdev user. Navigate to the same template and trigger it. Notice this user has been approved to trigger this automation. Click on the Check DB policy now to see the details. 
-
-
+[source]
+----
 TASK [Display OPA decision] ****************************************************
-40
 ok: [central] => {
-41
-"msg": "OPA Database Access Decision:\n User: appdev\n Groups (IdM): team-applications, app-deployers, ipausers\n Database: ztaapp\n Decision: ALLOWED\n Reason: all conditions met — credential issuance approved\n \n"
-42
+    "msg": "OPA Database Access Decision:\n User: appdev\n Groups (IdM): team-applications, app-deployers, ipausers\n Database: ztaapp\n Decision: ALLOWED\n Reason: all conditions met — credential issuance approved\n \n"
 }
-43
 Monday 13 April 2026 19:58:52 +0000 (0:00:00.042) 0:00:02.446 **********
-44
-45
+
 TASK [Enforce OPA decision] ****************************************************
-46
 ok: [central] => {
-47
-"changed": false,
-48
-"msg": "OPA policy check passed — proceeding with credential issuance"
-49
+    "changed": false,
+    "msg": "OPA policy check passed — proceeding with credential issuance"
 }
-50
+----
 
-Go back to the workflow and as it should have completed now. 
+Go back to the workflow and as it should have completed now.
 
-navigate to the Terminal and do the following curl 
+navigate to the Terminal and do the following curl
 
-
-[bash]
+[source,bash]
 ----
 curl -w "\n\nConnect: %{time_connect}s\nTLS: %{time_appconnect}s\nTotal: %{time_total}s\nHTTP: %{http_code}\n" \
   -so /dev/null http://app.zta.lab:8081/health
-
-
-
 
 Connect: 0.002681s
 TLS: 0.000000s
 Total: 0.010493s
 HTTP: 200
-
 ----
 
-We can see the application is healthy with its new time limited credentials (Status 200). 
+We can see the application is healthy with its new time limited credentials (Status 200).
 Navigate to the Telemetry tab and view the application is still working. Now wait a few mins and run the same command:
 
-[bash]
+[source,bash]
 ----
 [rhel@central ~]$ curl -w "\n\nConnect: %{time_connect}s\nTLS: %{time_appconnect}s\nTotal: %{time_total}s\nHTTP: %{http_code}\n" \
   -so /dev/null http://app.zta.lab:8081/health
-
 
 Connect: 0.001888s
 TLS: 0.000000s
@@ -192,21 +192,19 @@ HTTP: 503
 
 The application is no longer healthy with a 503 status. The time limited credentials have now expired.
 
-
-
-
-
-
-
-
+[TIP]
+.The 503 is Zero Trust working as intended
+====
+A healthy app that *stops working* when credentials expire is proof that **time-bound access** is enforced end-to-end. In a traditional environment, database passwords live in config files for years. Here, the credential **self-destructs** — and the app's health check honestly reflects that. This is the operational cost of Zero Trust, and the benefit: **blast radius is bounded by time**, not by someone remembering to rotate a password.
+====
 
 [TIP]
 .What the learner should feel here
 ====
-The unauthorised user **never sees** a database password. Zero Trust is not only about encryption—it is about **shrinking who can cause sensitive actions**. Deny-by-default policy turns “I have network reachability” into “I still cannot obtain credentials.”
+The unauthorised user **never sees** a database password. Zero Trust is not only about encryption—it is about **shrinking who can cause sensitive actions**. Deny-by-default policy turns "I have network reachability" into "I still cannot obtain credentials."
 ====
 
-== Exercise 2.4 — Policy In action.
+== Exercise 2.3 — Policy in action
 
 `zta.db_access` requires `app-deployers`, valid DB (`ztaapp`), and bounded permissions.
 
@@ -218,7 +216,7 @@ The unauthorised user **never sees** a database password. Zero Trust is not only
 **IdM groups** are attributes the PDP understands. Changing group membership is how the organisation **grants or revokes** deployment authority without editing playbooks. That is **policy + identity lifecycle** working together—important when people change roles or leave.
 ====
 
-== Exercise 2.5 — Correct user (allowed)
+== Exercise 2.4 — Correct user (allowed)
 
 As `appdev`, launch the workflow. Expect OPA allow, Vault dynamic user, ACL update, app healthy at `http://app.zta.lab:8081`.
 
@@ -228,7 +226,7 @@ As `appdev`, launch the workflow. Expect OPA allow, Vault dynamic user, ACL upda
 Even with valid DB credentials, **network policy** still limits *where* connections may originate. The Arista step models **segmentation** that is common in ZTA: secrets prove *who the app is*, ACLs constrain *which paths are valid*. An attacker with stolen creds from a random laptop should still fail if the fabric only permits the app tier IP.
 ====
 
-== Exercise 2.6 — Credential expiry
+== Exercise 2.5 — Credential expiry
 
 After deploy, confirm Vault user in PostgreSQL; wait TTL (e.g. 5 minutes); user disappears; `curl http://app.zta.lab:8081/health` reflects loss of DB access until rotation/restore.
 

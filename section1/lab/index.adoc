@@ -17,7 +17,7 @@ Connect Ansible Automation Platform to the Zero Trust stack. Workshop credential
 [IMPORTANT]
 .Why this section exists
 ====
-Until AAP is wired to the same **identity, policy, secrets, and inventory truth** the rest of the architecture uses, automation would be a *shadow admin path*—easy to bypass Zero Trust intent. Here you make AAP a **first-class citizen** of the ZTA fabric: it authenticates like other services, reads policy from OPA, pulls secrets from Vault, and builds inventory from NetBox so *what you run jobs against* matches *what the organisation says exists*.
+Until AAP is wired to the same **identity, policy, secrets, and inventory truth** the rest of the architecture uses, automation would be a *shadow admin path* -- easy to bypass Zero Trust intent. Here you make AAP a **first-class citizen** of the ZTA fabric: it authenticates like other services, reads policy from OPA, pulls secrets from Vault, and builds inventory from NetBox so *what you run jobs against* matches *what the organisation says exists*.
 ====
 
 .Workshop delivery (2-hour track)
@@ -25,19 +25,19 @@ Until AAP is wired to the same **identity, policy, secrets, and inventory truth*
 |===
 | Exercise | Track | Est. time
 
-| Prerequisite — LDAP + Policy as Code (verify) | Core | 2 min
-| 1.1 — Verify AAP credentials (Vault lookups) | Core | 5 min
-| 1.2 — IdM LDAP (Authentication Methods UI) | Core | 5 min
-| 1.3 — Inventory and project | Core | 5 min
-| 1.4 — Job templates | Core | 3 min
-| 1.5 — Verify ZTA services | Core | 2 min
-| 1.6 — Vault dynamic credentials | Core | 3 min
-| 1.7 — Vault SSH signed certificates | Core | 3 min
-| 1.8 — OPA policy decisions | Core | 2 min
-| 1.9 — Certificate trust debugging | Extended | 25 min
+| Prerequisite -- LDAP + Policy as Code (verify) | Core | 2 min
+| 1.1 -- Verify AAP credentials (Vault lookups) | Core | 5 min
+| 1.2 -- IdM LDAP (Authentication Methods UI) | Core | 5 min
+| 1.3 -- Inventory and project | Core | 5 min
+| 1.4 -- Job templates | Core | 3 min
+| 1.5 -- Verify ZTA services | Core | 2 min
+| 1.6 -- Vault dynamic credentials | Core | 3 min
+| 1.7 -- Vault SSH signed certificates | Core | 3 min
+| 1.8 -- OPA policy decisions | Core | 2 min
+| 1.9 -- Certificate trust debugging | Extended | 25 min
 |===
 
-For a short workshop, complete **1.1–1.8** (~25–30 min). Skip **1.9** unless you have extra time. Confirm the **LDAP + Policy as Code** prerequisite below first (often already applied during lab deployment).
+For a short workshop, complete **1.1--1.8** (~25--30 min). Skip **1.9** unless you have extra time. Confirm the **LDAP + Policy as Code** prerequisite below first (often already applied during lab deployment).
 
 == Controller: IdM LDAP and Policy as Code (prerequisite)
 
@@ -46,19 +46,19 @@ Later sections assume the automation controller accepts **IdM users** for login 
 [TIP]
 .Ansible Automation Platform as the integration backbone
 ====
-Each prerequisite is deployed by a **single Ansible playbook** — no manual clicking across multiple UIs:
+Each prerequisite is deployed by a **single Ansible playbook** -- no manual clicking across multiple UIs:
 
-* `setup/configure-opa-base.yml` — load OPA policies (including `aap.gateway`).
-* `setup/configure-aap-policy.yml` — enable controller ↔ OPA (Policy as Code).
-* `setup/configure-aap-ldap.yml` — controller **LDAP authentication** against IdM (LDAPS).
+* `setup/configure-opa-base.yml` -- load OPA policies (including `aap.gateway`).
+* `setup/configure-aap-policy.yml` -- enable controller <-> OPA (Policy as Code).
+* `setup/configure-aap-ldap.yml` -- controller **LDAP authentication** against IdM (LDAPS).
 
-This is the **automation-first** principle: Ansible codifies integrations between IdM, OPA, and Vault as **repeatable, auditable playbooks** instead of one-off admin actions that drift over time. Section 1 asks you to **confirm** both integrations so exercises 2–4 behave as written.
+This is the **automation-first** principle: Ansible codifies integrations between IdM, OPA, and Vault as **repeatable, auditable playbooks** instead of one-off admin actions that drift over time. Section 1 asks you to **confirm** both integrations so exercises 2--4 behave as written.
 ====
 
-=== LDAP (controller → IdM)
+=== LDAP (controller -> IdM)
 
 * **What it does:** Users log into `https://control.zta.lab` with **workshop IdM accounts** (for example `ztauser` / `ansible123!`), not only the platform `admin` account.
-* **Prerequisites:** IdM running; controller trusts the IdM CA (for example after `setup/enroll-idm-clients.yml`). Details: `HANDOFF.md` (*LDAP: controller → IdM*).
+* **Prerequisites:** IdM running; controller trusts the IdM CA (for example after `setup/enroll-idm-clients.yml`). Details: `HANDOFF.md` (*LDAP: controller -> IdM*).
 
 === Verify LDAP
 
@@ -66,14 +66,14 @@ This is the **automation-first** principle: Ansible codifies integrations betwee
 . Sign in with an **IdM user** (for example `ztauser`, password `ansible123!` per link:../../docs/lab/common-environment.adoc#lab-common-environment[Lab environment reference]).
 . If login fails: complete **Exercise 1.2** (Authentication Methods UI), or confirm `setup/configure-aap-ldap.yml` (legacy API) completed, DNS reaches IdM, and troubleshooting in `docs/deployment-guide.md` / `HANDOFF.md`.
 
-=== Policy as Code (controller → OPA)
+=== Policy as Code (controller -> OPA)
 
 * **What it does:** Before starting a job, the controller can query OPA at `v1/data/aap/gateway/decision` (gateway Rego). Section 3 and 4 depend on this **outer ring**.
 * **Automation:** `setup/configure-aap-policy.yml` after `setup/configure-opa-base.yml`.
 
 === Verify Policy as Code
 
-. As platform **admin**, open **Settings** → **Policy** / **Open Policy Agent** / **Policy as Code** (exact label varies by patch) and confirm OPA URL, policy path, and enable flags match `docs/deployment-guide.md` Layer 7 (*Manual Policy as Code (OPA gateway)*).
+. As platform **admin**, open **Settings** -> **Policy** / **Open Policy Agent** / **Policy as Code** (exact label varies by patch) and confirm OPA URL, policy path, and enable flags match `docs/deployment-guide.md` Layer 7 (*Manual Policy as Code (OPA gateway)*).
 . Or use the API:
 
 [source,bash]
@@ -86,21 +86,21 @@ Expect `OPA_ENABLED` and `OPA_PRE_ACTION_ENABLED` true; `OPA_POLICY_PATH` is `v1
 
 If Policy as Code was not applied by automation, use the **manual UI or API** steps in `docs/deployment-guide.md` Layer 7 or run `setup/configure-aap-policy.yml`.
 
-== Exercise 1.1 — Verify AAP credentials (pre-configured, Vault-sourced)
+== Exercise 1.1 -- Verify AAP credentials (pre-configured, Vault-sourced)
 
-_ZTA concept: *Secrets management* — credentials are never stored in the automation platform; they are resolved from a secrets manager at job time, limiting exposure if the platform is compromised._
+_ZTA concept: *Secrets management* -- credentials are never stored in the automation platform; they are resolved from a secrets manager at job time, limiting exposure if the platform is compromised._
 
 === Goal
 
-Workshop credentials are created with `setup/configure-aap-credentials.yml`. You **confirm** Vault KV data and controller objects match the lab—no manual credential creation in the UI for this exercise.
+Workshop credentials are created with `setup/configure-aap-credentials.yml`. You **confirm** Vault KV data and controller objects match the lab -- no manual credential creation in the UI for this exercise.
 
 [TIP]
-.Zero Trust: secrets on the platform
+.Ansible + Vault: just-in-time secrets, zero static passwords
 ====
-Machine and Arista passwords are **not** stored in AAP: the controller holds **Vault paths** and resolves them at job time. Only the bootstrap Vault lookup (and NetBox token) behave like classic “stored” secrets in the platform database—tighten that in production (AppRole, TLS, policy).
+Machine and Arista passwords are **not** stored in AAP: the controller holds **Vault paths** and resolves them at job time. AAP's **credential plugin architecture** means playbook authors never hard-code or even see passwords. Credentials flow from Vault to AAP to playbook execution automatically. If Vault rotates a password, the next AAP job picks it up with no playbook changes. Only the bootstrap Vault lookup (and NetBox token) behave like classic "stored" secrets -- tighten those in production with AppRole, TLS, and policy.
 ====
 
-=== Step 1 — Confirm Vault paths
+=== Step 1 -- Confirm Vault paths
 
 [source,bash]
 ----
@@ -112,31 +112,31 @@ vault kv get secret/network/arista
 vault kv get secret/db/admin
 ----
 
-=== Step 2 — Confirm credentials in the controller
+=== Step 2 -- Confirm credentials in the controller
 
 Open **Credentials** and verify these names exist (from `setup/configure-aap-credentials.yml`). Edit each and confirm:
 
-* `ZTA Vault Credential` — Vault URL and v2; bootstrap auth present.
-* `ZTA Machine Credential` — user `rhel`, sudo; **Password** and **Become** use lookups to `secret/data/machine/rhel` (`password`, `become_password`).
-* `ZTA Arista Credential` — lookups on `secret/data/network/arista`.
-* `ZTA NetBox Credential` — URL and token match NetBox.
-* `ZTA Vault SSH Credential` — present (AppRole / signed SSH).
+* `ZTA Vault Credential` -- Vault URL and v2; bootstrap auth present.
+* `ZTA Machine Credential` -- user `rhel`, sudo; **Password** and **Become** use lookups to `secret/data/machine/rhel` (`password`, `become_password`).
+* `ZTA Arista Credential` -- lookups on `secret/data/network/arista`.
+* `ZTA NetBox Credential` -- URL and token match NetBox.
+* `ZTA Vault SSH Credential` -- present (AppRole / signed SSH).
 
 Do not change lookup paths unless an instructor is troubleshooting.
 
 [TIP]
-.Gitea credential
+.Ansible automates credential wiring at scale
 ====
-`configure-aap-credentials.yml` does **not** create **ZTA Gitea Credential**. Confirm or add it when you set up the **ZTA Workshop** project (Exercise 1.3) if Git requires it.
+`configure-aap-credentials.yml` creates all five credentials, wires Vault lookups, and seeds KV data in one run. In production, this same Ansible-based approach means credential rotation, new service onboarding, and Vault path changes are **version-controlled and repeatable** -- not tribal knowledge in a wiki. Confirm or add the **ZTA Gitea Credential** when you set up the project (Exercise 1.3) if Git requires it.
 ====
 
-Functional checks: **Exercise 1.5** (Verify ZTA Services) and **1.6–1.7** prove lookups from AAP.
+Functional checks: **Exercise 1.5** (Verify ZTA Services) and **1.6--1.7** prove lookups from AAP.
 
-=== Step 3 — NetBox type missing?
+=== Step 3 -- NetBox type missing?
 
 If the **NetBox** credential type or **ZTA NetBox Credential** is absent, follow the **Manual: NetBox credential type** steps in `section1/README.md`, then re-run automation or recreate the NetBox credential per Exercise 1.3.
 
-=== Step 4 — Vault SSH CA
+=== Step 4 -- Vault SSH CA
 
 [source,bash]
 ----
@@ -156,31 +156,33 @@ vault read ssh/roles/ssh-signer
 |===
 
 [TIP]
-.Vault SSH CA vs static keys
+.Ansible + Vault SSH: certificate-based access without key sprawl
 ====
-**Signed SSH certificates** are the Zero Trust answer to shared static keys. Exercise 1.7 exercises this path end-to-end.
+**Signed SSH certificates** are the Zero Trust answer to shared static keys. Where traditional approaches scatter `authorized_keys` files across hosts, AAP + Vault sign **short-lived certificates** on demand. Ansible manages the trust chain (CA distribution, `sshd` config) so hosts accept certificates automatically. Exercise 1.7 exercises this path end-to-end.
 ====
 
 [[exercise-1-2-idm-ldap-authentication-methods]]
-== Exercise 1.2 — IdM LDAP (Authentication Methods UI)
+== Exercise 1.2 -- IdM LDAP (Authentication Methods UI)
+
+_ZTA concept: *Identity-based access* -- the automation platform authenticates users against a central identity provider so that every action traces back to a verified identity, not a shared admin account._
 
 === Goal
 
-On **Ansible Automation Platform 2.6**, LDAP against IdM is often configured under **Access Management** → **Authentication Methods** → **Create authentication** (not only the legacy `PATCH /api/controller/v2/settings/ldap/` path used by `setup/configure-aap-ldap.yml`). This exercise records the **IdM field values** that match the workshop playbooks and `inventory/group_vars/all.yml`.
+On **Ansible Automation Platform 2.6**, LDAP against IdM is often configured under **Access Management** -> **Authentication Methods** -> **Create authentication** (not only the legacy `PATCH /api/controller/v2/settings/ldap/` path used by `setup/configure-aap-ldap.yml`). This exercise records the **IdM field values** that match the workshop playbooks and `inventory/group_vars/all.yml`.
 
 If IdM login already works, you can **skim** this exercise to validate settings; if logins fail on gateway-based installs, complete it.
 
 === Prerequisites
 
-* IdM (FreeIPA) on `central.zta.lab` with domain `zta.lab` → base DN `dc=zta,dc=lab`.
+* IdM (FreeIPA) on `central.zta.lab` with domain `zta.lab` -> base DN `dc=zta,dc=lab`.
 * Controller **trusts the IdM CA** for LDAPS (lab: `setup/enroll-idm-clients.yml` on the controller host).
 * IdM **`admin`** password: workshop default `ansible123!` (same as `idm_admin_password`).
 
 Adjust hostnames and `dc=` components if your lab uses a different `idm_domain`.
 
-=== Steps — Create LDAP authentication
+=== Steps -- Create LDAP authentication
 
-. Log in as platform **admin**. Open **Access Management** → **Authentication Methods** → **Create authentication**.
+. Log in as platform **admin**. Open **Access Management** -> **Authentication Methods** -> **Create authentication**.
 . Set **Authentication type** to **LDAP**.
 . Fill the top fields:
 
@@ -192,7 +194,7 @@ Adjust hostnames and `dc=` components if your lab uses a different `idm_domain`.
 | LDAP Server URI | `ldaps://central.zta.lab`
 | LDAP Bind DN | `uid=admin,cn=users,cn=accounts,dc=zta,dc=lab`
 | LDAP Bind Password | IdM `admin` password (`ansible123!` unless overridden)
-| LDAP Group Type | `GroupOfNamesType` (recommended) or `MemberDNGroupType` — see parameters below
+| LDAP Group Type | `GroupOfNamesType` (recommended) or `MemberDNGroupType` -- see parameters below
 | LDAP User DN Template | Leave **empty**
 | LDAP Start TLS | **Off** (LDAPS already encrypts the connection)
 |===
@@ -206,13 +208,13 @@ OPT_REFERRALS: 0
 OPT_NETWORK_TIMEOUT: 30
 ----
 
-. **LDAP Group Type Parameters** (required). These are the **key/value arguments for the selected group type’s constructor** (`LDAP_GROUP_TYPE_PARAMS`). Invalid keys for that type produce *Invalid option for specified GROUP_TYPE*.
+. **LDAP Group Type Parameters** (required). These are the **key/value arguments for the selected group type's constructor** (`LDAP_GROUP_TYPE_PARAMS`). Invalid keys for that type produce *Invalid option for specified GROUP_TYPE*.
 
 +
 Per https://django-auth-ldap.readthedocs.io/en/latest/reference.html#django_auth_ldap.config.LDAPGroupType and the LDAP group-type table in https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.5/html/access_management_and_authentication/gw-configure-authentication#controller-set-up-LDAP[Red Hat AAP 2.5 Access management] (same idea in 2.6):
 
 +
-* **GroupOfNamesType** — IdM `groupOfNames`; equivalent to `MemberDNGroupType('member')`. Only **`name_attr`** is a constructor argument (`member` is fixed):
+* **GroupOfNamesType** -- IdM `groupOfNames`; equivalent to `MemberDNGroupType('member')`. Only **`name_attr`** is a constructor argument (`member` is fixed):
 
 +
 [source,yaml]
@@ -221,7 +223,7 @@ name_attr: cn
 ----
 
 +
-* **MemberDNGroupType** — generic type; constructor takes **`member_attr`** and **`name_attr`**. Use this if you want both fields explicitly (matches the doc example `{"name_attr": "cn", "member_attr": "member"}`):
+* **MemberDNGroupType** -- generic type; constructor takes **`member_attr`** and **`name_attr`**. Use this if you want both fields explicitly (matches the doc example `{"name_attr": "cn", "member_attr": "member"}`):
 
 +
 [source,yaml]
@@ -237,10 +239,10 @@ For FreeIPA/IdM **groupOfNames**, the two options above are **functionally equiv
 [TIP]
 .MemberDNGroupType vs GroupOfNamesType
 ====
-**GroupOfNamesType** + `name_attr` only is the shortest correct form. **MemberDNGroupType** + `name_attr` and `member_attr` is equally valid for IdM when `member_attr` is `member`. Do not pass `member_attr` when **LDAP Group Type** is **GroupOfNamesType**—that type does not accept it.
+**GroupOfNamesType** + `name_attr` only is the shortest correct form. **MemberDNGroupType** + `name_attr` and `member_attr` is equally valid for IdM when `member_attr` is `member`. Do not pass `member_attr` when **LDAP Group Type** is **GroupOfNamesType** -- that type does not accept it.
 ====
 
-. **LDAP User Search** (YAML list — three elements):
+. **LDAP User Search** (YAML list -- three elements):
 
 +
 [source,yaml]
@@ -250,7 +252,7 @@ For FreeIPA/IdM **groupOfNames**, the two options above are **functionally equiv
 - (uid=%(user)s)
 ----
 
-. **LDAP Group Search** (YAML list — three elements):
+. **LDAP Group Search** (YAML list -- three elements):
 
 +
 [source,yaml]
@@ -293,19 +295,19 @@ These are the IdM groups the workshop uses in **Group** triggers (`dc=zta,dc=lab
 [NOTE]
 .Login vs role grants
 ====
-You are **not** “allowing” only these users to log in **unless** you add a separate **Allow** map that lists those DNs. **Organization**, **Team**, **Superuser**, and similar maps mean: *if* the authenticated user is in that LDAP group, *then* grant the mapped organisation role, team membership, or superuser flag. Everyone else can still log in if LDAP authentication itself permits them; they simply will not receive those grants without a matching map.
+You are **not** "allowing" only these users to log in **unless** you add a separate **Allow** map that lists those DNs. **Organization**, **Team**, **Superuser**, and similar maps mean: *if* the authenticated user is in that LDAP group, *then* grant the mapped organisation role, team membership, or superuser flag. Everyone else can still log in if LDAP authentication itself permits them; they simply will not receive those grants without a matching map.
 
 For **Allow** maps and other trigger types, see https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.6/html/access_management_and_authentication/gw-configure-authentication#gw-authenticator-map-types[Authenticator map types] in the AAP 2.6 Access management guide.
 ====
 
 ==== Suggested maps (UI)
 
-Use **Add authentication mapping** on your LDAP authenticator. Create them in this order (order matters — the organisation membership map must exist so users land in the Default org on first login):
+Use **Add authentication mapping** on your LDAP authenticator. Create them in this order (order matters -- the organisation membership map must exist so users land in the Default org on first login):
 
-* **Organization** + trigger **Always** → **Default** organization, **Member**. This ensures every LDAP user gets basic org membership on login. Without it, users authenticate successfully but see an empty platform with no inventories, templates, or credentials visible.
-* **Organization** + trigger **Group** = `zta-admins` DN → **Default** organization, **Organization Admin**. Grants admin-level org access to the ZTA admins group.
-* **Superuser** + trigger **Group** = same `zta-admins` DN → platform superuser (**optional**; use only if IdM `zta-admins` should equal full platform admin).
-* **Team** + trigger **Group** = each `team-*` DN → the matching AAP team in **Default** with **Team Member** (use the DN from the table above):
+* **Organization** + trigger **Always** -> **Default** organization, **Member**. This ensures every LDAP user gets basic org membership on login. Without it, users authenticate successfully but see an empty platform with no inventories, templates, or credentials visible.
+* **Organization** + trigger **Group** = `zta-admins` DN -> **Default** organization, **Organization Admin**. Grants admin-level org access to the ZTA admins group.
+* **Superuser** + trigger **Group** = same `zta-admins` DN -> platform superuser (**optional**; use only if IdM `zta-admins` should equal full platform admin).
+* **Team** + trigger **Group** = each `team-*` DN -> the matching AAP team in **Default** with **Team Member** (use the DN from the table above):
 
 +
 [cols="2,2",options="header"]
@@ -323,17 +325,19 @@ Paste the **full DN** into the **Groups** field for each **Group** trigger (per 
 
 . Open an incognito window (or sign out). Log into `https://control.zta.lab` as **`ztauser`** / `ansible123!` (see link:../../docs/lab/common-environment.adoc#lab-common-environment[Lab environment reference]).
 
-== Exercise 1.3 — Inventory and project
+== Exercise 1.3 -- Inventory and project
+
+_ZTA concept: *Authoritative asset inventory* -- automation targets come from a verified CMDB (NetBox), not static files that drift. Playbook intent lives in version-controlled Git (Gitea), not ad-hoc scripts on laptops._
 
 [TIP]
-.Source of truth and GitOps
+.Ansible + NetBox + Gitea: single source of truth for what and how
 ====
-**NetBox** is the *infrastructure source of truth* in this workshop: if a host is decommissioned there, it should disappear from automation inventory on sync—reducing “ghost” targets attackers or operators could hit. **Gitea** holds *intent* (playbooks); together they separate **what exists** (CMDB) from **what we want to do** (code), both subject to policy in later sections.
+**NetBox** is the *infrastructure source of truth*: if a host is decommissioned there, it disappears from AAP inventory on sync -- reducing "ghost" targets attackers or operators could hit. **Gitea** holds *intent* (playbooks). AAP's **dynamic inventory** plugin pulls from NetBox automatically, so Ansible jobs always target **current, verified infrastructure**. Together they separate **what exists** (CMDB) from **what we want to do** (code), both subject to policy in later sections.
 ====
 
 === Project (Gitea)
 
-**Projects** → **Add**:
+**Projects** -> **Add**:
 
 * Name: `ZTA Workshop`
 * Git URL: `http://gitea.zta.lab:3000/zta-workshop/zta-app.git`
@@ -342,8 +346,8 @@ Paste the **full DN** into the **Groups** field for each **Group** trigger (per 
 
 === Inventory (NetBox)
 
-. **Inventories** → create `ZTA Lab Inventory`.
-. Open the inventory → **Sources** → **Add**:
+. **Inventories** -> create `ZTA Lab Inventory`.
+. Open the inventory -> **Sources** -> **Add**:
 
 |===
 | Name | NetBox CMDB
@@ -353,21 +357,23 @@ Paste the **full DN** into the **Groups** field for each **Group** trigger (per 
 | Credential | ZTA NetBox Credential
 |===
 
-. Enable **Overwrite** and **Update on launch**; sync and verify hosts (central, control, vault, netbox, app, db, ceos1–3, etc.).
+. Enable **Overwrite** and **Update on launch**; sync and verify hosts (central, control, vault, netbox, app, db, ceos1--3, etc.).
 
 [TIP]
-.Update on launch
+.Ansible dynamic inventory: continuous asset verification
 ====
-Refreshing inventory **before each job** reduces stale targeting: policy and playbooks see **current** CMDB state, which is how Zero Trust ties **continuous authorisation** to **current asset posture** (at least at inventory granularity).
+Refreshing inventory **before each job** reduces stale targeting: policy and playbooks see **current** CMDB state. AAP's **Update on launch** setting makes this automatic -- every job starts with a fresh NetBox sync. This is how Zero Trust ties **continuous authorisation** to **current asset posture** without manual intervention.
 ====
 
 [[exercise-1-4-job-templates]]
-== Exercise 1.4 — Job templates
+== Exercise 1.4 -- Job templates
+
+_ZTA concept: *Verify then enforce* -- confirm that every ZTA pillar (identity, secrets, policy, network) is healthy before trusting it for real change._
 
 [TIP]
-.Why these four templates
+.Ansible as the verification engine
 ====
-You are building an **evidence trail** that each pillar works before you trust it for real change. In ZTA terms this is **verify, then enforce**: IdM/Vault/OPA/network paths must be healthy or later sections will fail in ambiguous ways. Treat these jobs as **control-plane health checks** for the PEP (AAP).
+You are building an **evidence trail** that each pillar works before you trust it for real change. AAP turns these health checks into **scheduled, repeatable jobs** with full audit logs -- not one-off CLI commands. In production, these same templates can run on a schedule or as workflow pre-checks, ensuring the ZTA control plane is healthy before any change proceeds.
 ====
 
 Create templates using **ZTA Lab Inventory** and **ZTA Machine Credential**:
@@ -381,27 +387,33 @@ Create templates using **ZTA Lab Inventory** and **ZTA Machine Credential**:
 | Test OPA Policy | `section1/playbooks/test-opa-policy.yml`
 |===
 
-== Exercise 1.5 — Verify ZTA services
+== Exercise 1.5 -- Verify ZTA services
+
+_ZTA concept: *Continuous diagnostics* -- never assume a service is healthy because it was yesterday. Verify before every trust decision._
 
 Run **Verify ZTA Services**. Expect healthy IdM, Vault, OPA, NetBox, DNS, PostgreSQL, and Arista facts.
 
 [TIP]
-.Never trust, always verify
+.Ansible multi-host verification in one job
 ====
-**Service checks** are the operational face of “never trust, always verify”: you do not assume IdM or OPA is up because yesterday it was. For the workshop, this mirrors **continuous diagnostics** on which policy decisions and secret issuance depend.
+A single Ansible playbook reaches IdM, Vault, OPA, NetBox, switches, and databases in parallel -- validating the **entire ZTA control plane** in seconds. Without AAP, you would SSH into each service, run different CLI tools, and mentally correlate the results. AAP provides a **single pane** with timestamped output and pass/fail status across all components.
 ====
 
-== Exercise 1.6 — Test Vault integration
+== Exercise 1.6 -- Test Vault integration
+
+_ZTA concept: *Ephemeral credentials* -- short-lived database users limit blast radius if credentials are leaked. Vault issues and revokes them automatically._
 
 Run **Test Vault Integration**. Observe short-lived PostgreSQL users (unique name per run, TTL, revoke at end).
 
 [TIP]
-.Short-lived database identities
+.Ansible + Vault: automated credential lifecycle
 ====
-Dynamic DB users with a **TTL** limit how long a leaked credential is useful—core **assume breach** hygiene. Vault **revokes** the lease so the database role disappears without a human running `DROP USER`. That is how **least privilege** becomes **time-bound privilege**.
+Dynamic DB users with a **TTL** limit how long a leaked credential is useful -- core **assume breach** hygiene. Ansible automates the full lifecycle: **request** credentials from Vault, **use** them in the playbook, and **revoke** the lease when done. No human runs `DROP USER` -- Vault handles expiry, and AAP orchestrates the flow. That is how **least privilege** becomes **time-bound privilege** at scale.
 ====
 
-== Exercise 1.7 — Test Vault SSH certificates
+== Exercise 1.7 -- Test Vault SSH certificates
+
+_ZTA concept: *Cryptographic identity* -- SSH access is granted via signed, short-lived certificates instead of static keys scattered across hosts._
 
 Run **Test Vault SSH Certificates**. Observe CA-signed cert, TTL, principals, successful SSH to app/db.
 
@@ -418,19 +430,21 @@ ssh-keygen -L -f /tmp/ephemeral-cert.pub
 ----
 
 [TIP]
-.Cryptographic proof of permission to log in
+.Ansible + Vault SSH: no more authorized_keys management
 ====
-The certificate encodes **who may act as which principal** and **for how long**. Hosts need only trust the CA once; they do not need network reachability to Vault at login time. That separation is useful in segmented networks and matches the ZTA idea that **access is explicitly granted and expires**.
+The certificate encodes **who may act as which principal** and **for how long**. Hosts need only trust the CA once; they do not need network reachability to Vault at login time. Ansible distributes the CA trust and configures `sshd` across all hosts consistently -- a task that would be error-prone and inconsistent if done manually. In production, AAP jobs use Vault-signed certificates transparently, eliminating the `authorized_keys` sprawl that is a common attack surface.
 ====
 
-== Exercise 1.8 — Test OPA policy
+== Exercise 1.8 -- Test OPA policy
+
+_ZTA concept: *Deny by default* -- no action is permitted unless policy explicitly allows it. Policy is centralised, version-controlled, and machine-evaluated._
 
 Run **Test OPA Policy**. Expect allow/deny scenarios for patching, VLAN, and DB access per group membership.
 
 [TIP]
-.Deny by default (PDP)
+.Ansible + OPA: policy decisions at automation speed
 ====
-OPA returns **allow** only when Rego rules fire; everything else is **implicit deny**. **IdM groups** supply *role-like* attributes the PDP can use, but unlike a static RBAC matrix in one app, the same policy can be **versioned, tested, and shared** across AAP and other PEPs. You are seeing **central policy** backing **distributed enforcement**.
+OPA returns **allow** only when Rego rules fire; everything else is **implicit deny**. Ansible playbooks query OPA via simple HTTP calls, making policy checks a natural step in any workflow. Unlike a static RBAC matrix in one application, the same OPA policy can be **versioned in Git, tested in CI, and shared** across AAP, CI/CD pipelines, and API gateways. You are seeing **central policy** backing **distributed enforcement** -- with AAP as a first-class consumer.
 ====
 
 == Validation checklist (core)

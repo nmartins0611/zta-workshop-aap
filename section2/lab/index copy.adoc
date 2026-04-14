@@ -5,9 +5,58 @@
 :idprefix:
 :idseparator: -
 
-Asciidoc companion to `section2/README.md`.
 
-include::../../docs/lab/common-environment.adoc[]
+[#lab-common-environment]
+== Lab environment reference
+
+These hostnames assume workshop DNS (`*.zta.lab`) is configured. Replace with instructor-provided values if different.
+
+.Access information
+[cols="2,2,3",options="header"]
+|===
+| System | URL / address | Credentials
+
+| Automation controller (AAP 2.6)
+| `https://control.zta.lab`
+| As provided by instructor
+
+| Event-Driven Ansible controller (AAP 2.6)
+| Same platform as automation controller (EDA UI / route per deployment)
+| As provided by instructor
+
+| IdM (FreeIPA)
+| `https://central.zta.lab`
+| `admin` / `ansible123!`
+
+| OPA
+| `http://central.zta.lab:8181`
+| No auth (lab)
+
+| Vault
+| `http://vault.zta.lab:8200`
+| `admin` / `ansible123!` (or userpass as documented)
+
+| NetBox
+| `http://netbox.zta.lab:8880`
+| API token as documented / instructor
+
+| Gitea
+| `http://gitea.zta.lab:3000`
+| As provided by instructor
+
+| Splunk
+| `http://splunk.zta.lab:8000` or `http://central.zta.lab:8000`
+| As configured during setup
+
+| Wazuh Dashboard
+| `http://wazuh.zta.lab:5601`
+| As provided by instructor
+
+| Application (Global Telemetry Platform)
+| `http://app.zta.lab:8081`
+| No auth (dashboard)
+|===
+
 
 == Overview
 
@@ -28,35 +77,27 @@ Deploying an app is where **identity (who)**, **policy (may they)**, **secrets (
 | 2.9–2.11 | Extended | break/fix labs
 |===
 
-== Exercise 2.1 — Create job templates
-
-Inventory: **ZTA Lab Inventory**. Credential: **ZTA Machine Credential**.
-
-[cols="2,2,2",options="header"]
-|===
-| Template | Playbook | Extra credentials
-| Check DB Access Policy | `section2/playbooks/check-db-policy.yml` | —
-| Create DB Credential | `section2/playbooks/create-db-credential.yml` | —
-| Configure DB Access List | `section2/playbooks/configure-db-access.yml` | ZTA Arista Credential
-| Deploy Application | `section2/playbooks/deploy-application.yml` | —
-| Rotate DB Credentials | `section2/playbooks/rotate-credentials.yml` | —
-|===
-
 [TIP]
 .Separation of concerns in templates
 ====
 Each step has a single job: **decide** (OPA), **issue** (Vault), **enforce path** (Arista), **configure app**. That mirrors ZTA’s idea that **no single giant playbook** should skip gates—each stage can fail closed, be audited, and be replaced without collapsing the whole story.
 ====
 
-== Exercise 2.2 — Workflow
+== Exercise 2.1 — Workflow
 
-Create workflow **Deploy Application Pipeline**:
+As the ztuser, login to the automation platform and navigate to Automation Execution -> Templates and click on Create template to create and Workflow Template. 
 
-....
-Check DB Access Policy ──(success)──► Create DB Credential ──► Configure DB Access List ──► Deploy Application
-        │
-     (failure) → Access Denied
-....
+Create the workflow with the following details:
+
+Name: **Deploy Application Pipeline**:
+inventory: ZTA Lab Inventory
+Organization: Default
+
+Click on Create workflow job template, this will take you to the Workflow Visualizer - We will now add templates. click on Add Step - select Job Template and select Check DB Access Policy, click Next and continue. 
+
+Right click on the template in the visualiser by the kebab menu ⋮. - and select Add step and link - this time select the Create DB Credential template and add the status Run on success. Repeat the process to add tempaltes 
+Configure DB Access List and Deploy Application. Once done, save the workflow.
+
 
 [TIP]
 .Order of operations = trust boundaries
@@ -64,11 +105,100 @@ Check DB Access Policy ──(success)──► Create DB Credential ──► C
 **Check DB Access Policy runs first** on purpose: if the human (via AAP) is not entitled to database credentials, the workflow **never touches Vault**. That is *defence in depth*—the secret manager is not a substitute for authorisation. In breach terms, an attacker who tricks someone into clicking “deploy” still hits a **PDP (OPA)** before any **secret issuance**.
 ====
 
-== Exercise 2.3 — Wrong user (denied)
+== Exercise 2.2 
 
-. Log into AAP as `neteng` (not in `app-deployers`).
-. Launch the workflow.
-. Expect first step to show OPA **DENIED**; workflow stops; Vault not contacted.
+. Log into AAP as `neteng` and navigate to the Templates section. Notice you have no permissions. Navigate to the IDM tab and login with the admin details.AAp is using the LDAP for authenticationa and mapping access for users based on their groups in the iDM. Search for neteng on active users. Select the account and click on User Groups - We can seee they are just part of the ipa user group so they have access but not much else. Lets add them to the ifnrastructure group. Click add search infrastructure, then select the group and click on the array to assign it. 
+
+Navigate back to the controller. Log out and log back in as the neteng user. We now have access to the content the infrastructure team has access to. Navigate to Templates and execute the Depoly Application Pipeline workflow.
+
+Expect first step to show OPA **DENIED**; workflow stops; Vault not contacted.
+
+
+msg: |
+  OPA Database Access Decision:
+    User:            neteng
+    Groups (IdM):  ipausers, team-infrastructure
+      Database:        ztaapp
+    Decision:        DENIED
+    Reason:          OPA returned no decision document (check policy load and URL).
+    
+_ansible_verbose_always: true
+_ansible_no_log: false
+changed: false
+
+
+Now logout and lets login in with the appdev user. Navigate to the same template and trigger it. Notice this user has been approved to trigger this automation. Click on the Check DB policy now to see the details. 
+
+
+Now logout and lets login in with the appdev user. Navigate to the same template and trigger it. Notice this user has been approved to trigger this automation. Click on the Check DB policy now to see the details. 
+
+
+TASK [Display OPA decision] ****************************************************
+40
+ok: [central] => {
+41
+"msg": "OPA Database Access Decision:\n User: appdev\n Groups (IdM): team-applications, app-deployers, ipausers\n Database: ztaapp\n Decision: ALLOWED\n Reason: all conditions met — credential issuance approved\n \n"
+42
+}
+43
+Monday 13 April 2026 19:58:52 +0000 (0:00:00.042) 0:00:02.446 **********
+44
+45
+TASK [Enforce OPA decision] ****************************************************
+46
+ok: [central] => {
+47
+"changed": false,
+48
+"msg": "OPA policy check passed — proceeding with credential issuance"
+49
+}
+50
+
+Go back to the workflow and as it should have completed now. 
+
+navigate to the Terminal and do the following curl 
+
+
+[bash]
+----
+curl -w "\n\nConnect: %{time_connect}s\nTLS: %{time_appconnect}s\nTotal: %{time_total}s\nHTTP: %{http_code}\n" \
+  -so /dev/null http://app.zta.lab:8081/health
+
+
+
+
+Connect: 0.002681s
+TLS: 0.000000s
+Total: 0.010493s
+HTTP: 200
+
+----
+
+We can see the application is healthy with its new time limited credentials (Status 200). 
+Navigate to the Telemetry tab and view the application is still working. Now wait a few mins and run the same command:
+
+[bash]
+----
+[rhel@central ~]$ curl -w "\n\nConnect: %{time_connect}s\nTLS: %{time_appconnect}s\nTotal: %{time_total}s\nHTTP: %{http_code}\n" \
+  -so /dev/null http://app.zta.lab:8081/health
+
+
+Connect: 0.001888s
+TLS: 0.000000s
+Total: 0.007571s
+HTTP: 503
+----
+
+The application is no longer healthy with a 503 status. The time limited credentials have now expired.
+
+
+
+
+
+
+
+
 
 [TIP]
 .What the learner should feel here
@@ -76,7 +206,7 @@ Check DB Access Policy ──(success)──► Create DB Credential ──► C
 The unauthorised user **never sees** a database password. Zero Trust is not only about encryption—it is about **shrinking who can cause sensitive actions**. Deny-by-default policy turns “I have network reachability” into “I still cannot obtain credentials.”
 ====
 
-== Exercise 2.4 — Policy
+== Exercise 2.4 — Policy In action.
 
 `zta.db_access` requires `app-deployers`, valid DB (`ztaapp`), and bounded permissions.
 

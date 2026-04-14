@@ -312,6 +312,24 @@
       debug:
         msg: "{{ agent_list.stdout }}"
 
+    - name: Get existing entry IDs (for idempotent re-runs)
+      shell: >
+        {{ spire_install_dir }}/bin/spire-server entry show
+        -socketPath {{ spire_server_socket }}
+        | grep 'Entry ID' | awk '{print $NF}'
+      register: existing_entries
+      changed_when: false
+
+    - name: Delete stale entries before re-registration
+      command: >
+        {{ spire_install_dir }}/bin/spire-server entry delete
+        -socketPath {{ spire_server_socket }}
+        -entryID {{ item }}
+      loop: "{{ existing_entries.stdout_lines }}"
+      loop_control:
+        label: "{{ item }}"
+      when: existing_entries.stdout_lines | length > 0
+
     - name: Register workload entries
       command: >
         {{ spire_install_dir }}/bin/spire-server entry create
@@ -323,7 +341,6 @@
       loop_control:
         label: "{{ item.spiffe_id }}"
       register: entry_result
-      failed_when: entry_result.rc != 0 and 'already exists' not in entry_result.stderr
 
     - name: List registered entries
       command: >
@@ -386,10 +403,16 @@
   gather_facts: false
 
   tasks:
+    - name: Wait for agents to sync new workload entries
+      pause:
+        seconds: 5
+
     - name: Fetch X.509 SVID from local SPIRE Agent
       command: "{{ spire_install_dir }}/bin/spire-agent api fetch x509 -socketPath {{ spire_agent_socket }}"
       register: svid_fetch
-      failed_when: "'Received' not in svid_fetch.stdout"
+      retries: 5
+      delay: 3
+      until: "'Received' in svid_fetch.stdout"
 
     - name: Display fetched SVID info
       debug:

@@ -1,4 +1,4 @@
-= Section 4 — SPIFFE-verified network VLAN management
+= Section 4 -- SPIFFE-verified network VLAN management
 :toc: left
 :toclevels: 3
 :icons: font
@@ -10,9 +10,9 @@ Companion to `section4/README.md`. **Outer ring:** AAP Policy as Code (gateway).
 include::../../docs/lab/common-environment.adoc[]
 
 [IMPORTANT]
-.Prerequisites — verify these before starting
+.Prerequisites -- verify these before starting
 ====
-Section 4 builds on Sections 1–3 infrastructure. Run the checklist below before starting exercises.
+Section 4 builds on Sections 1--3 infrastructure. Run the checklist below before starting exercises.
 
 *1. LDAP authentication on the controller*
 
@@ -37,7 +37,7 @@ ansible-playbook -i inventory/hosts.ini setup/configure-opa-base.yml
 
 *3. AAP Policy as Code integration (outer ring)*
 
-The controller must call OPA before every job launch. Verify under *Settings → Policy as Code*, or deploy:
+The controller must call OPA before every job launch. Verify under *Settings -> Policy as Code*, or deploy:
 
 [source,bash]
 ----
@@ -87,18 +87,22 @@ If all six checks pass you are ready for Section 4.
 
 == Architecture summary
 
+_ZTA concept: *Defence in depth* -- two independent policy rings evaluate both the human (outer) and the workload (inner) before any network change proceeds. An attacker needs to compromise both layers._
+
 * **Outer ring:** user must be in the **Infrastructure** AAP team to launch VLAN/Network templates (`aap.gateway` policy, evaluated by the controller before launch).
-* **Inner ring:** trusted SPIFFE ID, IdM `network-admins` group, VLAN 100–999, allowed action (`zta.network` policy, evaluated inside the playbook).
+* **Inner ring:** trusted SPIFFE ID, IdM `network-admins` group, VLAN 100--999, allowed action (`zta.network` policy, evaluated inside the playbook).
 
 Trusted workload SPIFFE ID (lab): `spiffe://zta.lab/workload/network-automation`
 
 [IMPORTANT]
-.Why two rings?
+.Why two rings? Ansible makes defence in depth practical
 ====
-**Humans** can be phished; **scripts** can be stolen. The **outer ring** ensures only the right *people* can press “go” on high-risk network automation. The **inner ring** adds **workload identity**: the job proves it runs on **the attested automation platform** (SPIRE SVID), not someone’s laptop running a copy of the playbook. Together they implement **defence in depth**—an attacker needs both a valid user session *and* a trusted execution environment path to change the fabric.
+**Humans** can be phished; **scripts** can be stolen. The **outer ring** (AAP Policy as Code) ensures only the right *people* can press "go" on high-risk network automation. The **inner ring** (in-playbook OPA call) adds **workload identity**: the job proves it runs on **the attested automation platform** (SPIRE SVID), not someone's laptop running a copy of the playbook. Ansible makes this practical -- the outer ring is **built into AAP** (zero playbook changes needed), and the inner ring is a **simple `uri` task** in the playbook. Together they implement defence in depth -- an attacker needs both a valid user session *and* a trusted execution environment to change the fabric.
 ====
 
-== Exercise 4.1 — Job template
+== Exercise 4.1 -- Job template
+
+_ZTA concept: *Auditable network change* -- every VLAN creation is tied to both a human identity and a workload identity, recorded in the CMDB for forensics and compliance._
 
 [cols="2,3",options="header"]
 |===
@@ -111,54 +115,60 @@ Trusted workload SPIFFE ID (lab): `spiffe://zta.lab/workload/network-automation`
 |===
 
 [TIP]
-.CMDB as audit and SoT
+.Ansible + NetBox: automated CMDB audit trail
 ====
-NetBox updates record **who** initiated change and **which workload identity** was bound to the automation. That is invaluable for **forensics** (“was this VLAN created by a rogue job?”) and for keeping **inventory trustworthy** for the next policy decision.
+The playbook does not just create a VLAN on switches -- it updates **NetBox** with who initiated the change and which workload identity was bound to the automation. Ansible automates both the **network change** and the **CMDB update** in a single job, so they cannot fall out of sync. This is invaluable for **forensics** ("was this VLAN created by a rogue job?") and for keeping **inventory trustworthy** for the next policy decision.
 ====
 
-== Exercise 4.2 — Denied (`neteng`)
+== Exercise 4.2 -- Denied (`neteng`)
+
+_ZTA concept: *Layered deny-by-default* -- an unauthorised user is blocked at the first available gate. If the outer ring is bypassed, the inner ring still catches them._
 
 . Log into AAP as `neteng`.
 . Launch the **Configure VLAN** template with VLAN 200 / DMZ.
-. Observe the result — **two denial paths** are possible depending on your LDAP authenticator maps:
+. Observe the result -- **two denial paths** are possible depending on your LDAP authenticator maps:
 
-**Path A — Outer ring blocks (expected with correct LDAP maps):** `neteng` has no AAP team membership, so the `aap.gateway` policy denies the launch at the platform level. The playbook never starts and no SPIFFE check occurs. This is the same pattern as Section 3.
+**Path A -- Outer ring blocks (expected with correct LDAP maps):** `neteng` has no AAP team membership, so the `aap.gateway` policy denies the launch at the platform level. The playbook never starts and no SPIFFE check occurs. This is the same pattern as Section 3.
 
-**Path B — Inner ring blocks (if LDAP maps place all users in Infrastructure):** The outer ring passes, the playbook starts, SPIFFE verification **succeeds** (the platform is legitimate), but OPA's inner ring denies because `neteng` is not in the IdM `network-admins` group. This is a deliberate teaching point: **trust the platform** and **authorise the person** are separate questions.
+**Path B -- Inner ring blocks (if LDAP maps place all users in Infrastructure):** The outer ring passes, the playbook starts, SPIFFE verification **succeeds** (the platform is legitimate), but OPA's inner ring denies because `neteng` is not in the IdM `network-admins` group. This is a deliberate teaching point: **trust the platform** and **authorise the person** are separate questions.
 
 Either path demonstrates deny-by-default. Discuss which ring caught the request and why.
 
 [TIP]
-.Defence in depth means multiple catches
+.Ansible + two OPA rings: defence in depth in practice
 ====
-If your outer ring is correctly scoped to **Infrastructure** team only, `neteng` never reaches the inner ring. If your maps are broader, the inner ring still catches the missing group membership. That is **defence in depth** in practice — overlapping checks mean a misconfiguration in one layer does not automatically grant access.
+If your outer ring is correctly scoped to **Infrastructure** team only, `neteng` never reaches the inner ring -- AAP blocks the launch entirely. If your maps are broader, the inner ring still catches the missing group membership. That is **defence in depth** -- overlapping checks mean a misconfiguration in one layer does not automatically grant access. Ansible makes this layered approach **operationally simple**: the outer ring requires no playbook changes (it is built into AAP), and the inner ring is just a few tasks in the playbook.
 ====
 
-== Exercise 4.3 — Allowed (`netadmin`)
+== Exercise 4.3 -- Allowed (`netadmin`)
+
+_ZTA concept: *Verified identity + verified workload = authorised change* -- both the human and the automation platform must prove their identity before the network is touched._
 
 As `netadmin`, create VLAN 200 (DMZ). Verify on Arista (`show vlan brief`) and in NetBox (audit fields).
 
 [TIP]
-.Segmentation under policy control
+.Ansible: end-to-end network change in one job
 ====
-VLANs are a building block of **micro-segmentation**. Creating them only through gated automation reduces **untracked lateral movement** helpers (shadow VLANs) and ties network change to **identity + workload proof**.
+A single AAP job verifies the workload identity (SPIFFE), checks policy (OPA), configures the switches (Arista `eos_vlans`), and updates the CMDB (NetBox). VLANs are a building block of **micro-segmentation**. Creating them only through Ansible's gated automation reduces **untracked lateral movement** helpers (shadow VLANs) and ties every network change to **identity + workload proof** -- all in one auditable, repeatable job.
 ====
 
-== Exercise 4.4 — Edge cases
+== Exercise 4.4 -- Edge cases
 
-* Invalid VLAN `5000` → OPA deny (outside range).
-* Stop **spire-agent** on `control` → SPIFFE step fails; restart after test.
+_ZTA concept: *Runtime parameter validation* -- the inner ring validates data the outer ring could not know at launch time (specific VLAN ID, SPIFFE health), catching invalid or dangerous requests before they reach the network._
+
+* Invalid VLAN `5000` -> OPA deny (outside range).
+* Stop **spire-agent** on `control` -> SPIFFE step fails; restart after test.
 * Optional: `ipa group-add-member network-admins --users=neteng` then retry; clean up membership afterward.
 
 [TIP]
-.Parameter validation at runtime
+.Ansible + OPA: coarse gates and fine-grained runtime checks
 ====
-Invalid VLAN IDs and **missing SVIDs** are caught **after** launch but **before** wide blast radius on the network—runtime PDP inputs include data the gateway did not know yet. That is why organisations combine **coarse** platform gates with **fine** in-playbook policy.
+Invalid VLAN IDs and **missing SVIDs** are caught **after** launch but **before** any switch is touched -- runtime PDP inputs include data the gateway did not know yet. Ansible playbooks can embed these fine-grained checks as natural workflow steps. That is why organisations combine **coarse** platform gates (AAP Policy as Code) with **fine** in-playbook policy (OPA `uri` calls) -- and Ansible makes wiring both together straightforward.
 ====
 
 == Playbook flow (summary)
 
-SPIFFE verification on AAP → OPA decision on central → Arista VLAN module → NetBox update (see README diagram).
+SPIFFE verification on AAP -> OPA decision on central -> Arista VLAN module -> NetBox update (see README diagram).
 
 == Discussion prompts
 
@@ -167,9 +177,9 @@ Why verify workload and user? What breaks if SPIRE is down? How does NetBox audi
 [TIP]
 .Facilitator notes
 ====
-* **User without workload trust** → stolen credentials are not enough if SPIRE is healthy and policy binds both.
-* **SPIRE down** → automation cannot prove workload identity; **fail closed** is preferable to accepting unsigned requests.
-* **NetBox** → ties human + workload metadata to **configuration items** for compliance and incident response.
+* **User without workload trust** -> stolen credentials are not enough if SPIRE is healthy and policy binds both. Ansible ensures the SPIFFE check is a **mandatory playbook step**, not an optional extra.
+* **SPIRE down** -> automation cannot prove workload identity; **fail closed** is preferable to accepting unsigned requests. Ansible's `assert` module enforces this -- the job stops, no partial changes.
+* **NetBox** -> Ansible updates the CMDB as part of the same job that changes the network, tying human + workload metadata to **configuration items** for compliance and incident response.
 ====
 
 == Validation checklist

@@ -51,21 +51,21 @@ In Splunk (`http://central.zta.lab:8000`), confirm failed SSH events exist:
 
 [source]
 ----
-index=zta_app sourcetype=syslog "Failed password"
+index=zta_app sourcetype=syslog "Authentication failure"
 ----
 
 Also check VM-level auth logs:
 
 [source]
 ----
-index=zta_syslog sourcetype=syslog sshd "Failed password"
+index=zta_syslog sourcetype=syslog sshd "Authentication failure"
 ----
 
 Create alert (example search from README):
 
 [source]
 ----
-(index=zta_app OR index=zta_syslog) sourcetype=syslog "Failed password"
+(index=zta_app OR index=zta_syslog) sourcetype=syslog "Authentication failure"
 | stats count by src_ip, host
 | where count >= 5
 ----

@@ -228,8 +228,8 @@ zta_workshop_job_templates:
     playbook: section5/playbooks/simulate-bruteforce.yml
     credentials: [ZTA Machine Credential]
   - section: 5
-    name: Revoke App Credentials
-    description: "Section 5 — Revoke application credentials"
+    name: "Emergency: Revoke App Credentials"
+    description: "Section 5 — Emergency revoke application credentials (triggered by EDA)"
     playbook: section5/playbooks/revoke-app-credentials.yml
     credentials: [ZTA Machine Credential]
   - section: 5

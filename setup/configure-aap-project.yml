@@ -6,6 +6,8 @@
 #   0. ZTA Workshop EE             — Custom execution environment (cEOS + RHEL)
 #   1. ZTA Workshop Project        — SCM project (Git)
 #   2. Job templates               — All playbooks under section*/playbooks/ (tagged per section)
+#   3. ZTA Workshop EDA Project    — EDA project for rulebook activations (--tags eda)
+#   4. ZTA AAP Credential (EDA)    — AAP credential in EDA controller (--tags eda)
 #
 # Prerequisites:
 #   - AAP Controller is installed and reachable
@@ -22,6 +24,7 @@
 #   ansible-playbook -i inventory/hosts.ini setup/configure-aap-project.yml --tags section1
 #   ansible-playbook -i inventory/hosts.ini setup/configure-aap-project.yml --tags section2
 #   ansible-playbook -i inventory/hosts.ini setup/configure-aap-project.yml --tags "section1,section2"
+#   ansible-playbook -i inventory/hosts.ini setup/configure-aap-project.yml --tags eda
 #
 # Remove job templates (does not delete project/EE):
 #   ansible-playbook -i inventory/hosts.ini setup/configure-aap-project.yml --tags remove_section -e aap_remove_section=3
@@ -32,6 +35,7 @@
 #   project            — SCM project only (sync included)
 #   templates          — All workshop job templates (all sections)
 #   section1 … section7— Only that section's job templates
+#   eda                — EDA project + AAP credential in Event-Driven Ansible controller
 #   remove_section     — Delete templates for aap_remove_section (integer, required)
 #   remove_last_section— Delete templates for the highest section number in the catalog
 #   rbac               — Project + inventory permissions for LDAP teams
@@ -72,6 +76,12 @@
     machine_credential_name: ZTA Machine Credential
 
     aap_remove_section: 0
+
+    eda_project_name: ZTA Workshop EDA
+    eda_project_scm_url: https://github.com/nmartins0611/zta-workshop-aap.git
+    eda_project_scm_branch: zta-container
+    eda_credential_name: ZTA AAP Credential
+    eda_aap_cred_type_name: Red Hat Ansible Automation Platform
 
     wazuh_enabled: false
 
@@ -468,6 +478,177 @@
       loop_control:
         label: "{{ item.name }}"
       tags: [remove_last_section]
+
+    # ══════════════════════════════════════════════════════════════════════
+    #  5. Event-Driven Ansible (EDA) — Project + AAP Credential
+    #
+    #  Creates:
+    #    - EDA project pointing at the same Git repo (rulebooks live under
+    #      extensions/eda/rulebooks/)
+    #    - AAP credential in EDA so rulebook activations can trigger job
+    #      templates on the automation controller
+    #
+    #  Prerequisites:
+    #    - EDA controller must be running (part of AAP 2.6 containerised)
+    #    - A Decision Environment must exist (created manually or via
+    #      separate automation — image varies per deployment)
+    # ══════════════════════════════════════════════════════════════════════
+
+    - name: Verify EDA API is reachable
+      uri:
+        url: "{{ aap_host }}/api/eda/v1/"
+        method: GET
+        url_username: "{{ aap_user }}"
+        url_password: "{{ aap_password }}"
+        validate_certs: "{{ aap_verify_ssl }}"
+        force_basic_auth: true
+        status_code: [200]
+      register: _eda_api_check
+      tags: [eda, section5]
+
+    - name: Look up Default organization in EDA
+      uri:
+        url: "{{ aap_host }}/api/eda/v1/organizations/?name={{ aap_organization | urlencode }}"
+        method: GET
+        url_username: "{{ aap_user }}"
+        url_password: "{{ aap_password }}"
+        validate_certs: "{{ aap_verify_ssl }}"
+        force_basic_auth: true
+        status_code: [200]
+      register: _eda_org
+      tags: [eda, section5]
+
+    - name: Set EDA organization ID
+      ansible.builtin.set_fact:
+        _eda_org_id: "{{ _eda_org.json.results[0].id }}"
+      tags: [eda, section5]
+
+    # -- AAP Credential in EDA ──────────────────────────────────────────
+
+    - name: Look up AAP credential type in EDA
+      uri:
+        url: "{{ aap_host }}/api/eda/v1/credential-types/?name={{ eda_aap_cred_type_name | urlencode }}"
+        method: GET
+        url_username: "{{ aap_user }}"
+        url_password: "{{ aap_password }}"
+        validate_certs: "{{ aap_verify_ssl }}"
+        force_basic_auth: true
+        status_code: [200]
+      register: _eda_aap_cred_type
+      tags: [eda, section5]
+
+    - name: Set EDA AAP credential type ID
+      ansible.builtin.set_fact:
+        _eda_aap_cred_type_id: "{{ _eda_aap_cred_type.json.results[0].id }}"
+      tags: [eda, section5]
+
+    - name: Check if EDA AAP credential already exists
+      uri:
+        url: "{{ aap_host }}/api/eda/v1/eda-credentials/?name={{ eda_credential_name | urlencode }}"
+        method: GET
+        url_username: "{{ aap_user }}"
+        url_password: "{{ aap_password }}"
+        validate_certs: "{{ aap_verify_ssl }}"
+        force_basic_auth: true
+        status_code: [200]
+      register: _eda_cred_check
+      tags: [eda, section5]
+
+    - name: Create AAP credential in EDA
+      uri:
+        url: "{{ aap_host }}/api/eda/v1/eda-credentials/"
+        method: POST
+        url_username: "{{ aap_user }}"
+        url_password: "{{ aap_password }}"
+        validate_certs: "{{ aap_verify_ssl }}"
+        force_basic_auth: true
+        body_format: json
+        body: "{{ _eda_cred_body }}"
+        status_code: [201]
+      vars:
+        _eda_cred_body:
+          name: "{{ eda_credential_name }}"
+          credential_type_id: "{{ _eda_aap_cred_type_id | int }}"
+          inputs:
+            host: "{{ aap_host }}"
+            username: "{{ aap_user }}"
+            password: "{{ aap_password }}"
+            verify_ssl: false
+          organization_id: "{{ _eda_org_id | int }}"
+      when: (_eda_cred_check.json.count | default(0)) == 0
+      tags: [eda, section5]
+
+    - name: Report EDA credential status
+      ansible.builtin.debug:
+        msg: >-
+          EDA AAP credential "{{ eda_credential_name }}":
+          {{ 'CREATED' if (_eda_cred_check.json.count | default(0)) == 0 else 'already exists (skipped)' }}
+      tags: [eda, section5]
+
+    # -- EDA Project ────────────────────────────────────────────────────
+
+    - name: Check if EDA project already exists
+      uri:
+        url: "{{ aap_host }}/api/eda/v1/projects/?name={{ eda_project_name | urlencode }}"
+        method: GET
+        url_username: "{{ aap_user }}"
+        url_password: "{{ aap_password }}"
+        validate_certs: "{{ aap_verify_ssl }}"
+        force_basic_auth: true
+        status_code: [200]
+      register: _eda_project_check
+      tags: [eda, section5]
+
+    - name: Create EDA project
+      uri:
+        url: "{{ aap_host }}/api/eda/v1/projects/"
+        method: POST
+        url_username: "{{ aap_user }}"
+        url_password: "{{ aap_password }}"
+        validate_certs: "{{ aap_verify_ssl }}"
+        force_basic_auth: true
+        body_format: json
+        body: "{{ _eda_project_body }}"
+        status_code: [201]
+      vars:
+        _eda_project_body:
+          name: "{{ eda_project_name }}"
+          url: "{{ eda_project_scm_url }}"
+          scm_branch: "{{ eda_project_scm_branch }}"
+          organization_id: "{{ _eda_org_id | int }}"
+      when: (_eda_project_check.json.count | default(0)) == 0
+      register: _eda_project_create
+      tags: [eda, section5]
+
+    - name: Wait for EDA project sync to complete
+      uri:
+        url: "{{ aap_host }}/api/eda/v1/projects/{{ _project_id }}/"
+        method: GET
+        url_username: "{{ aap_user }}"
+        url_password: "{{ aap_password }}"
+        validate_certs: "{{ aap_verify_ssl }}"
+        force_basic_auth: true
+        status_code: [200]
+      vars:
+        _project_id: >-
+          {{ _eda_project_create.json.id
+             if (_eda_project_create is not skipped)
+             else _eda_project_check.json.results[0].id }}
+      register: _eda_project_status
+      until: (_eda_project_status.json.import_state | default('')) in ['completed', 'failed']
+      retries: 30
+      delay: 5
+      tags: [eda, section5]
+
+    - name: Report EDA project status
+      ansible.builtin.debug:
+        msg: >-
+          EDA project "{{ eda_project_name }}":
+          {{ 'CREATED' if (_eda_project_check.json.count | default(0)) == 0 else 'already exists' }}
+          — sync {{ _eda_project_status.json.import_state | default('unknown') }}
+          — branch {{ eda_project_scm_branch }}
+          — {{ eda_project_scm_url }}
+      tags: [eda, section5]
 
     # ══════════════════════════════════════════════════════════════════════
     #  Summary

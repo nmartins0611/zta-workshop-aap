@@ -109,14 +109,14 @@ Before running this section:
 Open `http://central.zta.lab:8000` and run this search:
 
 ```
-index=zta_app sourcetype=syslog "Failed password"
+index=zta_app sourcetype=syslog "Authentication failure"
 ```
 
 You should see failed SSH login events from the app/db containers. To also
 check VM-level auth logs:
 
 ```
-index=zta_syslog sourcetype=syslog sshd "Failed password"
+index=zta_syslog sourcetype=syslog sshd "Authentication failure"
 ```
 
 If neither returns results, verify `setup/integrate-splunk.yml` has been run.
@@ -129,7 +129,7 @@ If neither returns results, verify `setup/integrate-splunk.yml` has been run.
 | Field | Value |
 |-------|-------|
 | Title | `ZTA: SSH Brute Force Detected` |
-| Search | `index=zta_app OR index=zta_syslog sourcetype=syslog "Failed password" \| stats count by src_ip, host \| where count >= 5` |
+| Search | `index=zta_app OR index=zta_syslog sourcetype=syslog "Authentication failure" \| stats count by src_ip, host \| where count >= 5` |
 | Time Range | Real-time, 60-second window |
 | Alert type | Real-time |
 | Trigger condition | Number of results > 0 |
@@ -154,7 +154,7 @@ If you prefer automation over UI clicks:
 curl -k -u admin:ansible123! \
   https://central.zta.lab:8089/servicesNS/admin/search/saved/searches \
   -d name="ZTA: SSH Brute Force Detected" \
-  -d search='(index=zta_app OR index=zta_syslog) sourcetype=syslog "Failed password" | stats count by src_ip, host | where count >= 5' \
+  -d search='(index=zta_app OR index=zta_syslog) sourcetype=syslog "Authentication failure" | stats count by src_ip, host | where count >= 5' \
   -d alert_type=always \
   -d alert.severity=4 \
   -d alert.suppress=0 \
@@ -236,7 +236,7 @@ After the brute-force simulation completes, observe the chain reaction:
 Open `http://central.zta.lab:8000` and run:
 
 ```
-(index=zta_app OR index=zta_syslog) sourcetype=syslog "Failed password" | stats count by src_ip, host | where count >= 5
+(index=zta_app OR index=zta_syslog) sourcetype=syslog "Authentication failure" | stats count by src_ip, host | where count >= 5
 ```
 
 You should see the brute-force source IP with a high failure count.
@@ -325,7 +325,7 @@ Edit the saved search in **Settings → Searches, reports, and alerts**:
 Change the search to:
 
 ```
-(index=zta_app OR index=zta_syslog) sourcetype=syslog "Failed password" NOT src_ip=192.168.1.10
+(index=zta_app OR index=zta_syslog) sourcetype=syslog "Authentication failure" NOT src_ip=192.168.1.10
 | stats count by src_ip, host
 | where count >= 5
 ```
@@ -400,27 +400,27 @@ helps you write effective searches and troubleshoot missing data.
 
 ```
 # All failed SSH logins across app/db containers
-index=zta_app sourcetype=syslog "Failed password"
+index=zta_app sourcetype=syslog "Authentication failure"
 
 # Failed SSH logins across all VMs
-index=zta_syslog sourcetype=syslog sshd "Failed password"
+index=zta_syslog sourcetype=syslog sshd "Authentication failure"
 
 # Combined — both containers and VMs
-(index=zta_app OR index=zta_syslog) sourcetype=syslog "Failed password"
+(index=zta_app OR index=zta_syslog) sourcetype=syslog "Authentication failure"
 
 # Brute-force detection threshold (the saved search)
-(index=zta_app OR index=zta_syslog) sourcetype=syslog "Failed password"
+(index=zta_app OR index=zta_syslog) sourcetype=syslog "Authentication failure"
 | stats count by src_ip, host
 | where count >= 5
 
 # Successful SSH logins (compare before/after attack)
-(index=zta_app OR index=zta_syslog) sourcetype=syslog "Accepted password"
+(index=zta_app OR index=zta_syslog) sourcetype=syslog "Accepted"
 
 # Key-based logins (AAP automation uses SSH keys)
 (index=zta_app OR index=zta_syslog) sourcetype=syslog "Accepted publickey"
 
 # Exclude AAP controller from brute-force search (Exercise 5.8)
-(index=zta_app OR index=zta_syslog) sourcetype=syslog "Failed password" NOT src_ip=192.168.1.10
+(index=zta_app OR index=zta_syslog) sourcetype=syslog "Authentication failure" NOT src_ip=192.168.1.10
 | stats count by src_ip, host
 | where count >= 5
 ```
@@ -479,7 +479,7 @@ Use these searches in sequence to reconstruct the full attack → response chain
 
 ```
 # 1. The attack — failed SSH logins
-index=zta_app sourcetype=syslog "Failed password" earliest=-10m
+index=zta_app sourcetype=syslog "Authentication failure" earliest=-10m
 | stats count by src_ip, host
 | sort - count
 

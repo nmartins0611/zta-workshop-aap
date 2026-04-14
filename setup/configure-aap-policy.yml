@@ -31,26 +31,22 @@
 
     - name: Test OPA gateway policy is accessible
       uri:
-        url: "{{ opa_url }}/v1/data/aap/gateway/allow"
+        url: "{{ opa_url }}/v1/data/aap/gateway/decision"
         method: POST
         body_format: json
         body:
           input:
-            user:
+            name: "Test Template"
+            created_by:
               username: test
-              groups: []
               is_superuser: false
-            action: launch
-            resource:
-              name: "Test Template"
-              type: job_template
-            extra_vars: {}
+              teams: []
         status_code: 200
       register: opa_gateway_test
 
     - name: Verify OPA gateway responded
       assert:
-        that: opa_gateway_test.json.result is defined
+        that: opa_gateway_test.json.result.decision is defined
         fail_msg: >
           OPA gateway policy not loaded. Run setup/configure-opa-base.yml first
           to deploy aap_gateway.rego.

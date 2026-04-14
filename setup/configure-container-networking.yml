@@ -86,6 +86,20 @@
         label: "{{ item.item.name }}: {{ item.item.data_ip }}/24 on {{ item.stdout | trim }}"
       changed_when: true
 
+    - name: Set MTU on all container interfaces to avoid fragmentation
+      shell: |
+        podman exec {{ item }} bash -c '
+          for iface in $(ip -o link show | grep -v lo | awk -F": " "{print \$2}" | sed "s/@.*//"); do
+            ip link set "$iface" mtu 1400
+          done
+        '
+      loop:
+        - db
+        - app
+      loop_control:
+        label: "{{ item }}: MTU 1400"
+      changed_when: true
+
     - name: Add route to peer data-plane network inside containers
       shell: >-
         podman exec {{ item.name }}

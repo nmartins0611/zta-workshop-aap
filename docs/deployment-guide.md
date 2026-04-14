@@ -610,7 +610,7 @@ Run through this checklist the day of the workshop:
 **Logging & SIEM (Splunk — Wazuh is excluded)**
 
 - [ ] Splunk running on central (`curl http://central.zta.lab:8000`)
-- [ ] Splunk receiving logs (`index=main sourcetype=linux_secure` returns results)
+- [ ] Splunk receiving logs (`index=zta_syslog OR index=zta_app sourcetype=syslog` returns results)
 - [ ] `integrate-splunk.yml` has been run (Universal Forwarder shipping logs)
 
 **Event-Driven Automation**

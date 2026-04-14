@@ -11,12 +11,29 @@
 #
 # Prerequisites:
 #   - Splunk deployed:   ansible-playbook setup/deploy-splunk.yml
-#   - Wazuh deployed:    ansible-playbook setup/deploy-wazuh.yml
+#   - Wazuh deployed:    ansible-playbook setup/deploy-wazuh.yml  (only for wazuh_splunk tag)
 #   - Vault running:     ansible-playbook setup/deploy-vault.yml
 #   - DNS configured:    ansible-playbook setup/configure-dns.yml
 #
 # Usage:
 #   ansible-playbook -i inventory/hosts.ini setup/integrate-splunk.yml
+#
+# Tags (each play has its own tag — skip or include individually):
+#   splunk_indexes    — Phase 1: Create Splunk indexes and verify HEC
+#   vm_syslog         — Phase 2: Linux VM rsyslog → Splunk HEC
+#   container_syslog  — Phase 3: RHEL container (app/db) rsyslog → Splunk HEC
+#   arista_syslog     — Phase 4: Arista switch syslog config (needs network group)
+#   vault_audit       — Phase 5: Vault audit log → Splunk HEC
+#   wazuh_splunk      — Phase 6: Wazuh alerts → Splunk HEC (needs Wazuh manager)
+#   opa_decisions     — Phase 7: OPA decision logs → Splunk HEC
+#   port_repair       — Phase 8: Repair Netavark port mappings after container restarts
+#   splunk_verify     — Phase 9: Send test events and verify all indexes
+#
+# Common skip patterns:
+#   --skip-tags arista_syslog,wazuh_splunk         — Standard lab boot (no Arista/Wazuh)
+#   --tags splunk_indexes,container_syslog          — Minimal Section 5 (app/db logs only)
+#   --tags splunk_indexes,vm_syslog,container_syslog,vault_audit,opa_decisions,splunk_verify
+#                                                   — Everything except Arista + Wazuh
 
 # ═════════════════════════════════════════════════════════════════════════════
 # Play 1 — Create Splunk indexes and verify HEC
@@ -25,6 +42,7 @@
   hosts: zta_services
   become: true
   gather_facts: false
+  tags: [splunk_indexes]
 
   vars:
     splunk_password: "{{ idm_admin_password }}"
@@ -89,6 +107,7 @@
   hosts: zta_services:vault_servers:netbox_servers:automation
   become: true
   gather_facts: true
+  tags: [vm_syslog]
 
   vars:
     hec_url: "https://{{ hostvars['central']['ansible_host'] }}:8088/services/collector/event"
@@ -175,6 +194,7 @@
   hosts: db_servers:app_servers
   become: true
   gather_facts: true
+  tags: [container_syslog]
 
   vars:
     hec_url: "https://{{ hostvars['central']['ansible_host'] }}:8088/services/collector/event"
@@ -289,6 +309,7 @@
   hosts: vault_servers
   become: true
   gather_facts: false
+  tags: [vault_audit]
 
   vars:
     hec_url: "https://{{ hostvars['central']['ansible_host'] }}:8088/services/collector/event"
@@ -538,6 +559,7 @@
   hosts: zta_services
   become: true
   gather_facts: false
+  tags: [opa_decisions]
 
   vars:
     hec_url: "https://{{ hostvars['central']['ansible_host'] }}:8088/services/collector/event"
@@ -627,6 +649,7 @@
   hosts: zta_services
   become: true
   gather_facts: false
+  tags: [port_repair]
 
   tasks:
     - name: Verify Splunk web port is reachable after integration
@@ -666,6 +689,7 @@
   hosts: zta_services
   become: true
   gather_facts: true
+  tags: [splunk_verify]
 
   vars:
     splunk_password: "{{ idm_admin_password }}"

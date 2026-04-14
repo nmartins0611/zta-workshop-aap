@@ -745,6 +745,17 @@ ssh rhel@db.zta.lab
 sudo -u postgres psql -c "\du" | grep v-root   # Vault DB user exists
 ```
 
+Open Splunk (`http://central.zta.lab:8000`) and confirm logs are arriving:
+
+```
+index=zta_app sourcetype=syslog "sshd" earliest=-15m
+```
+
+> **Splunk index map:** The lab uses dedicated indexes per data source —
+> `zta_syslog` (VM auth), `zta_app` (container auth), `zta_vault` (Vault
+> audit), `zta_opa` (OPA decisions), `zta_network` (switch syslog). See
+> `section5/README.md` for the full search reference.
+
 ---
 
 ### Exercise 5.3 — Launch the Brute-Force Attack
@@ -765,9 +776,30 @@ SSH login attempts to `app.zta.lab`.
 
 **The application has been automatically isolated from the database.**
 
+**Correlate the full chain in Splunk** — run these in order to see the attack
+and response as a single timeline:
+
+```
+# The attack (failed SSH logins)
+index=zta_app sourcetype=syslog "Failed password" earliest=-10m
+| stats count by src_ip, host | sort - count
+
+# Vault's response (credential revocation)
+index=zta_vault sourcetype="hashicorp:vault:audit" earliest=-10m
+| search "sys/leases/revoke" OR "database/creds"
+| table _time, request.path, request.operation, auth.display_name
+
+# Full cross-index timeline
+(index=zta_app OR index=zta_vault OR index=zta_opa) earliest=-10m
+| eval source_index=index
+| table _time, source_index, sourcetype, _raw | sort _time
+```
+
 > **ZTA Concept**: This is "assume breach" in action. The system doesn't wait
 > for a human to investigate. Credential revocation happens automatically,
-> limiting the blast radius.
+> limiting the blast radius. The cross-index search shows how **Splunk
+> correlates telemetry from multiple sources** — auth logs, Vault audit, and
+> OPA decisions — into a single incident timeline.
 
 ---
 

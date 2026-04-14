@@ -290,6 +290,7 @@ These are the IdM groups the workshop uses in **Group** triggers (`dc=zta,dc=lab
 | `team-devops` | `cn=team-devops,cn=groups,cn=accounts,dc=zta,dc=lab`
 | `team-security` | `cn=team-security,cn=groups,cn=accounts,dc=zta,dc=lab`
 | `team-applications` | `cn=team-applications,cn=groups,cn=accounts,dc=zta,dc=lab`
+| `team-readonly` | `cn=team-readonly,cn=groups,cn=accounts,dc=zta,dc=lab`
 |===
 
 [NOTE]
@@ -317,9 +318,12 @@ Use **Add authentication mapping** on your LDAP authenticator. Create them in th
 | `team-devops` | DevOps
 | `team-security` | Security
 | `team-applications` | Applications
+| `team-readonly` | Readonly
 |===
 
 Paste the **full DN** into the **Groups** field for each **Group** trigger (per map, or combined in one rule if your design merges triggers).
+
+The **Readonly** team gives users like `neteng` visibility of all templates without execute permission. OPA gateway policy provides the final deny when they attempt to launch restricted templates — demonstrating defence in depth.
 
 === Verify
 

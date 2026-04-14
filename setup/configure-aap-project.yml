@@ -81,6 +81,8 @@
       - Security
       - Applications
 
+    zta_workshop_readonly_team: Readonly
+
   module_defaults:
     group/ansible.controller.controller:
       controller_host: "{{ aap_host }}"
@@ -233,7 +235,7 @@
         name: "{{ item }}"
         organization: "{{ aap_organization }}"
         state: present
-      loop: "{{ zta_workshop_rbac_teams }}"
+      loop: "{{ zta_workshop_rbac_teams + [zta_workshop_readonly_team] }}"
       loop_control:
         label: "{{ item }}"
       register: _team_result
@@ -383,6 +385,56 @@
       when: _active_template_names | length > 0
       tags: [templates, section1, section2, section3, section4, section5, section6, section7, rbac, aap-bootstrap, aap, aap-project]
 
+    # ──────────────────────────────────────────────────────────────────────
+    #  3c. Readonly team — read on templates, project, inventory (no execute)
+    #  Allows users like neteng to SEE templates but get denied by gateway policy.
+    # ──────────────────────────────────────────────────────────────────────
+
+    - name: Grant Readonly team read on active section templates
+      ansible.controller.role:
+        role: read
+        job_templates: "{{ _active_template_names }}"
+        teams:
+          - "{{ zta_workshop_readonly_team }}"
+        lookup_organization: "{{ aap_organization }}"
+        state: present
+      register: _rbac_role_result
+      retries: 5
+      delay: 3
+      until: _rbac_role_result is not failed
+      when: _active_template_names | length > 0
+      tags: [templates, section1, section2, section3, section4, section5, section6, section7, rbac, aap-bootstrap, aap, aap-project]
+
+    - name: Grant Readonly team read on project
+      ansible.controller.role:
+        role: read
+        projects:
+          - "{{ project_name }}"
+        teams:
+          - "{{ zta_workshop_readonly_team }}"
+        lookup_organization: "{{ aap_organization }}"
+        state: present
+      register: _rbac_role_result
+      retries: 5
+      delay: 3
+      until: _rbac_role_result is not failed
+      tags: [project, rbac, aap-bootstrap, aap, aap-project]
+
+    - name: Grant Readonly team read on lab inventory
+      ansible.controller.role:
+        role: read
+        inventories:
+          - "{{ inventory_name }}"
+        teams:
+          - "{{ zta_workshop_readonly_team }}"
+        lookup_organization: "{{ aap_organization }}"
+        state: present
+      register: _rbac_role_result
+      retries: 5
+      delay: 3
+      until: _rbac_role_result is not failed
+      tags: [project, rbac, aap-bootstrap, aap, aap-project]
+
     # ══════════════════════════════════════════════════════════════════════
     #  4. Remove job templates (optional)
     # ══════════════════════════════════════════════════════════════════════
@@ -441,7 +493,7 @@
           ║  │   │   Branch                 │ main                         │║
           ║  │   │   Update on launch       │ yes                          │║
           ║  │ 2 │ Job templates created    │ {{ _tpl_count }} (sections {{ _active_sections | join(', ') }}){{ ' ' * (12 - _tpl_count | string | length) }}│║
-          ║  │ 3 │ RBAC (batched)           │ {{ zta_workshop_rbac_teams | length }} teams × 2 roles          │║
+          ║  │ 3 │ RBAC (batched)           │ {{ zta_workshop_rbac_teams | length }} teams × 2 roles + Readonly │║
           ║  └───┴──────────────────────────┴──────────────────────────────┘║
           ║                                                                 ║
           ║  SCM URL: {{ project_scm_url }}{{ ' ' * (55 - project_scm_url | length) }}║

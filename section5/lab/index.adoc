@@ -20,6 +20,7 @@ Detection will always be imperfect; Zero Trust asks **what happens next**. Here,
 * Section 2 complete (app deployed with Vault DB creds).
 * Splunk receiving `linux_secure` from app/db (`setup/integrate-splunk.yml` as deployed).
 * **Event-Driven Ansible controller** (AAP 2.6) receiving webhooks, or standalone `ansible-rulebook` for demos.
+* Section 5 EDA resources deployed (`configure-aap-project.yml --tags eda,section5,rbac`): EDA project, Decision Environment, **ZTA EDA Event Stream** credential (token from Vault).
 
 [TIP]
 .Visible telemetry
@@ -70,7 +71,7 @@ Create alert (example search from README):
 | where count >= 5
 ----
 
-Real-time window (e.g. 60s), webhook action to EDA: `http://control.zta.lab:5000/endpoint` (adjust to your EDA deployment).
+Real-time window (e.g. 60s), webhook action to EDA: `http://control.zta.lab:5000/endpoint` with auth token `zta-eda-webhook-a1b2c3d4-e5f6-7890` (from Vault KV `secret/services/eda-webhook`; must match the **ZTA EDA Event Stream** credential).
 
 REST API variant documented in `section5/README.md`.
 
@@ -82,7 +83,7 @@ Splunk answers “**do we see attack-like behaviour?**” The webhook is a **sta
 
 == Exercise 5.3 — EDA rulebook
 
-* **Event-Driven Ansible controller (AAP 2.6):** Add a **Project** that sources this repository (or upload the rulebook), create a **Decision Environment** for `ansible-rulebook`, then a **Rulebook Activation** that uses `extensions/eda/rulebooks/splunk-credential-revoke.yml`. Set the activation listener **host, port, and path** to match the Splunk webhook (e.g. `http://control.zta.lab:5000/endpoint`). See https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.6/html/using_automation_decisions/[Using automation decisions].
+* **Event-Driven Ansible controller (AAP 2.6):** The EDA project, Decision Environment, and credentials were created by the prerequisite setup. Create a **Rulebook Activation**: name `Splunk Brute Force Response`, rulebook `splunk-credential-revoke`, Decision Environment `ZTA Decision Environment`, credential **ZTA EDA Event Stream** (token-based webhook auth from Vault), restart policy `On failure`. Enable the activation — it listens on port 5000. See https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.6/html/using_automation_decisions/[Using automation decisions].
 * CLI example (no controller):
 
 [source,bash]

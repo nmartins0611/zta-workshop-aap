@@ -1,10 +1,10 @@
 ---
 # rotate-eda-webhook-token.yml — Rotate the EDA webhook token in Vault
-# and the Splunk "Splunk EDA" webhook notification.
+# and the Splunk "SplunkEDA" webhook notification.
 #
 # Generates a new random token, writes it to Vault KV at
 # secret/services/eda-webhook, then updates the Splunk webhook
-# alert action named "Splunk EDA" with the new token via REST API.
+# alert action named "SplunkEDA" with the new token via REST API.
 #
 # After rotation the EDA credential must also be updated — either
 # re-run configure-aap-project.yml --tags eda,section5 or update
@@ -13,7 +13,7 @@
 # Prerequisites:
 #   - Vault deployed, unsealed, KV v2 at secret/
 #   - Splunk deployed with the EDA webhook notification configured
-#   - The "Splunk EDA" webhook alert action exists on the target
+#   - The "SplunkEDA" webhook alert action exists on the target
 #     saved search (default: "ZTA: SSH Brute Force Detected")
 #
 # Usage:
@@ -90,7 +90,7 @@
           New token: {{ new_token }}
 
 # ═══════════════════════════════════════════════════════════════════════════
-# Phase 2 — Update the Splunk "Splunk EDA" webhook with the new token
+# Phase 2 — Update the Splunk "SplunkEDA" webhook with the new token
 # ═══════════════════════════════════════════════════════════════════════════
 - name: "Phase 2 — Update Splunk webhook with rotated token"
   hosts: zta_services
@@ -102,7 +102,7 @@
     splunk_password: "{{ idm_admin_password }}"
     splunk_mgmt: "https://localhost:8089"
     splunk_saved_search: "ZTA: SSH Brute Force Detected"
-    splunk_webhook_name: "Splunk EDA"
+    splunk_webhook_name: "SplunkEDA"
     _new_token: "{{ hostvars['localhost']['_new_token'] }}"
 
   tasks:
@@ -118,7 +118,7 @@
       retries: 12
       delay: 10
 
-    - name: Update Splunk EDA webhook token on saved search
+    - name: Update SplunkEDA webhook token on saved search
       ansible.builtin.uri:
         url: "{{ splunk_mgmt }}/servicesNS/admin/search/saved/searches/{{ splunk_saved_search | urlencode }}"
         method: POST

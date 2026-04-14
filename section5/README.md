@@ -89,6 +89,12 @@ Before running this section:
 3. **Splunk log shipping** must be configured — `/var/log/secure` from app/db
    containers is forwarded to Splunk (`setup/integrate-splunk.yml`)
 4. **Event-Driven Ansible controller** (AAP 2.6) must be running, or standalone `ansible-rulebook` for CLI-only demos
+5. **Section 5 EDA setup** must be deployed:
+   ```bash
+   ansible-playbook -i inventory/hosts.ini setup/configure-aap-project.yml --tags eda,section5,rbac
+   ```
+   This creates the EDA project, Decision Environment, AAP credential, and
+   the **ZTA EDA Event Stream** credential (token from Vault).
 
 ---
 
@@ -139,6 +145,10 @@ If neither returns results, verify `setup/integrate-splunk.yml` has been run.
 | Field | Value |
 |-------|-------|
 | URL | `http://control.zta.lab:5000/endpoint` |
+| Auth Token | `zta-eda-webhook-a1b2c3d4-e5f6-7890` |
+
+   The auth token must match the **ZTA EDA Event Stream** credential in EDA
+   (sourced from Vault KV `secret/services/eda-webhook`).
 
 4. Click **Save**
 
@@ -172,14 +182,20 @@ curl -k -u admin:ansible123! \
 
 ### Option A — Event-Driven Ansible controller (Red Hat Ansible Automation Platform 2.6)
 
-1. In the **Event-Driven Ansible controller**, ensure a **Project** provides this repository (or the rulebook file), and create a **Decision Environment** if you do not already have one. See [Using automation decisions](https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.6/html/using_automation_decisions/) in the AAP 2.6 documentation.
-2. Add or sync content so `extensions/eda/rulebooks/splunk-credential-revoke.yml` is available to activations.
-3. Create a **Rulebook Activation**:
+If you ran the prerequisite setup (`configure-aap-project.yml --tags eda,section5`), the EDA project, Decision Environment, and credentials already exist. You only need to create the activation.
+
+1. In the **Event-Driven Ansible controller**, verify the **ZTA Workshop EDA** project is synced and `extensions/eda/rulebooks/splunk-credential-revoke.yml` is available.
+2. Create a **Rulebook Activation**:
    - Name: `Splunk Brute Force Response`
    - Rulebook: `splunk-credential-revoke`
-   - Decision Environment: your EDA decision environment
+   - Decision Environment: `ZTA Decision Environment`
+   - Credential: **ZTA EDA Event Stream** (token-based webhook authentication — token sourced from Vault)
    - Restart policy: `On failure`
-4. Enable the activation — it starts listening on port 5000
+3. Enable the activation — it starts listening on port 5000
+
+The webhook token for Splunk is `zta-eda-webhook-a1b2c3d4-e5f6-7890` (stored in Vault at `secret/services/eda-webhook`). Use this when configuring the Splunk webhook alert action in Exercise 5.2.
+
+> **Zero Trust note**: The webhook token is managed in Vault, not hardcoded in Splunk or EDA configuration files. To rotate it, run `setup/rotate-eda-webhook-token.yml` — this updates both Vault and the Splunk webhook, then re-run the EDA credential setup to pick up the new token.
 
 ### Option B — Standalone ansible-rulebook
 
@@ -505,8 +521,8 @@ index=zta_vault sourcetype="hashicorp:vault:audit" earliest=-10m
 - [ ] Application is healthy before the attack (Section 2 deployed)
 - [ ] Splunk is receiving `/var/log/secure` logs from app/db hosts
 - [ ] Splunk saved search `ZTA: SSH Brute Force Detected` is created
-- [ ] Webhook action points to `http://control.zta.lab:5000/endpoint`
-- [ ] EDA rulebook activation is running (port 5000 listening)
+- [ ] Webhook action points to `http://control.zta.lab:5000/endpoint` with auth token
+- [ ] EDA rulebook activation is running with **ZTA EDA Event Stream** credential (port 5000 listening)
 - [ ] Brute-force simulation generates 10 failed SSH attempts
 - [ ] Splunk alert fires (visible in Activity → Triggered Alerts)
 - [ ] Splunk webhook POSTs to EDA

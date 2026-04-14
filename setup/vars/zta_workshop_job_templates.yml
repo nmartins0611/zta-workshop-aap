@@ -134,6 +134,7 @@ zta_workshop_job_templates:
     description: "Section 3 — Wazuh security posture check"
     playbook: section3/playbooks/check-wazuh-security.yml
     credentials: [ZTA Machine Credential]
+    requires: wazuh
 
   # ── Section 4 ───────────────────────────────────────────────────────
   - section: 4
@@ -206,3 +207,4 @@ zta_workshop_job_templates:
     description: "Section 7 — Wazuh-driven brute-force simulation"
     playbook: section7/playbooks/simulate-bruteforce-wazuh.yml
     credentials: [ZTA Machine Credential]
+    requires: wazuh

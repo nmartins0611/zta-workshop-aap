@@ -539,6 +539,35 @@
       when: cf_port_check.json.count == 0
       tags: [phase2, custom-fields]
 
+    - name: "Phase 2 | Check if 'maintenance_approved' custom field exists"
+      uri:
+        url: "{{ nb_url }}/api/extras/custom-fields/?name=maintenance_approved"
+        method: GET
+        headers:
+          Authorization: "Token {{ nb_token }}"
+        return_content: true
+      register: cf_maint_check
+      tags: [phase2, custom-fields]
+
+    - name: "Phase 2 | Create 'maintenance_approved' custom field (OPA patching gate)"
+      uri:
+        url: "{{ nb_url }}/api/extras/custom-fields/"
+        method: POST
+        headers:
+          Authorization: "Token {{ nb_token }}"
+          Content-Type: application/json
+        body_format: json
+        body:
+          name: maintenance_approved
+          type: boolean
+          label: Maintenance Approved
+          object_types:
+            - dcim.device
+          description: "OPA patching policy gate — set true to allow patch-server.yml to proceed"
+        status_code: 201
+      when: cf_maint_check.json.count == 0
+      tags: [phase2, custom-fields]
+
     - name: "Phase 2 | Look up container devices for custom field assignment"
       uri:
         url: "{{ nb_url }}/api/dcim/devices/?name={{ item.device | urlencode }}"

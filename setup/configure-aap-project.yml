@@ -73,6 +73,8 @@
 
     aap_remove_section: 0
 
+    wazuh_enabled: false
+
     zta_workshop_rbac_teams:
       - Infrastructure
       - DevOps
@@ -103,10 +105,37 @@
           {%- endif -%}
       tags: [always]
 
+    - name: Build enabled feature set
+      ansible.builtin.set_fact:
+        _enabled_features: >-
+          {{ ['wazuh'] | select('in', (wazuh_enabled | bool) | ternary(['wazuh'], [])) | list }}
+      tags: [always]
+
     - name: Build active template list for requested sections
       ansible.builtin.set_fact:
-        _active_templates: "{{ zta_workshop_job_templates | selectattr('section', 'in', _active_sections) | list }}"
-        _active_template_names: "{{ zta_workshop_job_templates | selectattr('section', 'in', _active_sections) | map(attribute='name') | list }}"
+        _active_templates: >-
+          {{ zta_workshop_job_templates
+             | selectattr('section', 'in', _active_sections)
+             | rejectattr('requires', 'defined')
+             | list
+             +
+             zta_workshop_job_templates
+             | selectattr('section', 'in', _active_sections)
+             | selectattr('requires', 'defined')
+             | selectattr('requires', 'in', _enabled_features)
+             | list }}
+        _active_template_names: >-
+          {{ (zta_workshop_job_templates
+              | selectattr('section', 'in', _active_sections)
+              | rejectattr('requires', 'defined')
+              | list
+              +
+              zta_workshop_job_templates
+              | selectattr('section', 'in', _active_sections)
+              | selectattr('requires', 'defined')
+              | selectattr('requires', 'in', _enabled_features)
+              | list)
+             | map(attribute='name') | list }}
       tags: [always]
 
     # ══════════════════════════════════════════════════════════════════════

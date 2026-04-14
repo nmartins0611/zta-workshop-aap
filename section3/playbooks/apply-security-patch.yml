@@ -31,7 +31,7 @@
         dest: /etc/issue
         content: |
           AUTHORISED ACCESS ONLY — ZTA Lab.
-          Unauthorised access is prohibited. Activity is monitored by Wazuh SIEM.
+          Unauthorised access is prohibited. All activity is monitored and logged.
           Security patch: {{ patch_version }}
         mode: '0644'
 
@@ -41,7 +41,7 @@
         content: |
           ZTA Lab — {{ inventory_hostname }}
           Security patch {{ patch_version }} applied.
-          Monitored by Wazuh SIEM.
+          All activity is monitored and logged.
         mode: '0644'
 
     - name: "Patch 2/4 | Harden SSH — disable root login"

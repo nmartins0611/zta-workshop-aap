@@ -74,20 +74,22 @@ If all five checks pass you are ready for Section 3.
 
 == Overview
 
-Template name contains **Patch** → `aap.gateway` requires `patch-admins`. Wrong users never start the playbook.
+Template name contains **Patch** → `aap.gateway` requires the **Infrastructure** or **Security** AAP team. Wrong users never start the playbook.
 
 [IMPORTANT]
 .Platform enforcement vs playbook checks
 ====
-In Section 2, OPA ran **inside** the workflow. Here, **AAP itself** asks OPA before starting the job. That is **Policy as Code on the automation platform**: even a playbook with *no* internal `uri` call to OPA cannot bypass the gate, because the **PEP (AAP)** refuses to enqueue the run. This models **separation of duties**—only `patch-admins` may even *attempt* patching templates—and shrinks insider “I’ll run ansible by hand” if your production design wires the same gateway for all changes.
+In Section 2, OPA ran **inside** the workflow. Here, **AAP itself** asks OPA before starting the job. That is **Policy as Code on the automation platform**: even a playbook with *no* internal `uri` call to OPA cannot bypass the gate, because the **PEP (AAP)** refuses to enqueue the run. This models **separation of duties**—only the right **team** may even *attempt* patching templates—and shrinks insider “I’ll run ansible by hand” if your production design wires the same gateway for all changes.
+
+AAP 2.6 sends the full job context to OPA, including `created_by.teams` (the user's AAP team memberships, populated via LDAP). The policy checks these teams — not raw IdM groups — for its decisions.
 ====
 
 |===
-| Template pattern | Required group (gateway)
-| Patch | `patch-admins`
-| VLAN / Network | `network-admins`
-| Deploy, Database, Credential | `app-deployers`
-| Verify, Test, Check | Any authenticated user
+| Template pattern | Required AAP team (gateway)
+| Patch | Infrastructure or Security
+| VLAN / Network | Infrastructure
+| Deploy, Credential, Application | Applications or DevOps
+| Everything else | Any authenticated user
 |===
 
 [TIP]
@@ -126,13 +128,13 @@ Traditional RBAC might hide templates or rely on operator discipline. **Policy a
 
 == Exercise 3.3 — Fix access
 
-* Use `ztauser`, or
-* `ipa group-add-member patch-admins --users=neteng`
+* Use `ztauser` (already in the **Infrastructure** AAP team via LDAP), or
+* Add `neteng` to the `team-infrastructure` IdM group so LDAP maps them into the Infrastructure team: `ipa group-add-member team-infrastructure --users=neteng`
 
 [TIP]
 .Identity lifecycle, not ticket forever
 ====
-Granting `patch-admins` in IdM is how the organisation says “this identity may initiate high-risk automation.” Revoking the group later **closes the gate** without redeploying AAP—**continuous authorisation** tied to the directory.
+Granting `team-infrastructure` in IdM is how the organisation says “this identity may initiate high-risk automation.” Revoking the group later **closes the gate** without redeploying AAP—**continuous authorisation** tied to the directory.
 ====
 
 == Exercise 3.4 — Successful patch

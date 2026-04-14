@@ -35,10 +35,13 @@ def get_db():
 
 
 def fetch_metrics():
-    with get_db() as conn:
+    conn = get_db()
+    try:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             cur.execute(REFRESH_SQL)
             rows = cur.fetchall()
+    finally:
+        conn.close()
     now = int(time.time())
     for row in rows:
         elapsed = now - int(row["baseline_epoch"])
@@ -51,14 +54,18 @@ def fetch_metrics():
 
 
 def check_db_health():
+    conn = None
     try:
-        with get_db() as conn:
-            with conn.cursor() as cur:
-                cur.execute("SELECT 1")
+        conn = get_db()
+        with conn.cursor() as cur:
+            cur.execute("SELECT 1")
         return True
     except Exception as exc:
         log.warning("DB health check failed: %s", exc)
         return False
+    finally:
+        if conn:
+            conn.close()
 
 
 @app.route("/")

@@ -572,7 +572,7 @@
           name: "{{ eda_credential_name }}"
           credential_type_id: "{{ _eda_aap_cred_type_id | int }}"
           inputs:
-            host: "{{ aap_host }}"
+            host: "{{ aap_host }}/api/controller/"
             username: "{{ aap_user }}"
             password: "{{ aap_password }}"
             verify_ssl: false

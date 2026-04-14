@@ -170,6 +170,39 @@ Invalid VLAN IDs and **missing SVIDs** are caught **after** launch but **before*
 
 SPIFFE verification on AAP -> OPA decision on central -> Arista VLAN module -> NetBox update (see README diagram).
 
+== Hands-on: Write the NetBox CMDB update
+
+_ZTA concept: *CMDB as source of truth* -- any infrastructure change not recorded in the CMDB is invisible to compliance, monitoring, and policy engines. An unregistered VLAN is indistinguishable from a rogue one._
+
+The full `configure-vlan.yml` playbook updates NetBox automatically. This exercise isolates the CMDB step so you write it yourself using the NetBox REST API.
+
+[IMPORTANT]
+.What to do
+====
+. Open `section4/playbooks/update-netbox-vlan-student.yml` in a text editor (or view it in Gitea).
+. The playbook has three commented-out tasks marked `YOUR CODE STARTS HERE`. Each has hints and `FILL_IN` placeholders.
+. Uncomment each task and replace the placeholders:
+
+[cols="1,3",options="header"]
+!===
+! Task ! What you write
+! 1. Check if VLAN exists ! `uri` GET to `{{ netbox_url }}/api/ipam/vlans/?vid={{ new_vlan_id }}` with auth header. Register result to check `.json.count`.
+! 2. Create VLAN ! `uri` POST to `{{ netbox_url }}/api/ipam/vlans/` with `vid` (int!), `name`, `status`, `description`. Only run when count is 0.
+! 3. Display summary ! `debug` showing the VLAN ID, name, whether it was created or already existed, and the user.
+!===
+
+. In AAP, create a job template called **Update NetBox VLAN (Student)** pointing to your skeleton playbook. Use the same inventory, credentials, and EE.
+. Run **Configure VLAN** as `netadmin` to create the VLAN on the switches first, then run your template to update NetBox.
+. Verify in the NetBox UI (`http://netbox.zta.lab:8880`, navigate to IPAM -> VLANs) that the VLAN appears.
+. Run your template again -- it should report "Already exists" instead of creating a duplicate.
+====
+
+[TIP]
+.Why automate the CMDB update?
+====
+If the switch change and the CMDB update are separate manual steps, they **will** drift. Someone will create a VLAN and forget to update NetBox, or update NetBox but fat-finger the VLAN ID. Ansible keeps both in the same job, so either both succeed or neither does. In a ZTA architecture, the CMDB feeds downstream policy decisions -- an unregistered VLAN might trigger alerts, block traffic, or cause compliance violations. **Automation is the glue between infrastructure state and the trust decisions that depend on it.**
+====
+
 == Discussion prompts
 
 Why verify workload and user? What breaks if SPIRE is down? How does NetBox auditing help?
@@ -189,6 +222,7 @@ Why verify workload and user? What breaks if SPIRE is down? How does NetBox audi
 * [ ] `netadmin` success: VLAN on switches + NetBox
 * [ ] Out-of-range VLAN denied
 * [ ] SPIRE agent stop causes verification failure
+* [ ] Student NetBox update playbook works: creates VLAN in NetBox, reports "Already exists" on re-run
 
 == Extended exercises
 

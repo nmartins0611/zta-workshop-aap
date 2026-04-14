@@ -186,12 +186,81 @@ _ZTA concept: *Separation of duties* -- different risk classes of automation req
 `appdev` can deploy (Section 2) but must **not** silently patch servers -- that is a different risk class. AAP + OPA enforce this **in the platform**, not in documentation. Mapping **different AAP teams** (via IdM groups and LDAP) to **different template families** encodes **SoD** in machine-readable, Git-tracked Rego policy. If an auditor asks "can the app team patch servers?" -- the answer is in the policy, not in someone's memory.
 ====
 
+== Hands-on: Write a Rego data classification policy
+
+_ZTA concept: *Policy as code* -- security policies are version-controlled, testable code, not tribal knowledge or spreadsheet rules._
+
+This exercise gives you a **skeleton Rego file** with the helper function and decision object already done. Your job is to write the four `allow` rules that implement the data classification tiers.
+
+[IMPORTANT]
+.What to do
+====
+. Open `opa-policies/data_classification_student.rego` in a text editor (or view it in Gitea).
+. Read the classification levels at the top:
+  * `public` -- any authenticated user (non-empty username)
+  * `internal` -- `app-deployers` OR `db-admins`
+  * `confidential` -- `db-admins` only
+  * `pii` -- `security-ops` AND `db-admins` (both required)
+. Uncomment each `allow` rule and replace the `FILL_IN` placeholders.
+. Deploy your policy to OPA on central:
++
+[source,bash]
+----
+# Copy your file to central (replacing the existing policy)
+scp opa-policies/data_classification_student.rego \
+  rhel@central.zta.lab:/tmp/data_classification.rego
+ssh rhel@central.zta.lab \
+  "sudo cp /tmp/data_classification.rego /opt/opa/policies/data_classification.rego && sudo podman restart opa"
+----
+. Test with `curl` (examples are in the skeleton file comments):
++
+[source,bash]
+----
+# Public -- should allow
+curl -s -X POST http://central.zta.lab:8181/v1/data/zta/data_classification/decision \
+  -d '{"input":{"user":"appdev","user_groups":["app-deployers"],"data_classification":"public"}}' \
+  | python3 -m json.tool
+
+# PII -- should DENY security-ops alone
+curl -s -X POST http://central.zta.lab:8181/v1/data/zta/data_classification/decision \
+  -d '{"input":{"user":"spatel","user_groups":["security-ops"],"data_classification":"pii"}}' \
+  | python3 -m json.tool
+
+# PII -- should ALLOW dual-group user
+curl -s -X POST http://central.zta.lab:8181/v1/data/zta/data_classification/decision \
+  -d '{"input":{"user":"nobrien","user_groups":["db-admins","security-ops"],"data_classification":"pii"}}' \
+  | python3 -m json.tool
+----
+====
+
+[cols="1,2,2",options="header"]
+|===
+| Rule | Classification | Key logic
+| 1 | `public` | Check `input.user != ""`
+| 2 | `internal` | Two separate rules for OR (one per group)
+| 3 | `confidential` | Single group check
+| 4 | `pii` | Both groups in ONE rule body (AND, not OR)
+|===
+
+[WARNING]
+.The OR vs AND trap
+====
+Rego's `allow if { ... }` rules combine via **OR** -- if ANY rule body is true, `allow` is true. To require **AND** (both groups), both checks must be in the **same** rule body. Putting them in separate rules creates OR logic -- this is the most common Rego bug and is exactly what the "buggy" version in Section 3B gets wrong.
+====
+
+[TIP]
+.Why write policy by hand?
+====
+AAP, OPA, and Vault are tools -- but the **policy logic** (who may access what, under which conditions) is your organisation's security posture expressed in code. A typo in Rego can **over-allow** PII access while every dashboard looks green. Writing and testing policy rules -- with negative tests -- is as important as writing the playbooks that enforce them.
+====
+
 == Validation checklist
 
 * [ ] Platform deny for unauthorised user (e.g. `neteng` blocked at gateway)
 * [ ] Success for user in Infrastructure or Security team (e.g. `ztauser`)
 * [ ] Banner and hardening visible on target
+* [ ] Student Rego policy deployed and tested: public allows, PII denies single-group, PII allows dual-group
 
-== Extended: Section 3B -- OPA Rego authoring
+== Extended: Section 3B -- OPA Rego break/fix (instructor-led)
 
 include::includes/section-3b-rego.adoc[]

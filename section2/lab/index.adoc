@@ -72,8 +72,9 @@ Deploying an app is where **identity (who)**, **policy (may they)**, **secrets (
 |===
 | Exercise | Track | Est.
 | 2.1--2.6 | Core | ~30 min (2-hour path)
-| 2.7--2.8 | Extended | optional
-| 2.9--2.11 | Extended | break/fix labs
+| Write OPA check + Fix broken deploy | Hands-on coding | ~20 min
+| 2.6--2.8 (extended) | Extended | optional
+| 2.9--2.10 (extended) | Extended | break/fix labs
 |===
 
 == Exercise 2.1 -- Create job templates
@@ -168,6 +169,69 @@ After deploy, confirm Vault user in PostgreSQL; wait TTL (e.g. 5 minutes); user 
 TTL expiry is a feature, not a bug: it forces **rotation**, **re-authorisation**, or **deliberate renewal** instead of silent, multi-year database passwords. Ansible makes this operationally viable -- the `Rotate DB Credentials` template re-runs the entire pipeline (policy check, new credential, ACL update, deploy) in minutes. Without automation, TTL-based credentials would be operationally painful. With AAP, they become **routine, scheduled, and self-service**.
 ====
 
+== Hands-on: Write the OPA policy check
+
+_ZTA concept: *Policy Decision Point integration* -- querying OPA from a playbook turns an external policy engine into a mandatory trust gate that Ansible enforces inline._
+
+This exercise gives you a **skeleton playbook** with the IdM group lookup already done. Your job is to write the three missing tasks that query OPA, display the result, and enforce the decision.
+
+[IMPORTANT]
+.What to do
+====
+. Open `section2/playbooks/check-db-policy-student.yml` in a text editor (or view it in Gitea).
+. The playbook has three commented-out tasks marked `YOUR CODE STARTS HERE`. Each has hints and `FILL_IN` placeholders.
+. Uncomment each task and replace the `FILL_IN` placeholders with the correct values.
+. In AAP, create a new job template called **Check DB Policy (Student)** pointing to your skeleton playbook. Use the same inventory, credentials, and EE as the instructor version.
+. Launch as `neteng` -- expect OPA **DENIED**.
+. Launch as `appdev` -- expect OPA **ALLOWED**.
+====
+
+[cols="1,3",options="header"]
+|===
+| Task | What you write
+| 1. Query OPA | `uri` module POST to `{{ opa_url }}/v1/data/zta/db_access/decision` with an `input` body containing `user`, `user_groups`, `target_database`, and `requested_permissions`.
+| 2. Display decision | `debug` module showing the user, groups, decision (`allow`), and reason from `opa_decision.json.result`.
+| 3. Enforce | `assert` module that fails the play if `opa_decision.json.result.allow` is false.
+|===
+
+[TIP]
+.Why this matters
+====
+The instructor-provided workflow hides the OPA integration behind a pre-built template. Writing the `uri` call yourself teaches you **exactly** what data flows between Ansible and OPA -- the JSON input schema, the response structure, and the enforcement assertion. In production you will need to wire new policies into playbooks; this is the pattern you will reuse.
+====
+
+== Hands-on: Fix the broken deployment
+
+_ZTA concept: *Security misconfiguration is an attack surface* -- a single wrong `mode`, a missing `no_log`, or a hardcoded credential can undermine an otherwise sound ZTA pipeline._
+
+This exercise gives you a **deliberately broken** deployment playbook with four security and reliability bugs.
+
+[IMPORTANT]
+.What to do
+====
+. In AAP, create a job template called **Deploy Application (Broken)** pointing to `section2/playbooks/deploy-application-broken.yml`. Same inventory, credentials, and EE as the working version.
+. Run the full Section 2 workflow to get valid Vault credentials, then launch this template.
+. It will **fail**. Read the error output and the playbook source to find all four bugs:
+
+[cols="1,3",options="header"]
+!===
+! Bug ! ZTA violation
+! 1 ! Credentials are exposed in the AAP job log
+! 2 ! The env file is world-readable on the container
+! 3 ! A hardcoded password overrides the Vault dynamic credential
+! 4 ! The health check URL is wrong so deployment is never validated
+!===
+
+. Fix all four bugs in the playbook and re-run until the deployment succeeds.
+. Compare your fixes against the working `deploy-application.yml`.
+====
+
+[TIP]
+.Defensive coding in ZTA
+====
+These are **real-world** misconfigurations that break Zero Trust guarantees. Bug 1 (`no_log` missing) means ephemeral credentials end up in logs -- defeating their short-lived nature. Bug 2 (`mode 0644`) violates least privilege. Bug 3 (hardcoded password in systemd) is the classic "someone put a static cred in for debugging and forgot." Bug 4 (wrong port) means the deployment appears to succeed but nobody verified the app actually works. ZTA demands that **every link in the chain** is correct, not just the identity and policy layers.
+====
+
 == Validation checklist
 
 * [ ] `neteng` denied at policy step
@@ -175,6 +239,8 @@ TTL expiry is a feature, not a bug: it forces **rotation**, **re-authorisation**
 * [ ] Unique Vault DB user per run
 * [ ] App reachable at :8081
 * [ ] TTL removes user; app unhealthy without fresh creds
+* [ ] Student OPA check playbook works (deny for `neteng`, allow for `appdev`)
+* [ ] All four bugs found and fixed in the broken deployment playbook
 
 == Extended exercises
 

@@ -239,7 +239,7 @@
           ) | join(',') | default('default', true)
         }}
       environment: "{{ vault_env }}"
-      loop: "{{ idm_users }}"
+      loop: "{{ idm_workshop_users }}"
       loop_control:
         label: "{{ item.uid }}"
       changed_when: true

@@ -46,10 +46,10 @@
 
     - name: Verify OPA gateway responded
       assert:
-        that: opa_gateway_test.json.result.decision is defined
+        that: opa_gateway_test.json.result.allowed is defined
         fail_msg: >
-          OPA gateway policy not loaded. Run setup/configure-opa-base.yml first
-          to deploy aap_gateway.rego.
+          OPA gateway policy not loaded or outdated. Run setup/configure-opa-base.yml
+          first to deploy aap_gateway.rego. Got: {{ opa_gateway_test.json | default({}) }}
 
     # ── Configure AAP to use OPA ───────────────────────────────────────
 
@@ -194,17 +194,17 @@
           ║  Gateway Policy Tests:                                   ║
           ║                                                          ║
           ║  admin (superuser) → Configure VLAN                      ║
-          ║    {{ ('ALLOW' if test_superuser.json.result.decision.allowed else 'DENY') }}
+          ║    {{ ('ALLOW' if test_superuser.json.result.allowed else 'DENY') }}
           ║                                                          ║
           ║  netadmin (Infrastructure) → Configure VLAN              ║
-          ║    {{ ('ALLOW' if test_netadmin.json.result.decision.allowed else 'DENY') }}
+          ║    {{ ('ALLOW' if test_netadmin.json.result.allowed else 'DENY') }}
           ║                                                          ║
           ║  neteng (no teams) → Configure VLAN                      ║
-          ║    {{ ('DENY' if not test_neteng.json.result.decision.allowed else 'ALLOW') }}
-          ║    {{ test_neteng.json.result.decision.violations[0] | default('') | truncate(54) }}
+          ║    {{ ('DENY' if not test_neteng.json.result.allowed else 'ALLOW') }}
+          ║    {{ test_neteng.json.result.violations[0] | default('') | truncate(54) }}
           ║                                                          ║
           ║  appdev (Applications) → Deploy Application              ║
-          ║    {{ ('ALLOW' if test_appdev.json.result.decision.allowed else 'DENY') }}
+          ║    {{ ('ALLOW' if test_appdev.json.result.allowed else 'DENY') }}
           ║                                                          ║
           ║  Defence in Depth:                                       ║
           ║    OUTER RING: AAP checks gateway policy before launch   ║

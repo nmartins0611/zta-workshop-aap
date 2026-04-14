@@ -134,9 +134,9 @@
       - name: "Template: Apply Security Patch"
         ok: "{{ s3_template_ok | default(false) }}"
       - name: OPA gateway denies neteng (patching)
-        ok: "{{ (c.s3_gw_deny.json.result.decision.allowed | default(true)) == false }}"
+        ok: "{{ (c.s3_gw_deny.json.result.allowed | default(true)) == false }}"
       - name: OPA gateway allows ztauser (patching)
-        ok: "{{ (c.s3_gw_allow.json.result.decision.allowed | default(false)) == true }}"
+        ok: "{{ (c.s3_gw_allow.json.result.allowed | default(false)) == true }}"
       - name: Login banner deployed
         ok: "{{ (a.s3_banner_content.rc | default(1)) == 0 }}"
       - name: SSH PermitRootLogin disabled

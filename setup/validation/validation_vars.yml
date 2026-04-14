@@ -51,6 +51,7 @@ expected_section3_templates:
 
 expected_section4_templates:
   - Configure VLAN
+  - Manage IdM Identity
   - Break ACL
   - Fix ACL
 

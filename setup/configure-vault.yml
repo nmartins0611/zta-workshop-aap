@@ -222,26 +222,33 @@
         label: "{{ item.username }} → {{ item.policies }}"
       no_log: false
 
-    # ── Vault Userpass Accounts for Workshop Users ──
-    # Maps IdM group membership to Vault policies so each user gets
-    # least-privilege access.  Required for the "Break Vault Policy"
-    # exercise (section2/playbooks/create-db-credential-user.yml).
-    - name: Create Vault userpass accounts for IdM workshop users
+    # ── Vault userpass accounts for exercise-relevant IdM users ──
+    # Only the users that actually appear in section exercises.
+    # The hardcoded task above already covers appdev, neteng, secops.
+    - name: Create Vault userpass accounts for exercise users
       command: >
-        vault write auth/userpass/users/{{ item.uid }}
-        password={{ idm_admin_password }}
-        policies={{
-          (
-            (['app-deployer'] if 'app-deployers' in (item.groups | default([])) else [])
-            + (['network-admin'] if 'network-admins' in (item.groups | default([])) else [])
-            + (['patch-admin'] if 'patch-admins' in (item.groups | default([])) else [])
-            + (['ssh-access'] if 'zta-admins' in (item.groups | default([])) else [])
-          ) | join(',') | default('default', true)
-        }}
+        vault write auth/userpass/users/{{ item.username }}
+        password={{ item.password }}
+        policies={{ item.policies }}
       environment: "{{ vault_env }}"
-      loop: "{{ idm_workshop_users }}"
+      loop:
+        - username: ztauser
+          password: "{{ idm_admin_password }}"
+          policies: "app-deployer,network-admin,patch-admin,ssh-access"
+        - username: netadmin
+          password: "{{ idm_admin_password }}"
+          policies: "network-admin"
+        - username: jsmith
+          password: "{{ idm_admin_password }}"
+          policies: "patch-admin,ssh-access"
+        - username: nobrien
+          password: "{{ idm_admin_password }}"
+          policies: "patch-admin"
+        - username: spatel
+          password: "{{ idm_admin_password }}"
+          policies: "default"
       loop_control:
-        label: "{{ item.uid }}"
+        label: "{{ item.username }} → {{ item.policies }}"
       changed_when: true
 
     - name: Display Vault configuration summary

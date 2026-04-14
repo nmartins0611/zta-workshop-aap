@@ -6,10 +6,8 @@
 :idprefix:
 :idseparator: -
 
-This lab mirrors `section1/README.md` in AsciiDoc. Use it for student handouts or PDF/HTML builds. UI steps use the **automation controller** in **Ansible Automation Platform 2.6** (see shared platform note below).
 
 [NOTE]
-.How to read these labs (Zero Trust)
 ====
 In NIST SP 800-207 terms, **Ansible Automation Platform (AAP)** is the *Policy Enforcement Point (PEP)*: operational change flows *through* it. **Open Policy Agent (OPA)** is a *Policy Decision Point (PDP)*: it answers allow/deny from **identity** (IdM), **state** (NetBox), and **context** encoded in Rego. **Vault** supplies *short-lived, least-privilege* secrets instead of long-lived passwords in CMDBs or disks. **SPIFFE/SPIRE** (later sections) binds actions to a *verified workload*, not only a human username.
 
@@ -99,28 +97,12 @@ These hostnames assume workshop DNS (`*.zta.lab`) is configured. Replace with in
 
 All IdM user passwords for workshop accounts: `ansible123!`
 
-For full org charts (infrastructure, DevOps, security, applications teams) see `docs/exercise-guide.md` or the repository root `README.md`.
 
 [#lab-aap-workshop-defaults]
-=== Automation controller — workshop defaults (Section 1)
-
-When the instructor runs `setup/configure-aap-project.yml` and `setup/configure-aap-inventory.yml`, these names are typical. Use them in labs unless your environment differs.
-
-[cols="2,3",options="header"]
-|===
-| Resource | Default name / note
-| Organization | `Default`
-| Execution environment | `ZTA Workshop EE` (custom image from project setup; includes Arista/RHEL-oriented collections)
-| Project | `ZTA Workshop` (Git URL to Gitea workshop repo)
-| Inventory | `ZTA Lab Inventory` (static from setup, or NetBox-sourced per lab)
-| Job templates (Section 1) | Verify ZTA Services; Test Vault Integration; Test Vault SSH Certificates; Test OPA Policy
-|===
-
-**Credentials on jobs (Section 1):** attach **ZTA Machine Credential** to all four templates; add **ZTA Arista Credential** only to **Verify ZTA Services** (EOS facts play). **ZTA Vault Credential** is never attached directly—it backs Machine/Network lookups. **ZTA Gitea Credential** is for **project** sync only.
 
 == Overview
 
-Connect Ansible Automation Platform to the Zero Trust stack. Workshop credentials are pre-created with `setup/configure-aap-credentials.yml`; you verify Vault lookups and related objects, then configure inventory, project, templates, and run checks against IdM, Vault, OPA, NetBox, and Gitea.
+Connect Ansible Automation Platform to the Zero Trust stack. Workshop credentials are pre-created; you verify Vault lookups and related objects, then configure inventory, project, templates, and run checks against IdM, Vault, OPA, NetBox, and Gitea.
 
 [IMPORTANT]
 .Why this section exists
@@ -128,77 +110,12 @@ Connect Ansible Automation Platform to the Zero Trust stack. Workshop credential
 Until AAP is wired to the same **identity, policy, secrets, and inventory truth** the rest of the architecture uses, automation would be a *shadow admin path*—easy to bypass Zero Trust intent. Here you make AAP a **first-class citizen** of the ZTA fabric: it authenticates like other services, reads policy from OPA, pulls secrets from Vault, and builds inventory from NetBox so *what you run jobs against* matches *what the organisation says exists*.
 ====
 
-.Workshop delivery (2-hour track)
-[cols="3,1,1",options="header"]
-|===
-| Exercise | Track | Est. time
-
-| Prerequisite — LDAP + Policy as Code (verify) | Core | 2 min
-| 1.1 — Verify AAP credentials (Vault lookups) | Core | 5 min
-| 1.2 — IdM LDAP (Authentication Methods UI) | Core | 5 min
-| 1.3 — Inventory and project | Core | 5 min
-| 1.4 — Job templates | Core | 3 min
-| 1.5 — Verify ZTA services | Core | 2 min
-| 1.6 — Vault dynamic credentials | Core | 3 min
-| 1.7 — Vault SSH signed certificates | Core | 3 min
-| 1.8 — OPA policy decisions | Core | 2 min
-| 1.9 — Certificate trust debugging | Extended | 25 min
-|===
-
-For a short workshop, complete **1.1–1.8** (~25–30 min). Skip **1.9** unless you have extra time. Confirm the **LDAP + Policy as Code** prerequisite below first (often already applied during lab deployment).
-
-== Controller: IdM LDAP and Policy as Code (prerequisite)
-
-Later sections assume the automation controller accepts **IdM users** for login and enforces **Policy as Code** (OPA gateway) before jobs run. In a full lab build this is usually applied **during deployment** (before Section 1), not in the UI during class.
-
-[TIP]
-.Typical automation order
-====
-`docs/deployment-guide.md` **Layer 7 — Policy** documents the playbooks:
-
-* `setup/configure-opa-base.yml` — load OPA policies (including `aap.gateway`).
-* `setup/configure-aap-policy.yml` — enable controller ↔ OPA (Policy as Code).
-* `setup/configure-aap-ldap.yml` — controller **LDAP authentication** against IdM (LDAPS).
-
-Many instructors run **LDAP earlier** in setup (still Layer 7); that is fine. Section 1 asks you to **confirm** both integrations so exercises 2–4 behave as written.
-====
-
-=== LDAP (controller → IdM)
-
-* **What it does:** Users log into `https://control.zta.lab` with **workshop IdM accounts** (for example `ztauser` / `ansible123!`), not only the platform `admin` account.
-* **Prerequisites:** IdM running; controller trusts the IdM CA (for example after `setup/enroll-idm-clients.yml`). Details: `HANDOFF.md` (*LDAP: controller → IdM*).
-
-=== Verify LDAP
-
-. Open the automation controller.
-. Sign in with an **IdM user** (for example `ztauser`, password `ansible123!` per link:../../docs/lab/common-environment.adoc#lab-common-environment[Lab environment reference]).
-. If login fails: complete **Exercise 1.2** (Authentication Methods UI), or confirm `setup/configure-aap-ldap.yml` (legacy API) completed, DNS reaches IdM, and troubleshooting in `docs/deployment-guide.md` / `HANDOFF.md`.
-
-=== Policy as Code (controller → OPA)
-
-* **What it does:** Before starting a job, the controller can query OPA at `v1/data/aap/gateway/decision` (gateway Rego). Section 3 and 4 depend on this **outer ring**.
-* **Automation:** `setup/configure-aap-policy.yml` after `setup/configure-opa-base.yml`.
-
-=== Verify Policy as Code
-
-. As platform **admin**, open **Settings** → **Policy** / **Open Policy Agent** / **Policy as Code** (exact label varies by patch) and confirm OPA URL, policy path, and enable flags match `docs/deployment-guide.md` Layer 7 (*Manual Policy as Code (OPA gateway)*).
-. Or use the API:
-
-[source,bash]
-----
-curl -sk -u "admin:ansible123!" \
-  "https://control.zta.lab/api/controller/v2/settings/opa/" | python3 -m json.tool
-----
-
-Expect `OPA_ENABLED` and `OPA_PRE_ACTION_ENABLED` true; `OPA_POLICY_PATH` is `v1/data/aap/gateway/decision`; `OPA_URL` matches your lab OPA (typically `http://central.zta.lab:8181` per `inventory/group_vars/all.yml`).
-
-If Policy as Code was not applied by automation, use the **manual UI or API** steps in `docs/deployment-guide.md` Layer 7 or run `setup/configure-aap-policy.yml`.
 
 == Exercise 1.1 — Verify AAP credentials (pre-configured, Vault-sourced)
 
 === Goal
 
-Workshop credentials are created with `setup/configure-aap-credentials.yml`. You **confirm** Vault KV data and controller objects match the lab—no manual credential creation in the UI for this exercise.
+Workshop credentials have been created already. You **confirm** Vault KV data and controller objects match the lab—no manual credential creation in the UI for this exercise.
 
 [TIP]
 .Zero Trust: secrets on the platform
@@ -207,6 +124,24 @@ Machine and Arista passwords are **not** stored in AAP: the controller holds **V
 ====
 
 === Step 1 — Confirm Vault paths
+
+Navigate to the Terminal tab, and connect to the vault instance.
+
+[source,bash]
+----
+[rhel@central ~]$ ssh vault
+The authenticity of host 'vault (<no hostip for proxy command>)' can't be established.
+ED25519 key fingerprint is SHA256:JPJTTwXUvveQE493zZAr5/BYBIl96r8u11YdmuEUYI8.
+This key is not known by any other names
+Are you sure you want to continue connecting (yes/no/[fingerprint])? yes
+Warning: Permanently added 'vault' (ED25519) to the list of known hosts.
+rhel@vault's password: 
+----
+
+Authenticate with ansible123!
+
+
+
 
 [source,bash]
 ----
@@ -218,7 +153,82 @@ vault kv get secret/network/arista
 vault kv get secret/db/admin
 ----
 
+
+
+[source,bash]
+----
+Key                    Value
+---                    -----
+token                  hvs.CAESIG7fyzg0rCmCqTF330n4EYExLh61dbal-HBRdJGTYt2jGh4KHGh2cy5GQXMyeG9UbUNDSlNxS1pVYUhQYmVEVUg
+token_accessor         Nv2UgHzhMWjAruTIS8Nji8bw
+token_duration         768h
+token_renewable        true
+token_policies         ["default"]
+identity_policies      ["admin-policy.hcl"]
+policies               ["admin-policy.hcl" "default"]
+token_meta_username    admin
+[rhel@vault ~]$ vault kv get secret/machine/rhel
+vault kv get secret/network/arista
+vault kv get secret/db/admin
+====== Secret Path ======
+secret/data/machine/rhel
+
+======= Metadata =======
+Key                Value
+---                -----
+created_time       2026-04-14T09:31:06.20779958Z
+custom_metadata    <nil>
+deletion_time      n/a
+destroyed          false
+version            1
+
+========= Data =========
+Key                Value
+---                -----
+become_password    ansible123!
+password           ansible123!
+======= Secret Path =======
+secret/data/network/arista
+
+======= Metadata =======
+Key                Value
+---                -----
+created_time       2026-04-14T09:27:13.133465998Z
+custom_metadata    <nil>
+deletion_time      n/a
+destroyed          false
+version            1
+
+====== Data ======
+Key          Value
+---          -----
+password     admin
+transport    eapi
+username     admin
+==== Secret Path ====
+secret/data/db/admin
+
+======= Metadata =======
+Key                Value
+---                -----
+created_time       2026-04-14T09:27:13.68491866Z
+custom_metadata    <nil>
+deletion_time      n/a
+destroyed          false
+version            1
+
+====== Data ======
+Key         Value
+---         -----
+host        db.zta.lab
+password    postgres123!
+port        5432
+username    postgres
+----
+
 === Step 2 — Confirm credentials in the controller
+
+Navigate to the Automation controller tab, and login with the 
 
 Open **Credentials** and verify these names exist (from `setup/configure-aap-credentials.yml`). Edit each and confirm:
 
@@ -230,17 +240,6 @@ Open **Credentials** and verify these names exist (from `setup/configure-aap-cre
 
 Do not change lookup paths unless an instructor is troubleshooting.
 
-[TIP]
-.Gitea credential
-====
-`configure-aap-credentials.yml` does **not** create **ZTA Gitea Credential**. Confirm or add it when you set up the **ZTA Workshop** project (Exercise 1.3) if Git requires it.
-====
-
-Functional checks: **Exercise 1.5** (Verify ZTA Services) and **1.6–1.7** prove lookups from AAP.
-
-=== Step 3 — NetBox type missing?
-
-If the **NetBox** credential type or **ZTA NetBox Credential** is absent, follow the **Manual: NetBox credential type** steps in `section1/README.md`, then re-run automation or recreate the NetBox credential per Exercise 1.3.
 
 === Step 4 — Vault SSH CA
 
@@ -272,21 +271,13 @@ vault read ssh/roles/ssh-signer
 
 === Goal
 
-On **Ansible Automation Platform 2.6**, LDAP against IdM is often configured under **Access Management** → **Authentication Methods** → **Create authentication** (not only the legacy `PATCH /api/controller/v2/settings/ldap/` path used by `setup/configure-aap-ldap.yml`). This exercise records the **IdM field values** that match the workshop playbooks and `inventory/group_vars/all.yml`.
+On **Ansible Automation Platform 2.6**,
 
 If IdM login already works, you can **skim** this exercise to validate settings; if logins fail on gateway-based installs, complete it.
 
-=== Prerequisites
-
-* IdM (FreeIPA) on `central.zta.lab` with domain `zta.lab` → base DN `dc=zta,dc=lab`.
-* Controller **trusts the IdM CA** for LDAPS (lab: `setup/enroll-idm-clients.yml` on the controller host).
-* IdM **`admin`** password: workshop default `ansible123!` (same as `idm_admin_password`).
-
-Adjust hostnames and `dc=` components if your lab uses a different `idm_domain`.
-
 === Steps — Create LDAP authentication
 
-. Log in as platform **admin**. Open **Access Management** → **Authentication Methods** → **Create authentication**.
+. Log in as platform **admin**. Navigate to  **Access Management** → **Authentication Methods** → **Create authentication**.
 . Set **Authentication type** to **LDAP**.
 . Fill the top fields:
 
@@ -312,19 +303,9 @@ OPT_REFERRALS: 0
 OPT_NETWORK_TIMEOUT: 30
 ----
 
-. **LDAP Group Type Parameters** (required). These are the **key/value arguments for the selected group type's constructor** (`LDAP_GROUP_TYPE_PARAMS`). Invalid keys for that type produce *Invalid option for specified GROUP_TYPE*.
+. **LDAP Group Type Parameters** (required). 
 
-+
-Per https://django-auth-ldap.readthedocs.io/en/latest/reference.html#django_auth_ldap.config.LDAPGroupType and the LDAP group-type table in https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.5/html/access_management_and_authentication/gw-configure-authentication#controller-set-up-LDAP[Red Hat AAP 2.5 Access management] (same idea in 2.6):
 
-+
-* **GroupOfNamesType** — IdM `groupOfNames`; equivalent to `MemberDNGroupType('member')`. Only **`name_attr`** is a constructor argument (`member` is fixed):
-
-+
-[source,yaml]
-----
-name_attr: cn
-----
 
 +
 * **MemberDNGroupType** — generic type; constructor takes **`member_attr`** and **`name_attr`**. Use this if you want both fields explicitly (matches the doc example `{"name_attr": "cn", "member_attr": "member"}`):

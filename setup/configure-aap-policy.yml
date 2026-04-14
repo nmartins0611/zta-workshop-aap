@@ -75,7 +75,7 @@
         validate_certs: "{{ aap_verify_ssl }}"
         body_format: json
         body:
-          OPA_HOST: "central.zta.lab"
+          OPA_HOST: "{{ hostvars['central']['ansible_host'] | default('192.168.1.11') }}"
           OPA_PORT: 8181
           OPA_SSL: false
           OPA_AUTH_TYPE: "None"

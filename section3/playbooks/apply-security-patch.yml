@@ -78,6 +78,12 @@
           maxrepeat = 3
         mode: '0644'
 
+    - name: "Patch 4/4 | Ensure audit rules directory exists"
+      file:
+        path: /etc/audit/rules.d
+        state: directory
+        mode: '0750'
+
     - name: "Patch 4/4 | Enable audit logging for authentication"
       copy:
         dest: /etc/audit/rules.d/zta-auth-audit.rules
@@ -109,7 +115,7 @@
           - "Patch ID: {{ patch_version }}"
           - "OS: {{ ansible_distribution }} {{ ansible_distribution_version }}"
           - "Changes: login banner (/etc/issue, /etc/motd); SSH hardening; password policy; audit rules"
-          - "Authorised via AAP Policy as Code (patch-admins only)."
+          - "Authorised via AAP Policy as Code (Infrastructure/Security teams only)."
 
   handlers:
     - name: Restart sshd
@@ -119,3 +125,4 @@
 
     - name: Restart auditd
       command: service auditd restart
+      failed_when: false

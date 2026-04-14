@@ -8,6 +8,7 @@
 #   2. Job templates               — All playbooks under section*/playbooks/ (tagged per section)
 #   3. ZTA Workshop EDA Project    — EDA project for rulebook activations (--tags eda)
 #   4. ZTA AAP Credential (EDA)    — AAP credential in EDA controller (--tags eda)
+#   5. ZTA Decision Environment    — DE for EDA rulebook activations (--tags eda)
 #
 # Prerequisites:
 #   - AAP Controller is installed and reachable
@@ -82,6 +83,8 @@
     eda_project_scm_branch: zta-container
     eda_credential_name: ZTA AAP Credential
     eda_aap_cred_type_name: Red Hat Ansible Automation Platform
+    eda_de_name: ZTA Decision Environment
+    eda_de_image: quay.io/nmartins/network_de
 
     wazuh_enabled: false
 
@@ -483,15 +486,14 @@
     #  5. Event-Driven Ansible (EDA) — Project + AAP Credential
     #
     #  Creates:
-    #    - EDA project pointing at the same Git repo (rulebooks live under
-    #      extensions/eda/rulebooks/)
     #    - AAP credential in EDA so rulebook activations can trigger job
     #      templates on the automation controller
+    #    - Decision Environment for running EDA rulebooks
+    #    - EDA project pointing at the same Git repo (rulebooks live under
+    #      extensions/eda/rulebooks/)
     #
     #  Prerequisites:
     #    - EDA controller must be running (part of AAP 2.6 containerised)
-    #    - A Decision Environment must exist (created manually or via
-    #      separate automation — image varies per deployment)
     # ══════════════════════════════════════════════════════════════════════
 
     - name: Verify EDA API is reachable
@@ -583,6 +585,47 @@
         msg: >-
           EDA AAP credential "{{ eda_credential_name }}":
           {{ 'CREATED' if (_eda_cred_check.json.count | default(0)) == 0 else 'already exists (skipped)' }}
+      tags: [eda, section5]
+
+    # -- EDA Decision Environment ─────────────────────────────────────
+
+    - name: Check if EDA Decision Environment already exists
+      uri:
+        url: "{{ aap_host }}/api/eda/v1/decision-environments/?name={{ eda_de_name | urlencode }}"
+        method: GET
+        url_username: "{{ aap_user }}"
+        url_password: "{{ aap_password }}"
+        validate_certs: "{{ aap_verify_ssl }}"
+        force_basic_auth: true
+        status_code: [200]
+      register: _eda_de_check
+      tags: [eda, section5]
+
+    - name: Create EDA Decision Environment
+      uri:
+        url: "{{ aap_host }}/api/eda/v1/decision-environments/"
+        method: POST
+        url_username: "{{ aap_user }}"
+        url_password: "{{ aap_password }}"
+        validate_certs: "{{ aap_verify_ssl }}"
+        force_basic_auth: true
+        body_format: json
+        body: "{{ _eda_de_body }}"
+        status_code: [201]
+      vars:
+        _eda_de_body:
+          name: "{{ eda_de_name }}"
+          image_url: "{{ eda_de_image }}"
+          organization_id: "{{ _eda_org_id | int }}"
+      when: (_eda_de_check.json.count | default(0)) == 0
+      tags: [eda, section5]
+
+    - name: Report EDA Decision Environment status
+      ansible.builtin.debug:
+        msg: >-
+          EDA Decision Environment "{{ eda_de_name }}":
+          {{ 'CREATED' if (_eda_de_check.json.count | default(0)) == 0 else 'already exists (skipped)' }}
+          — image {{ eda_de_image }}
       tags: [eda, section5]
 
     # -- EDA Project ────────────────────────────────────────────────────

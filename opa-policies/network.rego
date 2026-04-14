@@ -22,12 +22,16 @@ allow if {
 
 # ── User identity (from IdM / Keycloak) ─────────────────────────────
 
+default condition_user_authorized := false
+
 condition_user_authorized if {
 	some group in input.user_groups
 	group == "network-admins"
 }
 
 # ── VLAN validation ─────────────────────────────────────────────────
+
+default condition_valid_vlan := false
 
 condition_valid_vlan if {
 	input.vlan_id >= 100
@@ -37,6 +41,8 @@ condition_valid_vlan if {
 # ── Action allowlist ────────────────────────────────────────────────
 
 permitted_actions := {"create_vlan", "modify_vlan", "delete_vlan", "assign_port"}
+
+default condition_action_permitted := false
 
 condition_action_permitted if {
 	permitted_actions[input.action]
@@ -48,6 +54,8 @@ condition_action_permitted if {
 allowed_spiffe_ids := {
 	"spiffe://zta.lab/workload/network-automation",
 }
+
+default condition_workload_verified := false
 
 condition_workload_verified if {
 	allowed_spiffe_ids[input.spiffe_id]

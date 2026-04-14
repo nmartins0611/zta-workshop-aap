@@ -159,7 +159,7 @@ vault kv get secret/db/admin
 ----
 Key                    Value
 ---                    -----
-token                  hvs.CAESIG7fyzg0rCmCqTF330n4EYExLh61dbal-HBRdJGTYt2jGh4KHGh2cy5GQXMyeG9UbUNDSlNxS1pVYUhQYmVEVUg
+token                  XXXXXXXXXXXXXXX
 token_accessor         Nv2UgHzhMWjAruTIS8Nji8bw
 token_duration         768h
 token_renewable        true
@@ -305,20 +305,12 @@ OPT_NETWORK_TIMEOUT: 30
 
 . **LDAP Group Type Parameters** (required). 
 
-
-
-+
-* **MemberDNGroupType** — generic type; constructor takes **`member_attr`** and **`name_attr`**. Use this if you want both fields explicitly (matches the doc example `{"name_attr": "cn", "member_attr": "member"}`):
-
 +
 [source,yaml]
 ----
 name_attr: cn
 member_attr: member
 ----
-
-+
-For FreeIPA/IdM **groupOfNames**, the two options above are **functionally equivalent**.
 
 +
 [TIP]

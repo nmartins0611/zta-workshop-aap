@@ -469,7 +469,9 @@
           HEC_URL   = "{{ hec_url }}"
           HEC_TOKEN = "{{ splunk_hec_token }}"
           INDEX     = "zta_wazuh"
-          CTX       = ssl.create_unverified_context()
+          CTX       = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+          CTX.check_hostname = False
+          CTX.verify_mode = ssl.CERT_NONE
 
           def main():
               alert_file = sys.argv[1]
@@ -583,7 +585,9 @@
           HEC_URL   = "{{ hec_url }}"
           HEC_TOKEN = "{{ splunk_hec_token }}"
           INDEX     = "zta_opa"
-          CTX       = ssl.create_unverified_context()
+          CTX       = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+          CTX.check_hostname = False
+          CTX.verify_mode = ssl.CERT_NONE
 
           signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
 

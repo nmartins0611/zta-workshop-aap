@@ -113,7 +113,7 @@
           - "Security patch applied"
           - "Host: {{ inventory_hostname }}.{{ idm_domain }}"
           - "Patch ID: {{ patch_version }}"
-          - "OS: {{ ansible_distribution }} {{ ansible_distribution_version }}"
+          - "OS: {{ ansible_distribution | default('Linux') }} {{ ansible_distribution_version | default('') }}"
           - "Changes: login banner (/etc/issue, /etc/motd); SSH hardening; password policy; audit rules"
           - "Authorised via AAP Policy as Code (Infrastructure/Security teams only)."
 

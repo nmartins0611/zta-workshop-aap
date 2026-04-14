@@ -233,7 +233,7 @@ Open **Credentials** and verify these names exist (from `setup/configure-aap-cre
 Do not change lookup paths unless an instructor is troubleshooting.
 
 
-=== Step 4 — Vault SSH CA
+=== Step 3 — Vault SSH CA
 
 [source,bash]
 ----
@@ -422,7 +422,6 @@ For each row, create a map with **Map type** = Team, **Team** = the AAP team nam
 . Confirm the user lands on a populated dashboard (not an empty platform).
 . Check that team membership is visible under **Access Management** → **Users** → `ztauser` → **Teams**.
 
-== Exercise 1.3 — Inventory and project
 
 [TIP]
 .Source of truth and GitOps
@@ -430,7 +429,7 @@ For each row, create a map with **Map type** = Team, **Team** = the AAP team nam
 **NetBox** is the *infrastructure source of truth* in this workshop: if a host is decommissioned there, it should disappear from automation inventory on sync—reducing "ghost" targets attackers or operators could hit. **Gitea** holds *intent* (playbooks); together they separate **what exists** (CMDB) from **what we want to do** (code), both subject to policy in later sections.
 ====
 
-== Exercise 1.5 — Verify ZTA services
+== Exercise 1.3 — Verify ZTA services
 
 Run **Verify ZTA Services**. Expect healthy IdM, Vault, OPA, NetBox, DNS, PostgreSQL, and Arista facts.
 
@@ -440,7 +439,7 @@ Run **Verify ZTA Services**. Expect healthy IdM, Vault, OPA, NetBox, DNS, Postgr
 **Service checks** are the operational face of "never trust, always verify": you do not assume IdM or OPA is up because yesterday it was. For the workshop, this mirrors **continuous diagnostics** on which policy decisions and secret issuance depend.
 ====
 
-== Exercise 1.6 — Test Vault integration
+== Exercise 1.4 — Test Vault integration
 
 Run **Test Vault Integration**. Observe short-lived PostgreSQL users (unique name per run, TTL, revoke at end).
 
@@ -450,7 +449,7 @@ Run **Test Vault Integration**. Observe short-lived PostgreSQL users (unique nam
 Dynamic DB users with a **TTL** limit how long a leaked credential is useful—core **assume breach** hygiene. Vault **revokes** the lease so the database role disappears without a human running `DROP USER`. That is how **least privilege** becomes **time-bound privilege**.
 ====
 
-== Exercise 1.7 — Test Vault SSH certificates
+== Exercise 1.5 — Test Vault SSH certificates
 
 Run **Test Vault SSH Certificates**. Observe CA-signed cert, TTL, principals, successful SSH to app/db.
 
@@ -472,7 +471,7 @@ ssh-keygen -L -f /tmp/ephemeral-cert.pub
 The certificate encodes **who may act as which principal** and **for how long**. Hosts need only trust the CA once; they do not need network reachability to Vault at login time. That separation is useful in segmented networks and matches the ZTA idea that **access is explicitly granted and expires**.
 ====
 
-== Exercise 1.8 — Test OPA policy
+== Exercise 1.6 — Test OPA policy
 
 Run **Test OPA Policy**. Expect allow/deny scenarios for patching, VLAN, and DB access per group membership.
 

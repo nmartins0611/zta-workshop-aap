@@ -1,0 +1,121 @@
+= Section 2 — Deploy application with short-lived credentials
+:toc: left
+:toclevels: 3
+:icons: font
+:idprefix:
+:idseparator: -
+
+Asciidoc companion to `section2/README.md`.
+
+include::../../docs/lab/common-environment.adoc[]
+
+== Overview
+
+Deploy the **Global Telemetry Platform** using Vault dynamic database credentials. Experience OPA **deny** for the wrong user, then **allow** for `app-deployers`. Observe micro-segmentation (Arista) and credential TTL.
+
+[IMPORTANT]
+.Why this section exists
+====
+Deploying an app is where **identity (who)**, **policy (may they)**, **secrets (with what credential)**, and **network (on which path)** meet. In Zero Trust you **do not** hand every engineer a long-lived DB password or open the database to the whole VLAN. This pipeline shows **policy before secrets** and **least-privilege network paths** aligned with short-lived credentials—so compromise of one layer does not instantly mean full data access.
+====
+
+.Core vs extended
+[cols="2,1,1",options="header"]
+|===
+| Exercise | Track | Est.
+| 2.1–2.6 | Core | ~30 min (2-hour path)
+| 2.7–2.8 | Extended | optional
+| 2.9–2.11 | Extended | break/fix labs
+|===
+
+== Exercise 2.1 — Create job templates
+
+Inventory: **ZTA Lab Inventory**. Credential: **ZTA Machine Credential**.
+
+[cols="2,2,2",options="header"]
+|===
+| Template | Playbook | Extra credentials
+| Check DB Access Policy | `section2/playbooks/check-db-policy.yml` | —
+| Create DB Credential | `section2/playbooks/create-db-credential.yml` | —
+| Configure DB Access List | `section2/playbooks/configure-db-access.yml` | ZTA Arista Credential
+| Deploy Application | `section2/playbooks/deploy-application.yml` | —
+| Rotate DB Credentials | `section2/playbooks/rotate-credentials.yml` | —
+|===
+
+[TIP]
+.Separation of concerns in templates
+====
+Each step has a single job: **decide** (OPA), **issue** (Vault), **enforce path** (Arista), **configure app**. That mirrors ZTA’s idea that **no single giant playbook** should skip gates—each stage can fail closed, be audited, and be replaced without collapsing the whole story.
+====
+
+== Exercise 2.2 — Workflow
+
+Create workflow **Deploy Application Pipeline**:
+
+....
+Check DB Access Policy ──(success)──► Create DB Credential ──► Configure DB Access List ──► Deploy Application
+        │
+     (failure) → Access Denied
+....
+
+[TIP]
+.Order of operations = trust boundaries
+====
+**Check DB Access Policy runs first** on purpose: if the human (via AAP) is not entitled to database credentials, the workflow **never touches Vault**. That is *defence in depth*—the secret manager is not a substitute for authorisation. In breach terms, an attacker who tricks someone into clicking “deploy” still hits a **PDP (OPA)** before any **secret issuance**.
+====
+
+== Exercise 2.3 — Wrong user (denied)
+
+. Log into AAP as `neteng` (not in `app-deployers`).
+. Launch the workflow.
+. Expect first step to show OPA **DENIED**; workflow stops; Vault not contacted.
+
+[TIP]
+.What the learner should feel here
+====
+The unauthorised user **never sees** a database password. Zero Trust is not only about encryption—it is about **shrinking who can cause sensitive actions**. Deny-by-default policy turns “I have network reachability” into “I still cannot obtain credentials.”
+====
+
+== Exercise 2.4 — Policy
+
+`zta.db_access` requires `app-deployers`, valid DB (`ztaapp`), and bounded permissions.
+
+*Fix:* log in as `appdev`, or run `ipa group-add-member app-deployers --users=neteng` on central.
+
+[TIP]
+.Identity-driven access
+====
+**IdM groups** are attributes the PDP understands. Changing group membership is how the organisation **grants or revokes** deployment authority without editing playbooks. That is **policy + identity lifecycle** working together—important when people change roles or leave.
+====
+
+== Exercise 2.5 — Correct user (allowed)
+
+As `appdev`, launch the workflow. Expect OPA allow, Vault dynamic user, ACL update, app healthy at `http://app.zta.lab:8081`.
+
+[TIP]
+.Micro-segmentation after authorisation
+====
+Even with valid DB credentials, **network policy** still limits *where* connections may originate. The Arista step models **segmentation** that is common in ZTA: secrets prove *who the app is*, ACLs constrain *which paths are valid*. An attacker with stolen creds from a random laptop should still fail if the fabric only permits the app tier IP.
+====
+
+== Exercise 2.6 — Credential expiry
+
+After deploy, confirm Vault user in PostgreSQL; wait TTL (e.g. 5 minutes); user disappears; `curl http://app.zta.lab:8081/health` reflects loss of DB access until rotation/restore.
+
+[TIP]
+.Ephemeral credentials change operations
+====
+TTL expiry is a feature, not a bug: it forces **rotation**, **re-authorisation**, or **deliberate renewal** instead of silent, multi-year database passwords. In ZTA, **standing access** to data is the exception and must be justified; here the app must be **re-fed** credentials on a schedule or on demand—exactly what `Rotate DB Credentials` (extended) practices.
+====
+
+== Validation checklist
+
+* [ ] `neteng` denied at policy step
+* [ ] `appdev` full success
+* [ ] Unique Vault DB user per run
+* [ ] App reachable at :8081
+* [ ] TTL removes user; app unhealthy without fresh creds
+
+== Extended exercises
+
+include::includes/extended-exercises.adoc[]

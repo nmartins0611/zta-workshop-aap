@@ -197,6 +197,60 @@
         - /tmp/vault-policy-patch-admin.hcl
         - /tmp/vault-policy-ssh-access.hcl
 
+    # ── Vault userpass accounts for workshop users ──
+    # Each IdM user that runs Section 2+ workflows needs a matching Vault
+    # userpass account bound to the appropriate policy.  Without these,
+    # the workflow falls back to admin (root token) and policy-break
+    # exercises have no effect.
+    - name: Create Vault userpass accounts for workshop users
+      command: >
+        vault write auth/userpass/users/{{ item.username }}
+        password={{ item.password }}
+        policies={{ item.policies }}
+      environment: "{{ vault_env }}"
+      loop:
+        - username: appdev
+          password: "{{ idm_admin_password }}"
+          policies: app-deployer
+        - username: neteng
+          password: "{{ idm_admin_password }}"
+          policies: network-admin
+        - username: secops
+          password: "{{ idm_admin_password }}"
+          policies: "app-deployer,network-admin"
+      loop_control:
+        label: "{{ item.username }} → {{ item.policies }}"
+      no_log: false
+
+    # ── Vault userpass accounts for exercise-relevant IdM users ──
+    # Only the users that actually appear in section exercises.
+    # The hardcoded task above already covers appdev, neteng, secops.
+    - name: Create Vault userpass accounts for exercise users
+      command: >
+        vault write auth/userpass/users/{{ item.username }}
+        password={{ item.password }}
+        policies={{ item.policies }}
+      environment: "{{ vault_env }}"
+      loop:
+        - username: ztauser
+          password: "{{ idm_admin_password }}"
+          policies: "app-deployer,network-admin,patch-admin,ssh-access"
+        - username: netadmin
+          password: "{{ idm_admin_password }}"
+          policies: "network-admin"
+        - username: jsmith
+          password: "{{ idm_admin_password }}"
+          policies: "patch-admin,ssh-access"
+        - username: nobrien
+          password: "{{ idm_admin_password }}"
+          policies: "patch-admin"
+        - username: spatel
+          password: "{{ idm_admin_password }}"
+          policies: "default"
+      loop_control:
+        label: "{{ item.username }} → {{ item.policies }}"
+      changed_when: true
+
     - name: Display Vault configuration summary
       debug:
         msg: |

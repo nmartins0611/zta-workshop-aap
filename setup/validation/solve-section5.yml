@@ -1,9 +1,9 @@
 ---
-# Section 5 Solve: Automated Incident Response
+# Section 5 Solve: Automated Incident Response (Splunk → EDA → Vault)
 #
 # Auto-creates:
 #   - 3 job templates (Revoke, Simulate, Restore)
-#   - Verifies Wazuh agent and EDA webhook readiness
+#   - Verifies EDA webhook readiness
 #
 # Note: EDA rulebook activation must be configured manually or via the
 # Event-Driven Ansible controller API (not covered here; varies by deployment).
@@ -62,27 +62,6 @@
         label: "{{ item.name }}"
       tags: [templates]
 
-- name: "Section 5 Solve | Verify Wazuh Agent"
-  hosts: zta_services
-  become: true
-  gather_facts: false
-  ignore_errors: true
-  tags: [section5, wazuh]
-
-  tasks:
-    - name: Verify Wazuh agent for app is registered
-      command: >
-        podman exec wazuh-manager
-        /var/ossec/bin/agent_control -l
-      register: s5_wazuh_agents
-      changed_when: false
-      failed_when: false
-
-    - name: Report Wazuh agent status
-      debug:
-        msg: >-
-          Wazuh agent for app: {{ 'REGISTERED' if 'app' in (s5_wazuh_agents.stdout | default('')) else 'NOT FOUND — run setup/configure-wazuh-eda.yml' }}
-
 - name: "Section 5 Solve | Verify EDA Readiness"
   hosts: automation
   become: false
@@ -124,8 +103,9 @@
           ║    ✓ Template: Restore App Credentials                         ║
           ║                                                                ║
           ║  Manual steps (if not already done):                           ║
-          ║    - Configure rulebook activation in Event-Driven Ansible ctrl  ║
-          ║    - Verify Wazuh → EDA webhook integration                    ║
+          ║    - Configure Splunk saved search + webhook                   ║
+          ║    - Configure rulebook activation in Event-Driven Ansible ctrl║
+          ║      Rulebook: extensions/eda/rulebooks/splunk-credential-revoke.yml
           ║                                                                ║
           ║  Run check-section5.yml to verify.                             ║
           ╚══════════════════════════════════════════════════════════════════╝

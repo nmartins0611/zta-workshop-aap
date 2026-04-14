@@ -333,6 +333,11 @@
 
     # ═══════════════════════════════════════════════════════════════════
     # Phase 9 — Connect containers to Arista switch fabric
+    #
+    # Persistent approach: write a NetworkManager keyfile inside each
+    # container so the data-plane IP and peer route survive restarts.
+    # The Podman-assigned IP on eth1 is left untouched — removing it
+    # breaks Podman's internal DNAT rules for port-forwarded services.
     # ═══════════════════════════════════════════════════════════════════
 
     - name: Connect containers to data-plane networks
@@ -353,23 +358,61 @@
       register: data_ifaces
       changed_when: false
 
-    - name: Configure data-plane IP on containers
+    # Add data-plane IP as a secondary address — never flush the Podman-
+    # assigned IP, which backs the container's port-forwarding DNAT rules.
+    - name: Add data-plane IP on containers (secondary, non-destructive)
       shell: |
-        podman exec {{ item.item.name }} ip addr flush dev {{ item.stdout | trim }}
-        podman exec {{ item.item.name }} ip addr add {{ item.item.data_ip }}/24 dev {{ item.stdout | trim }}
+        podman exec {{ item.item.name }} ip addr show dev {{ item.stdout | trim }} \
+          | grep -q '{{ item.item.data_ip }}/' \
+          || podman exec {{ item.item.name }} ip addr add {{ item.item.data_ip }}/24 dev {{ item.stdout | trim }}
         podman exec {{ item.item.name }} ip link set {{ item.stdout | trim }} up
       loop: "{{ data_ifaces.results }}"
       loop_control:
         label: "{{ item.item.name }}: {{ item.item.data_ip }}/24 on {{ item.stdout | trim }}"
+      changed_when: true
 
     - name: Add route to peer data-plane network inside containers
-      command: >
+      shell: >-
         podman exec {{ item.name }}
-        ip route add {{ item.peer_network }} via {{ item.data_gateway }}
+        bash -c 'ip route show | grep -q "{{ item.peer_network }}" ||
+        ip route add {{ item.peer_network }} via {{ item.data_gateway }}'
       loop: "{{ containers }}"
       loop_control:
         label: "{{ item.name }}: {{ item.peer_network }} via {{ item.data_gateway }}"
+      changed_when: true
       failed_when: false
+
+    # Write a NetworkManager keyfile so the data-plane IP and peer route
+    # survive container restarts.  printf avoids heredoc indentation issues
+    # with YAML (square-bracket INI section headers confuse the YAML parser).
+    - name: Write persistent NetworkManager keyfile for data-plane interface
+      shell: |
+        podman exec {{ item.item.name }} bash -c '
+          mkdir -p /etc/NetworkManager/system-connections
+          printf "%s\n" \
+            "[connection]" \
+            "id=dataplane" \
+            "type=ethernet" \
+            "interface-name={{ item.stdout | trim }}" \
+            "autoconnect=true" \
+            "" \
+            "[ethernet]" \
+            "" \
+            "[ipv4]" \
+            "method=auto" \
+            "address1={{ item.item.data_ip }}/24" \
+            "route1={{ item.item.peer_network }},{{ item.item.data_gateway }}" \
+            "" \
+            "[ipv6]" \
+            "method=disabled" \
+            > /etc/NetworkManager/system-connections/dataplane.nmconnection
+          chmod 600 /etc/NetworkManager/system-connections/dataplane.nmconnection
+          nmcli connection reload 2>/dev/null || true
+        '
+      loop: "{{ data_ifaces.results }}"
+      loop_control:
+        label: "{{ item.item.name }}: persist {{ item.item.data_ip }} on {{ item.stdout | trim }}"
+      changed_when: true
 
     # ═══════════════════════════════════════════════════════════════════
     # Phase 10 — IdM client enrollment

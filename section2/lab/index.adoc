@@ -1,4 +1,4 @@
-= Section 2 — Deploy application with short-lived credentials
+= Section 2 -- Deploy application with short-lived credentials
 :toc: left
 :toclevels: 3
 :icons: font
@@ -9,6 +9,54 @@ Asciidoc companion to `section2/README.md`.
 
 include::../../docs/lab/common-environment.adoc[]
 
+[IMPORTANT]
+.Prerequisites -- verify these before starting
+====
+Section 2 depends on services configured during Section 1 and lab setup.
+
+*1. LDAP authentication on the controller*
+
+Students must log into AAP as IdM users (`appdev`, `neteng`, etc.). Complete **Exercise 1.2** if not already done.
+
+*2. Vault database engine configured*
+
+Vault must have the database secrets engine enabled with the `ztaapp` PostgreSQL connection:
+
+[source,bash]
+----
+export VAULT_ADDR=http://vault.zta.lab:8200
+vault login -method=userpass username=admin password=ansible123!
+vault read database/config/ztaapp
+----
+
+If not configured: `ansible-playbook -i inventory/hosts.ini setup/configure-vault.yml`
+
+*3. OPA db_access policy loaded on central*
+
+[source,bash]
+----
+curl -s http://central.zta.lab:8181/v1/data/zta/db_access | python3 -m json.tool | head -3
+----
+
+If empty: `ansible-playbook -i inventory/hosts.ini setup/configure-opa-base.yml`
+
+*4. Section 2 job templates and RBAC*
+
+[source,bash]
+----
+ansible-playbook -i inventory/hosts.ini setup/configure-aap-project.yml --tags section2,rbac
+----
+
+*5. firewalld running on central*
+
+Vault must reach PostgreSQL on `192.168.1.11:5432`. If firewalld is stopped, container ports are unreachable:
+
+[source,bash]
+----
+ssh rhel@central.zta.lab sudo systemctl status firewalld
+----
+====
+
 == Overview
 
 Deploy the **Global Telemetry Platform** using Vault dynamic database credentials. Experience OPA **deny** for the wrong user, then **allow** for `app-deployers`. Observe micro-segmentation (Arista) and credential TTL.
@@ -16,96 +64,172 @@ Deploy the **Global Telemetry Platform** using Vault dynamic database credential
 [IMPORTANT]
 .Why this section exists
 ====
-Deploying an app is where **identity (who)**, **policy (may they)**, **secrets (with what credential)**, and **network (on which path)** meet. In Zero Trust you **do not** hand every engineer a long-lived DB password or open the database to the whole VLAN. This pipeline shows **policy before secrets** and **least-privilege network paths** aligned with short-lived credentials—so compromise of one layer does not instantly mean full data access.
+Deploying an app is where **identity (who)**, **policy (may they)**, **secrets (with what credential)**, and **network (on which path)** meet. In Zero Trust you **do not** hand every engineer a long-lived DB password or open the database to the whole VLAN. This pipeline shows **policy before secrets** and **least-privilege network paths** aligned with short-lived credentials -- so compromise of one layer does not instantly mean full data access.
 ====
 
 .Core vs extended
 [cols="2,1,1",options="header"]
 |===
 | Exercise | Track | Est.
-| 2.1–2.6 | Core | ~30 min (2-hour path)
-| 2.7–2.8 | Extended | optional
-| 2.9–2.11 | Extended | break/fix labs
+| 2.1--2.6 | Core | ~30 min (2-hour path)
+| Write OPA check + Fix broken deploy | Hands-on coding | ~20 min
+| 2.6--2.8 (extended) | Extended | optional
+| 2.9--2.10 (extended) | Extended | break/fix labs
 |===
 
-== Exercise 2.1 — Create job templates
+== Exercise 2.1 -- Create job templates
+
+_ZTA concept: *Separation of concerns* -- each step in the pipeline handles a single trust decision (policy, secrets, network, deploy) so no single playbook can skip a gate._
 
 Inventory: **ZTA Lab Inventory**. Credential: **ZTA Machine Credential**.
 
 [cols="2,2,2",options="header"]
 |===
 | Template | Playbook | Extra credentials
-| Check DB Access Policy | `section2/playbooks/check-db-policy.yml` | —
-| Create DB Credential | `section2/playbooks/create-db-credential.yml` | —
+| Check DB Access Policy | `section2/playbooks/check-db-policy.yml` | --
+| Create DB Credential | `section2/playbooks/create-db-credential.yml` | --
 | Configure DB Access List | `section2/playbooks/configure-db-access.yml` | ZTA Arista Credential
-| Deploy Application | `section2/playbooks/deploy-application.yml` | —
-| Rotate DB Credentials | `section2/playbooks/rotate-credentials.yml` | —
+| Deploy Application | `section2/playbooks/deploy-application.yml` | --
+| Rotate DB Credentials | `section2/playbooks/rotate-credentials.yml` | --
 |===
 
 [TIP]
-.Separation of concerns in templates
+.Ansible workflows: composable trust gates
 ====
-Each step has a single job: **decide** (OPA), **issue** (Vault), **enforce path** (Arista), **configure app**. That mirrors ZTA’s idea that **no single giant playbook** should skip gates—each stage can fail closed, be audited, and be replaced without collapsing the whole story.
+Each template has a single job: **decide** (OPA), **issue** (Vault), **enforce path** (Arista), **configure app**. Ansible's **modular playbook design** means each stage can fail closed, be audited, and be replaced without collapsing the whole story. In AAP, these become reusable building blocks -- the same OPA-check template can front other pipelines, not just this one.
 ====
 
-== Exercise 2.2 — Workflow
+== Exercise 2.2 -- Workflow
+
+_ZTA concept: *Policy before action* -- authorisation is checked before secrets are issued, so the secret manager is never contacted unless policy allows it._
 
 Create workflow **Deploy Application Pipeline**:
 
 ....
-Check DB Access Policy ──(success)──► Create DB Credential ──► Configure DB Access List ──► Deploy Application
-        │
-     (failure) → Access Denied
+Check DB Access Policy --(success)-->  Create DB Credential --> Configure DB Access List --> Deploy Application
+        |
+     (failure) -> Access Denied
 ....
 
 [TIP]
-.Order of operations = trust boundaries
+.Ansible workflows: orchestrated trust boundaries
 ====
-**Check DB Access Policy runs first** on purpose: if the human (via AAP) is not entitled to database credentials, the workflow **never touches Vault**. That is *defence in depth*—the secret manager is not a substitute for authorisation. In breach terms, an attacker who tricks someone into clicking “deploy” still hits a **PDP (OPA)** before any **secret issuance**.
+**Check DB Access Policy runs first** on purpose: if the human (via AAP) is not entitled to database credentials, the workflow **never touches Vault**. AAP workflows make this ordering **visual, enforced, and auditable** -- not a convention that someone might skip. Every workflow run is logged with who launched it, which path it took, and why. In breach terms, an attacker who tricks someone into clicking "deploy" still hits a **PDP (OPA)** before any **secret issuance**.
 ====
 
-== Exercise 2.3 — Wrong user (denied)
+== Exercise 2.3 -- Wrong user (denied)
+
+_ZTA concept: *Deny by default* -- without explicit group membership, no user can trigger credential issuance, regardless of network access or platform familiarity._
 
 . Log into AAP as `neteng` (not in `app-deployers`).
 . Launch the workflow.
 . Expect first step to show OPA **DENIED**; workflow stops; Vault not contacted.
 
 [TIP]
-.What the learner should feel here
+.Ansible + OPA: the unauthorised user never sees a secret
 ====
-The unauthorised user **never sees** a database password. Zero Trust is not only about encryption—it is about **shrinking who can cause sensitive actions**. Deny-by-default policy turns “I have network reachability” into “I still cannot obtain credentials.”
+The unauthorised user **never sees** a database password. AAP's workflow stops at the first failed node -- Vault is never contacted. Zero Trust is not only about encryption -- it is about **shrinking who can cause sensitive actions**. Ansible + OPA together turn "I have network reachability" into "I still cannot obtain credentials" -- and the denial is fully logged in AAP's job history.
 ====
 
-== Exercise 2.4 — Policy
+== Exercise 2.4 -- Policy
+
+_ZTA concept: *Identity-driven access* -- group membership in the identity provider (IdM) is the attribute that unlocks deployment authority, not a shared credential or network location._
 
 `zta.db_access` requires `app-deployers`, valid DB (`ztaapp`), and bounded permissions.
 
 *Fix:* log in as `appdev`, or run `ipa group-add-member app-deployers --users=neteng` on central.
 
 [TIP]
-.Identity-driven access
+.Ansible + IdM: identity lifecycle drives automation access
 ====
-**IdM groups** are attributes the PDP understands. Changing group membership is how the organisation **grants or revokes** deployment authority without editing playbooks. That is **policy + identity lifecycle** working together—important when people change roles or leave.
+**IdM groups** are attributes the PDP understands. Changing group membership is how the organisation **grants or revokes** deployment authority without editing playbooks or AAP templates. Ansible playbooks and AAP workflows do not change -- only the **identity attributes** do. That is **policy + identity lifecycle** working together, important when people change roles or leave. Revoke the group, and the next AAP job attempt is denied automatically.
 ====
 
-== Exercise 2.5 — Correct user (allowed)
+== Exercise 2.5 -- Correct user (allowed)
+
+_ZTA concept: *Least-privilege network paths* -- even with valid credentials, network ACLs constrain which hosts can connect to the database, limiting lateral movement._
 
 As `appdev`, launch the workflow. Expect OPA allow, Vault dynamic user, ACL update, app healthy at `http://app.zta.lab:8081`.
 
 [TIP]
-.Micro-segmentation after authorisation
+.Ansible orchestrates identity + network + secrets in one workflow
 ====
-Even with valid DB credentials, **network policy** still limits *where* connections may originate. The Arista step models **segmentation** that is common in ZTA: secrets prove *who the app is*, ACLs constrain *which paths are valid*. An attacker with stolen creds from a random laptop should still fail if the fabric only permits the app tier IP.
+Even with valid DB credentials, **network policy** still limits *where* connections may originate. The Arista step models **micro-segmentation** common in ZTA. Ansible's power here is **orchestrating all three layers** -- identity check, credential issuance, and network ACL update -- in a single auditable workflow. An attacker with stolen creds from a random laptop should still fail if the fabric only permits the app tier IP. AAP proves all three layers agreed before the app went live.
 ====
 
-== Exercise 2.6 — Credential expiry
+== Exercise 2.6 -- Credential expiry
+
+_ZTA concept: *Time-bound access* -- credentials expire automatically so standing access to data is the exception, not the norm._
 
 After deploy, confirm Vault user in PostgreSQL; wait TTL (e.g. 5 minutes); user disappears; `curl http://app.zta.lab:8081/health` reflects loss of DB access until rotation/restore.
 
 [TIP]
-.Ephemeral credentials change operations
+.Ansible + Vault: automated rotation replaces standing access
 ====
-TTL expiry is a feature, not a bug: it forces **rotation**, **re-authorisation**, or **deliberate renewal** instead of silent, multi-year database passwords. In ZTA, **standing access** to data is the exception and must be justified; here the app must be **re-fed** credentials on a schedule or on demand—exactly what `Rotate DB Credentials` (extended) practices.
+TTL expiry is a feature, not a bug: it forces **rotation**, **re-authorisation**, or **deliberate renewal** instead of silent, multi-year database passwords. Ansible makes this operationally viable -- the `Rotate DB Credentials` template re-runs the entire pipeline (policy check, new credential, ACL update, deploy) in minutes. Without automation, TTL-based credentials would be operationally painful. With AAP, they become **routine, scheduled, and self-service**.
+====
+
+== Hands-on: Write the OPA policy check
+
+_ZTA concept: *Policy Decision Point integration* -- querying OPA from a playbook turns an external policy engine into a mandatory trust gate that Ansible enforces inline._
+
+This exercise gives you a **skeleton playbook** with the IdM group lookup already done. Your job is to write the three missing tasks that query OPA, display the result, and enforce the decision.
+
+[IMPORTANT]
+.What to do
+====
+. Open `section2/playbooks/check-db-policy-student.yml` in a text editor (or view it in Gitea).
+. The playbook has three commented-out tasks marked `YOUR CODE STARTS HERE`. Each has hints and `FILL_IN` placeholders.
+. Uncomment each task and replace the `FILL_IN` placeholders with the correct values.
+. In AAP, create a new job template called **Check DB Policy (Student)** pointing to your skeleton playbook. Use the same inventory, credentials, and EE as the instructor version.
+. Launch as `neteng` -- expect OPA **DENIED**.
+. Launch as `appdev` -- expect OPA **ALLOWED**.
+====
+
+[cols="1,3",options="header"]
+|===
+| Task | What you write
+| 1. Query OPA | `uri` module POST to `{{ opa_url }}/v1/data/zta/db_access/decision` with an `input` body containing `user`, `user_groups`, `target_database`, and `requested_permissions`.
+| 2. Display decision | `debug` module showing the user, groups, decision (`allow`), and reason from `opa_decision.json.result`.
+| 3. Enforce | `assert` module that fails the play if `opa_decision.json.result.allow` is false.
+|===
+
+[TIP]
+.Why this matters
+====
+The instructor-provided workflow hides the OPA integration behind a pre-built template. Writing the `uri` call yourself teaches you **exactly** what data flows between Ansible and OPA -- the JSON input schema, the response structure, and the enforcement assertion. In production you will need to wire new policies into playbooks; this is the pattern you will reuse.
+====
+
+== Hands-on: Fix the broken deployment
+
+_ZTA concept: *Security misconfiguration is an attack surface* -- a single wrong `mode`, a missing `no_log`, or a hardcoded credential can undermine an otherwise sound ZTA pipeline._
+
+This exercise gives you a **deliberately broken** deployment playbook with four security and reliability bugs.
+
+[IMPORTANT]
+.What to do
+====
+. In AAP, create a job template called **Deploy Application (Broken)** pointing to `section2/playbooks/deploy-application-broken.yml`. Same inventory, credentials, and EE as the working version.
+. Run the full Section 2 workflow to get valid Vault credentials, then launch this template.
+. It will **fail**. Read the error output and the playbook source to find all four bugs:
+
+[cols="1,3",options="header"]
+!===
+! Bug ! ZTA violation
+! 1 ! Credentials are exposed in the AAP job log
+! 2 ! The env file is world-readable on the container
+! 3 ! A hardcoded password overrides the Vault dynamic credential
+! 4 ! The health check URL is wrong so deployment is never validated
+!===
+
+. Fix all four bugs in the playbook and re-run until the deployment succeeds.
+. Compare your fixes against the working `deploy-application.yml`.
+====
+
+[TIP]
+.Defensive coding in ZTA
+====
+These are **real-world** misconfigurations that break Zero Trust guarantees. Bug 1 (`no_log` missing) means ephemeral credentials end up in logs -- defeating their short-lived nature. Bug 2 (`mode 0644`) violates least privilege. Bug 3 (hardcoded password in systemd) is the classic "someone put a static cred in for debugging and forgot." Bug 4 (wrong port) means the deployment appears to succeed but nobody verified the app actually works. ZTA demands that **every link in the chain** is correct, not just the identity and policy layers.
 ====
 
 == Validation checklist
@@ -115,6 +239,8 @@ TTL expiry is a feature, not a bug: it forces **rotation**, **re-authorisation**
 * [ ] Unique Vault DB user per run
 * [ ] App reachable at :8081
 * [ ] TTL removes user; app unhealthy without fresh creds
+* [ ] Student OPA check playbook works (deny for `neteng`, allow for `appdev`)
+* [ ] All four bugs found and fixed in the broken deployment playbook
 
 == Extended exercises
 

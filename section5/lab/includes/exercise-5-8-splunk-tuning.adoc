@@ -10,7 +10,7 @@ Tune saved search to reduce false positives from AAP controller IP, e.g.:
 
 [source]
 ----
-index=main sourcetype=linux_secure "Failed password" NOT src_ip=192.168.1.10
+(index=zta_app OR index=zta_syslog) sourcetype=syslog "Failed password" NOT src_ip=192.168.1.10
 | stats count by src_ip, host
 | where count >= 5
 ----

@@ -274,7 +274,7 @@ Run **Exercise 1.7 — Test Vault SSH Certificates** to see AAP obtain a signed 
 | LDAP Server URI | `ldaps://central.zta.lab` |
 | LDAP Bind DN | `uid=admin,cn=users,cn=accounts,dc=zta,dc=lab` |
 | LDAP Bind Password | IdM `admin` password (`ansible123!` default) |
-| LDAP Group Type | `GroupOfNamesType` |
+| LDAP Group Type | `GroupOfNamesType` (or `MemberDNGroupType` — see step 5) |
 | LDAP User DN Template | *(empty)* |
 | LDAP Start TLS | Off (use LDAPS URI above) |
 
@@ -285,21 +285,26 @@ OPT_REFERRALS: 0
 OPT_NETWORK_TIMEOUT: 30
 ```
 
-5. **LDAP Group Type Parameters** (required). These are **key/value arguments for the chosen group type’s init method**—invalid keys are rejected. For **GroupOfNamesType** (IdM `groupOfNames`), use **`name_attr` only**; **do not** set `member_attr` (you will see *Invalid option for specified GROUP_TYPE*).
+5. **LDAP Group Type Parameters** (required). These are **key/value arguments for the chosen group type’s constructor** (`LDAP_GROUP_TYPE_PARAMS` in the docs). **Only keys that type accepts are valid**—extra keys produce *Invalid option for specified GROUP_TYPE*.
 
-**YAML:**
+Per [django-auth-ldap `LDAPGroupType`](https://django-auth-ldap.readthedocs.io/en/latest/reference.html#django_auth_ldap.config.LDAPGroupType) and the Red Hat LDAP group-type table ([AAP 2.5](https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.5/html/access_management_and_authentication/gw-configure-authentication#controller-set-up-LDAP) / [AAP 2.6](https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.6/html/access_management_and_authentication/gw-configure-authentication)):
+
+- **`GroupOfNamesType`** — for `groupOfNames`; equivalent to `MemberDNGroupType('member')`. Its constructor only takes **`name_attr`** (membership attribute is fixed to `member`). Use:
 
 ```yaml
 name_attr: cn
 ```
 
-**JSON (equivalent):**
+- **`MemberDNGroupType`** — generic “member DNs live in `member_attr` on the group entry”. Constructor takes **`member_attr`** and **`name_attr`**. To match the same IdM layout explicitly (and the doc’s two-field example), use:
 
-```json
-{"name_attr": "cn"}
+```yaml
+name_attr: cn
+member_attr: member
 ```
 
-If you pick a different **LDAP Group Type**, allowed keys change—see [AAP 2.6 Access management and authentication](https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.6/html/access_management_and_authentication/).
+For **FreeIPA/IdM `groupOfNames`**, those two choices are **functionally the same**. Use **`GroupOfNamesType` + `name_attr` only** for the shortest config; use **`MemberDNGroupType` + `name_attr` and `member_attr`** if you want to mirror Red Hat’s `{"name_attr": "cn", "member_attr": "member"}` style.
+
+If you pick another **LDAP Group Type**, allowed keys change—see [AAP 2.6 Access management and authentication](https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.6/html/access_management_and_authentication/).
 
 6. **LDAP User Search** (YAML):
 
@@ -325,11 +330,56 @@ last_name: sn
 email: mail
 ```
 
+This is the only “mapping” inside the LDAP form itself: it copies IdM attributes into the platform user profile (name and email). It does **not** assign organizations, teams, or superuser.
+
 9. Enable **Enabled** (and **Create objects** if you want local users on first login). **Create Authentication Method**.
 
-**Organisation / team mapping:** `setup/configure-aap-ldap.yml` also configures superuser group (`zta-admins`), organisation map, and team maps. On gateway installs those may be **authenticator maps** or advanced fields—see [Red Hat AAP 2.6 Access management and authentication](https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.6/html/access_management_and_authentication/).
+### Organisation, team, and superuser mapping (gateway)
 
-**Verify:** Sign out; log in as `ztauser` / `ansible123!` at `https://control.zta.lab`.
+On AAP 2.6, permissions after LDAP login come from **authentication mapping** (authenticator maps), not from the LDAP User Attribute Map above. After you create the LDAP authenticator, use the workflow in Red Hat’s doc: [Define authentication mapping rules and triggers](https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.6/html/access_management_and_authentication/gw-configure-authentication#gw-define-rules-triggers) (from **Access Management** → **Authentication Methods**). For each rule you pick a **map type** (see [Authenticator map types](https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.6/html/access_management_and_authentication/gw-configure-authentication#gw-authenticator-map-types)) and a **trigger** such as **Group** when membership in an IdM group should decide access (see [Authenticator map triggers](https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.6/html/access_management_and_authentication/gw-configure-authentication#gw-authenticator-map-triggers)).
+
+These rules mirror the workshop’s IdM layout (same intent as the `ldap_config` maps in `setup/configure-aap-ldap.yml` if you compare to automation).
+
+| Intent | IdM group DN (domain `dc=zta,dc=lab`) |
+|--------|----------------------------------------|
+| Platform superusers | `cn=zta-admins,cn=groups,cn=accounts,dc=zta,dc=lab` |
+| Org **Default** — admins | `cn=zta-admins,cn=groups,cn=accounts,dc=zta,dc=lab` |
+| AAP team **Infrastructure** | `cn=team-infrastructure,cn=groups,cn=accounts,dc=zta,dc=lab` |
+| AAP team **DevOps** | `cn=team-devops,cn=groups,cn=accounts,dc=zta,dc=lab` |
+| AAP team **Security** | `cn=team-security,cn=groups,cn=accounts,dc=zta,dc=lab` |
+| AAP team **Applications** | `cn=team-applications,cn=groups,cn=accounts,dc=zta,dc=lab` |
+
+#### Prerequisites (so Group triggers work)
+
+1. On the **same** LDAP authenticator, **LDAP Group Search** and **LDAP Group Type** / **LDAP Group Type Parameters** must match IdM (`GroupOfNamesType`, `name_attr: cn`, group search under `cn=groups,cn=accounts,dc=zta,dc=lab`) — see steps 5–7 above. If groups are wrong, the platform never sees IdM membership and **Group** maps never match.
+2. Turn **Create objects** **on** for this authenticator if org **Default** and the teams should be created automatically on first login (recommended for the lab).
+3. **Remove users:** If enabled, every login re-evaluates maps; permissions not covered by a map can be **removed**. For learning environments, either define **complete** maps below or leave **Remove users** off until maps are correct. Details: [Access management and authentication](https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.6/html/access_management_and_authentication/).
+
+#### Where to add maps (UI)
+
+1. **Access Management** → **Authentication Methods** → open your **IdM LDAP** authenticator.
+2. Open the **Mapping** tab (or continue the wizard after **Create Authentication Method**, per [Define authentication mapping rules and triggers](https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.6/html/access_management_and_authentication/gw-configure-authentication#gw-define-rules-triggers)).
+3. Use **Add authentication mapping**. Map types: [Authenticator map types](https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.6/html/access_management_and_authentication/gw-configure-authentication#gw-authenticator-map-types) (**Allow**, **Organization**, **Team**, **Role**, **Superuser**). For LDAP groups use trigger **Group** and the **full group DN** in **Groups** ([examples](https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.6/html/access_management_and_authentication/gw-configure-authentication#gw-authenticator-map-examples)).
+
+#### Workshop maps to create (manual)
+
+One rule per row unless you combine groups with **or**. Use **Group** trigger except for the first row.
+
+| Order (suggested) | Map type | Trigger | Groups (DN) | Target / role |
+|------------------|----------|---------|-------------|----------------|
+| 1 | **Organization** | **Always** | — | Organization **Default**, role **Organization Member** — every IdM user who logs in through this authenticator gets org membership (same idea as `users: true` in the legacy org map). |
+| 2 | **Organization** | **Group** | `cn=zta-admins,cn=groups,cn=accounts,dc=zta,dc=lab` | Organization **Default**, role **Organization Admin**. |
+| 3 | **Superuser** | **Group** | `cn=zta-admins,cn=groups,cn=accounts,dc=zta,dc=lab` | Platform superuser (optional; matches workshop `is_superuser` for **zta-admins**). |
+| 4 | **Team** | **Group** | `cn=team-infrastructure,cn=groups,cn=accounts,dc=zta,dc=lab` | Team **Infrastructure**, organization **Default**, role **Team Member**. |
+| 5 | **Team** | **Group** | `cn=team-devops,cn=groups,cn=accounts,dc=zta,dc=lab` | Team **DevOps**, organization **Default**, role **Team Member**. |
+| 6 | **Team** | **Group** | `cn=team-security,cn=groups,cn=accounts,dc=zta,dc=lab` | Team **Security**, organization **Default**, role **Team Member**. |
+| 7 | **Team** | **Group** | `cn=team-applications,cn=groups,cn=accounts,dc=zta,dc=lab` | Team **Applications**, organization **Default**, role **Team Member**. |
+
+If multiple maps apply, **order matters** — see [Adjusting the Mapping order](https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.6/html/access_management_and_authentication/gw-configure-authentication#gw-adjust-mapping-order).
+
+**Username note:** IdM also has an `admin` user. Prefer **`ztauser`** (or another lab user) for LDAP testing so you do not collide with the local platform **admin** account.
+
+**Verify:** Sign out; log in as `ztauser` / `ansible123!` at `https://control.zta.lab`. Expect **Default** org access and teams that match IdM groups in [`docs/lab/common-environment.adoc`](../docs/lab/common-environment.adoc) / `inventory/group_vars/all.yml`.
 
 ---
 

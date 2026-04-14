@@ -568,7 +568,7 @@ project below) so attendees skip Section 1 hands-on.
 ### Event-Driven Ansible configuration (AAP 2.6)
 
 1. In the **Event-Driven Ansible controller**, add a **Project** that includes this repo (or upload the rulebook) and a **Decision Environment** if needed. See [Using automation decisions](https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.6/html/using_automation_decisions/).
-2. Create a **Rulebook Activation** for `section5/eda/splunk-credential-revoke.yml` named **Splunk Brute Force Response**
+2. Create a **Rulebook Activation** for `extensions/eda/rulebooks/splunk-credential-revoke.yml` named **Splunk Brute Force Response**
 3. Set restart policy to **On failure**
 4. Enable the activation (starts listening on port 5000, or the port configured for your activation)
 
@@ -610,12 +610,12 @@ Run through this checklist the day of the workshop:
 **Logging & SIEM (Splunk — Wazuh is excluded)**
 
 - [ ] Splunk running on central (`curl http://central.zta.lab:8000`)
-- [ ] Splunk receiving logs (`index=main sourcetype=linux_secure` returns results)
+- [ ] Splunk receiving logs (`index=zta_syslog OR index=zta_app sourcetype=syslog` returns results)
 - [ ] `integrate-splunk.yml` has been run (Universal Forwarder shipping logs)
 
 **Event-Driven Automation**
 
-- [ ] EDA rulebook activation running (`splunk-credential-revoke.yml`)
+- [ ] EDA rulebook activation running (`extensions/eda/rulebooks/splunk-credential-revoke.yml`)
 - [ ] EDA listening on port 5000 (`curl http://control.zta.lab:5000/endpoint`)
 
 **Final Verification**

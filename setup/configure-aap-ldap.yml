@@ -6,15 +6,20 @@
 #   /api/controller/v2/settings/ldap/
 # AAP 2.6 gateway installs often require **Access Management → Authentication
 # Methods** instead; see Section 1 **Exercise 1.2** (lab/index.adoc or README.md)
-# for IdM field values that mirror the ldap_config below.
+# for IdM field values that mirror the ldap_config below. Automate that path with
+# setup/configure-aap-gateway-ldap.yml (POST/PATCH /api/gateway/v1/authenticators/).
 #
 # Usage:
 #   ansible-playbook setup/configure-aap-ldap.yml
+#   AAP 2.6+ gateway (Envoy): session login defaults to /api/gateway/v1/login/
+#   Classic controller only: -e 'aap_login_path=/api/login/'
 #
 # Prerequisites:
 #   - IdM (central.zta.lab) is installed and running
 #   - AAP Controller is installed and reachable
-#   - setup/enroll-idm-clients.yml has run (AAP trusts IdM CA)
+#   - setup/enroll-idm-clients.yml has run (AAP trusts IdM CA on the *host*)
+#   - Containerized AAP: run setup/configure-aap-podman-gateway-prereqs.yml on [automation],
+#     or add -e aap_podman_gateway_prereqs=true to this playbook (second play).
 
 - name: Configure AAP Controller LDAP authentication
   hosts: localhost
@@ -23,6 +28,8 @@
 
   vars:
     aap_host: "{{ aap_controller_url | default('https://control.zta.lab') }}"
+    # Platform gateway (Envoy) session login — see RHAAP 2.6 Automation execution API / controller-api-auth-methods
+    aap_session_login_url: "{{ aap_host }}{{ aap_login_path | default('/api/gateway/v1/login/') }}"
     aap_user: admin
     aap_password: "{{ lookup('env', 'AAP_ADMIN_PASSWORD') | default('ansible123!', true) }}"
     aap_verify_ssl: false
@@ -31,6 +38,10 @@
     idm_ldap_domain: "{{ idm_domain | default('zta.lab') }}"
     idm_ldap_base_dn: "dc={{ idm_ldap_domain.split('.') | join(',dc=') }}"
     idm_ldap_password: "{{ idm_admin_password | default('ansible123!') }}"
+    # Skip session-based LDAP verification (GET/POST session login + GET /me/)
+    aap_ldap_skip_api_token_test: false
+    # Password for ztauser session login test (defaults to IdM admin password — same as ztauser when created by workshop IdM playbooks)
+    aap_ldap_test_user_password: "{{ aap_ldap_test_password | default(idm_ldap_password) }}"
 
     # LDAP settings for AAP's authentication backend
     ldap_config:
@@ -132,35 +143,115 @@
       when: ldap_update.status == 200
 
     # ── Verify LDAP integration works ────────────────────────────────
+    # Controller may have AUTH_BASIC_ENABLED=false: POST /tokens/ with Basic
+    # returns 401 "visit /api/login/". Use session flow (gateway: /api/gateway/v1/login/).
 
-    - name: Test LDAP login with ztauser
-      uri:
-        url: "{{ aap_host }}/api/controller/v2/tokens/"
+    - name: Get CSRF cookie for LDAP session test
+      ansible.builtin.uri:
+        url: "{{ aap_session_login_url }}"
+        method: GET
+        validate_certs: "{{ aap_verify_ssl }}"
+        status_code: [200]
+      register: ldap_login_csrf
+      when: not ((aap_ldap_skip_api_token_test | default(false)) | bool)
+
+    - name: POST session login as ztauser (LDAP)
+      ansible.builtin.uri:
+        url: "{{ aap_session_login_url }}"
         method: POST
-        user: ztauser
-        password: "{{ idm_ldap_password }}"
-        force_basic_auth: true
-        validate_certs: "{{ aap_verify_ssl }}"
-        body_format: json
+        body_format: form-urlencoded
         body:
-          description: "LDAP integration test"
-          scope: write
-        status_code: [201, 400, 401, 403]
-      register: ldap_login_test
-      ignore_errors: true
-
-    - name: Clean up test token
-      uri:
-        url: "{{ aap_host }}{{ ldap_login_test.json.url }}"
-        method: DELETE
-        user: "{{ aap_user }}"
-        password: "{{ aap_password }}"
-        force_basic_auth: true
+          username: ztauser
+          password: "{{ aap_ldap_test_user_password }}"
+        headers:
+          X-CSRFToken: "{{ (ldap_login_csrf.cookies | default({})).csrftoken }}"
+          Referer: "{{ aap_session_login_url }}"
+          # ansible.legacy.uri on Ansible 2.14 has no `cookies` parameter — use Cookie header
+          Cookie: "csrftoken={{ (ldap_login_csrf.cookies | default({})).csrftoken }}"
         validate_certs: "{{ aap_verify_ssl }}"
-        status_code: [204, 404]
+        status_code: [200, 201, 204, 301, 302, 303, 307, 308, 401, 403]
+        return_content: true
+      register: ldap_session_post
       when:
-        - ldap_login_test.status == 201
-        - ldap_login_test.json.url is defined
+        - not ((aap_ldap_skip_api_token_test | default(false)) | bool)
+        - (ldap_login_csrf.cookies | default({})).csrftoken | default('') | length > 0
+
+    - name: Verify LDAP user session (GET /api/controller/v2/me/)
+      ansible.builtin.uri:
+        url: "{{ aap_host }}/api/controller/v2/me/"
+        method: GET
+        validate_certs: "{{ aap_verify_ssl }}"
+        headers:
+          Cookie: "{{ ldap_session_post.cookies | default({}) | dictsort | map('join', '=') | join('; ') }}"
+        status_code: [200, 401, 403]
+      register: ldap_me_result
+      when:
+        - not ((aap_ldap_skip_api_token_test | default(false)) | bool)
+        - ldap_session_post is defined
+        - ldap_session_post.status | int in [200, 201, 204, 301, 302, 303, 307, 308]
+
+    # Do not register skipped uri results as ldap_login_test — Ansible sets skipped: true
+    # and the Summary must not treat that as -e aap_ldap_skip_api_token_test.
+    - name: LDAP session test — record GET /me/ outcome
+      ansible.builtin.set_fact:
+        ldap_login_test:
+          status: "{{ ldap_me_result['status'] | int }}"
+          json: "{{ ldap_me_result['json'] | default({}) }}"
+      when:
+        - not ((aap_ldap_skip_api_token_test | default(false)) | bool)
+        - ldap_me_result is defined
+        - not (ldap_me_result['skipped'] | default(false))
+
+    - name: LDAP session test — record failed POST session login
+      ansible.builtin.set_fact:
+        ldap_login_test:
+          status: "{{ ldap_session_post.status | int }}"
+          json: "{{ ldap_session_post.json | default({}) }}"
+      when:
+        - not ((aap_ldap_skip_api_token_test | default(false)) | bool)
+        - ldap_session_post is defined
+        - ldap_session_post.status | int not in [200, 201, 204, 301, 302, 303, 307, 308]
+        - ldap_login_test is not defined
+
+    - name: LDAP session test — hint when POST 401 has no JSON body
+      ansible.builtin.set_fact:
+        ldap_login_test:
+          status: "{{ ldap_login_test['status'] | int }}"
+          json: "{{ (ldap_login_test['json'] | default({})) | combine({'detail': ldap_post_401_empty_hint}) }}"
+      vars:
+        ldap_post_401_empty_hint: >-
+          HTTP 401 with empty JSON body: gateway rejected session login. Configure Access Management LDAP (Exercise 1.2), verify IdM user ztauser and password (or -e aap_ldap_test_password), or -e aap_ldap_skip_api_token_test=true to skip this check.
+      when:
+        - not ((aap_ldap_skip_api_token_test | default(false)) | bool)
+        - ldap_login_test is defined
+        - ldap_login_test['status'] | int == 401
+        - (ldap_login_test['json'] | default({})) | length == 0
+
+    - name: LDAP session test — POST ok but GET /me/ did not run
+      ansible.builtin.set_fact:
+        ldap_login_test:
+          status: 598
+          json:
+            detail: "POST login returned HTTP {{ ldap_session_post.status }} but GET /me/ was skipped (check when conditions or empty session cookies)."
+      when:
+        - not ((aap_ldap_skip_api_token_test | default(false)) | bool)
+        - ldap_session_post is defined
+        - ldap_session_post.status | int in [200, 201, 204, 301, 302, 303, 307, 308]
+        - ldap_me_result is defined
+        - ldap_me_result['skipped'] | default(false)
+        - ldap_login_test is not defined
+
+    - name: LDAP session test — no CSRF cookie from GET session login
+      ansible.builtin.set_fact:
+        ldap_login_test:
+          status: 599
+          json:
+            detail: "No csrftoken from GET {{ aap_session_login_url }}; cannot complete session login test"
+      when:
+        - not ((aap_ldap_skip_api_token_test | default(false)) | bool)
+        - ldap_login_csrf is defined
+        - (ldap_login_csrf.cookies | default({})).csrftoken | default('') | length == 0
+        - ldap_login_test is not defined
 
     # ── Summary ──────────────────────────────────────────────────────
 
@@ -185,7 +276,33 @@
           ║    Security       ← team-security                       ║
           ║    Applications   ← team-applications                   ║
           ║                                                         ║
-          ║  LDAP Login Test (ztauser):                             ║
-          ║    {{ ('PASSED' if ldap_login_test.status == 201 else 'FAILED (' + (ldap_login_test.status | string) + ') — user may need password change in IdM first') }}║
+          ║  LDAP session test (ztauser gateway login + /me/):     ║
+          {% if aap_ldap_skip_api_token_test | default(false) | bool %}║    SKIPPED (-e aap_ldap_skip_api_token_test=true)         ║
+          {% elif ldap_login_test is not defined %}║    FAILED (no test result — check session tasks above)      ║
+          {% elif ldap_login_test['status'] | default(0) | int == 200 %}║    PASSED                                                 ║
+          {% else %}║    FAILED HTTP {{ ldap_login_test['status'] | default('?') }} — {{ (ldap_login_test['json'] | default({}))['detail'] | default(ldap_login_test['msg'] | default('see session login tasks above')) }}║
+          {% endif %}║                                                         ║
+          ║  HTTP 401 on session POST: gateway rejected login — often  ║
+          ║  gateway LDAP (Exercise 1.2) not only controller LDAP API.║
+          ║  If FAILED: ztauser in IdM + password; or skip test:       ║
+          ║  -e aap_ldap_skip_api_token_test=true                      ║
           ║                                                         ║
           ╚══════════════════════════════════════════════════════════╝
+
+# ── Optional: Podman gateway DNS + IdM CA (container LDAPS) ─────────
+- name: Optional — Podman gateway DNS and IdM CA for LDAPS
+  hosts: automation
+  gather_facts: false
+  become: false
+
+  vars:
+    aap_podman_gateway_container: "{{ aap_podman_gateway_container_name | default('automation-gateway') }}"
+    aap_podman_controller_container: "{{ aap_podman_controller_container_name | default('automation-controller') }}"
+    aap_podman_ca_staged_path: "{{ aap_podman_ca_staged | default('/tmp/zta-ipa-ca-staged.crt') }}"
+    aap_podman_ca_anchor_name: "{{ aap_podman_ca_trust_anchor | default('zta-ipa-ca.crt') }}"
+    aap_podman_ca_path_remote: "{{ aap_podman_ca_src_file | default('') }}"
+
+  tasks:
+    - name: Apply Podman gateway LDAPS prerequisites
+      when: aap_podman_gateway_prereqs | default(false) | bool
+      ansible.builtin.include_tasks: tasks/aap-podman-gateway-prereqs_tasks.yml

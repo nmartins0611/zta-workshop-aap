@@ -701,12 +701,12 @@ User launches job
 
 ---
 
-## Section 5 — Automated Incident Response (Wazuh → EDA → Vault)
+## Section 5 — Automated Incident Response (Splunk → EDA → Vault)
 
 ### Learning Objectives
 
 - See automated incident response triggered by a security event
-- Understand the Wazuh → EDA → AAP → Vault chain
+- Understand the Splunk → EDA → AAP → Vault chain
 - Observe how credential revocation contains a breach
 - Restore the application after investigating
 
@@ -714,14 +714,15 @@ User launches job
 
 ### The Scenario
 
-An attacker brute-forces SSH on the app server. Wazuh detects it (rule 5712),
-sends an alert to Event-Driven Ansible, which triggers an AAP job to **revoke
-the application's database credentials in Vault** — isolating the app from
-sensitive data in under 30 seconds.
+An attacker brute-forces SSH on the app server. Splunk detects it via a saved
+search alert (5+ failed logins in 60 seconds), sends a webhook to Event-Driven
+Ansible, which triggers an AAP job to **revoke the application's database
+credentials in Vault** — isolating the app from sensitive data in under 30
+seconds.
 
 ```
-Attacker → SSH brute force → Wazuh detects → EDA receives → AAP revokes → App isolated
-  T+0s         T+10s            T+12s           T+14s          T+20s         T+25s
+Attacker → SSH brute force → Splunk detects → EDA receives → AAP revokes → App isolated
+  T+0s         T+10s            T+15s           T+17s          T+23s         T+28s
 ```
 
 ---
@@ -744,6 +745,17 @@ ssh rhel@db.zta.lab
 sudo -u postgres psql -c "\du" | grep v-root   # Vault DB user exists
 ```
 
+Open Splunk (`http://central.zta.lab:8000`) and confirm logs are arriving:
+
+```
+index=zta_app sourcetype=syslog "sshd" earliest=-15m
+```
+
+> **Splunk index map:** The lab uses dedicated indexes per data source —
+> `zta_syslog` (VM auth), `zta_app` (container auth), `zta_vault` (Vault
+> audit), `zta_opa` (OPA decisions), `zta_network` (switch syslog). See
+> `section5/README.md` for the full search reference.
+
 ---
 
 ### Exercise 5.3 — Launch the Brute-Force Attack
@@ -755,7 +767,7 @@ SSH login attempts to `app.zta.lab`.
 
 ### Exercise 5.4 — Watch the Automated Response
 
-1. **Wazuh Dashboard** (`http://wazuh.zta.lab:5601`): Alert rule 5712 fires
+1. **Splunk** (`http://central.zta.lab:8000`): Saved search alert fires (Activity → Triggered Alerts)
 2. **Event-Driven Ansible controller**: Event received, rulebook matched, job triggered
 3. **AAP Jobs**: "Emergency: Revoke App Credentials" appears — triggered by EDA,
    no human clicked Launch
@@ -764,9 +776,30 @@ SSH login attempts to `app.zta.lab`.
 
 **The application has been automatically isolated from the database.**
 
+**Correlate the full chain in Splunk** — run these in order to see the attack
+and response as a single timeline:
+
+```
+# The attack (failed SSH logins)
+index=zta_app sourcetype=syslog "Failed password" earliest=-10m
+| stats count by src_ip, host | sort - count
+
+# Vault's response (credential revocation)
+index=zta_vault sourcetype="hashicorp:vault:audit" earliest=-10m
+| search "sys/leases/revoke" OR "database/creds"
+| table _time, request.path, request.operation, auth.display_name
+
+# Full cross-index timeline
+(index=zta_app OR index=zta_vault OR index=zta_opa) earliest=-10m
+| eval source_index=index
+| table _time, source_index, sourcetype, _raw | sort _time
+```
+
 > **ZTA Concept**: This is "assume breach" in action. The system doesn't wait
 > for a human to investigate. Credential revocation happens automatically,
-> limiting the blast radius.
+> limiting the blast radius. The cross-index search shows how **Splunk
+> correlates telemetry from multiple sources** — auth logs, Vault audit, and
+> OPA decisions — into a single incident timeline.
 
 ---
 
@@ -789,9 +822,9 @@ curl http://app.zta.lab:8081/health     # healthy again
 | Time | Event |
 |------|-------|
 | T+0s | Attack starts |
-| T+12s | Wazuh fires brute-force alert |
-| T+14s | EDA triggers AAP job |
-| T+25s | Credentials revoked, app isolated |
+| T+15s | Splunk saved search fires brute-force alert |
+| T+17s | EDA receives webhook, triggers AAP job |
+| T+28s | Credentials revoked, app isolated |
 | — | Human investigates, then restores |
 
 ---

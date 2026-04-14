@@ -34,6 +34,11 @@ zta_workshop_job_templates:
     description: "Section 1 — Lab fix step (cert trust)"
     playbook: section1/playbooks/fix-cert-trust.yml
     credentials: [ZTA Machine Credential]
+  - section: 1
+    name: List OPA Policies
+    description: "Admin utility — List all policies loaded in OPA with health check"
+    playbook: utilities/list-opa-policies.yml
+    credentials: [ZTA Machine Credential]
 
   # ── Section 2 ───────────────────────────────────────────────────────
   - section: 2
@@ -129,6 +134,7 @@ zta_workshop_job_templates:
     description: "Section 3 — Wazuh security posture check"
     playbook: section3/playbooks/check-wazuh-security.yml
     credentials: [ZTA Machine Credential]
+    requires: wazuh
 
   # ── Section 4 ───────────────────────────────────────────────────────
   - section: 4
@@ -144,17 +150,66 @@ zta_workshop_job_templates:
         - question_name: VLAN ID
           question_description: "VLAN ID to create (100-999)"
           required: true
-          type: integer
+          type: text
           variable: new_vlan_id
           default: "200"
-          min: 100
-          max: 999
         - question_name: VLAN Name
           question_description: "Name for the new VLAN"
           required: true
           type: text
           variable: new_vlan_name
           default: DMZ
+  - section: 4
+    name: Manage IdM Identity
+    description: "Section 4 — Create groups, users, and group memberships in IdM"
+    playbook: section4/playbooks/manage-idm-identity.yml
+    credentials: [ZTA Machine Credential]
+    survey_enabled: true
+    survey_spec:
+      name: "IdM identity management survey"
+      description: "Select an action and provide the required fields"
+      spec:
+        - question_name: Action
+          question_description: "What do you want to do?"
+          required: true
+          type: multiplechoice
+          variable: action
+          choices: |-
+            create_group
+            create_user
+            add_user_to_group
+            show_identity
+          default: show_identity
+        - question_name: Group Name
+          question_description: "IdM group name (e.g. team-readonly)"
+          required: false
+          type: text
+          variable: group_name
+          default: ""
+        - question_name: Group Description
+          question_description: "Description for new group (create_group only)"
+          required: false
+          type: text
+          variable: group_desc
+          default: ""
+        - question_name: User ID
+          question_description: "IdM user login (e.g. neteng)"
+          required: false
+          type: text
+          variable: user_id
+          default: ""
+        - question_name: First Name
+          question_description: "First name (create_user only)"
+          required: false
+          type: text
+          variable: user_first
+          default: ""
+        - question_name: Last Name
+          question_description: "Last name (create_user only)"
+          required: false
+          type: text
+          variable: user_last
+          default: ""
   - section: 4
     name: Break ACL
     description: "Section 4 — Lab break step (ACL)"
@@ -201,3 +256,4 @@ zta_workshop_job_templates:
     description: "Section 7 — Wazuh-driven brute-force simulation"
     playbook: section7/playbooks/simulate-bruteforce-wazuh.yml
     credentials: [ZTA Machine Credential]
+    requires: wazuh

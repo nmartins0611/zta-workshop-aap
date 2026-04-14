@@ -24,35 +24,32 @@
     aap_user: admin
     aap_password: "{{ lookup('env', 'AAP_ADMIN_PASSWORD') | default('ansible123!', true) }}"
     aap_verify_ssl: false
+    aap_organization: Default
 
   tasks:
     # ── Verify OPA gateway policy is loaded ────────────────────────────
 
     - name: Test OPA gateway policy is accessible
       uri:
-        url: "{{ opa_url }}/v1/data/aap/gateway/allow"
+        url: "{{ opa_url }}/v1/data/aap/gateway/decision"
         method: POST
         body_format: json
         body:
           input:
-            user:
+            name: "Test Template"
+            created_by:
               username: test
-              groups: []
               is_superuser: false
-            action: launch
-            resource:
-              name: "Test Template"
-              type: job_template
-            extra_vars: {}
+              teams: []
         status_code: 200
       register: opa_gateway_test
 
     - name: Verify OPA gateway responded
       assert:
-        that: opa_gateway_test.json.result is defined
+        that: opa_gateway_test.json.result.allowed is defined
         fail_msg: >
-          OPA gateway policy not loaded. Run setup/configure-opa-base.yml first
-          to deploy aap_gateway.rego.
+          OPA gateway policy not loaded or outdated. Run setup/configure-opa-base.yml
+          first to deploy aap_gateway.rego. Got: {{ opa_gateway_test.json | default({}) }}
 
     # ── Configure AAP to use OPA ───────────────────────────────────────
 
@@ -70,7 +67,7 @@
 
     - name: Configure OPA as the Policy as Code provider
       uri:
-        url: "{{ aap_host }}/api/controller/v2/settings/opa/"
+        url: "{{ aap_host }}/api/controller/v2/settings/policyascode/"
         method: PATCH
         user: "{{ aap_user }}"
         password: "{{ aap_password }}"
@@ -78,13 +75,50 @@
         validate_certs: "{{ aap_verify_ssl }}"
         body_format: json
         body:
-          OPA_URL: "{{ opa_url }}"
-          OPA_POLICY_PATH: "v1/data/aap/gateway/decision"
-          OPA_ENABLED: true
-          OPA_PRE_ACTION_ENABLED: true
+          OPA_HOST: "{{ hostvars['central']['ansible_host'] | default('192.168.1.11') }}"
+          OPA_PORT: 8181
+          OPA_SSL: false
+          OPA_AUTH_TYPE: "None"
           OPA_REQUEST_TIMEOUT: 5
-        status_code: [200, 201]
+          OPA_REQUEST_RETRIES: 2
+        status_code: [200]
       register: opa_config
+
+    # ── Set policy enforcement query path on the Default organisation ──
+
+    - name: Look up Default organisation ID
+      uri:
+        url: "{{ aap_host }}/api/controller/v2/organizations/?name={{ aap_organization | urlencode }}"
+        method: GET
+        user: "{{ aap_user }}"
+        password: "{{ aap_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ aap_verify_ssl }}"
+        status_code: 200
+      register: org_lookup
+
+    - name: Verify Default organisation exists
+      assert:
+        that: org_lookup.json.count > 0
+        fail_msg: "Organisation '{{ aap_organization }}' not found in AAP"
+
+    - name: Set policy enforcement query path on organisation
+      uri:
+        url: "{{ aap_host }}/api/controller/v2/organizations/{{ org_lookup.json.results[0].id }}/"
+        method: PATCH
+        user: "{{ aap_user }}"
+        password: "{{ aap_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ aap_verify_ssl }}"
+        body_format: json
+        body:
+          policy_enforcement: "aap/gateway/decision"
+        status_code: 200
+      register: org_policy
+
+    - name: Display policy enforcement status
+      debug:
+        msg: "Policy enforcement set to 'aap/gateway/decision' on organisation '{{ aap_organization }}'"
 
     # ── Validate the integration ───────────────────────────────────────
 
@@ -95,16 +129,11 @@
         body_format: json
         body:
           input:
-            user:
+            name: "Configure VLAN"
+            created_by:
               username: admin
-              groups: [zta-admins]
               is_superuser: true
-            action: launch
-            resource:
-              name: "Configure VLAN"
-              type: job_template
-            extra_vars:
-              new_vlan_id: 100
+              teams: []
       register: test_superuser
 
     - name: Test gateway policy — netadmin launching VLAN (should allow)
@@ -114,16 +143,12 @@
         body_format: json
         body:
           input:
-            user:
+            name: "Configure VLAN"
+            created_by:
               username: netadmin
-              groups: [zta-admins, network-admins]
               is_superuser: false
-            action: launch
-            resource:
-              name: "Configure VLAN"
-              type: job_template
-            extra_vars:
-              new_vlan_id: 100
+              teams:
+                - name: Infrastructure
       register: test_netadmin
 
     - name: Test gateway policy — neteng launching VLAN (should deny)
@@ -133,16 +158,11 @@
         body_format: json
         body:
           input:
-            user:
+            name: "Configure VLAN"
+            created_by:
               username: neteng
-              groups: []
               is_superuser: false
-            action: launch
-            resource:
-              name: "Configure VLAN"
-              type: job_template
-            extra_vars:
-              new_vlan_id: 100
+              teams: []
       register: test_neteng
 
     - name: Test gateway policy — appdev launching Deploy (should allow)
@@ -152,15 +172,12 @@
         body_format: json
         body:
           input:
-            user:
+            name: "Deploy Application"
+            created_by:
               username: appdev
-              groups: [app-deployers]
               is_superuser: false
-            action: launch
-            resource:
-              name: "Deploy Application"
-              type: job_template
-            extra_vars: {}
+              teams:
+                - name: Applications
       register: test_appdev
 
     - name: Display gateway policy test results
@@ -170,24 +187,24 @@
           ║       AAP Policy as Code — Configuration Complete        ║
           ╠════════════════════════════════════════════════════════════╣
           ║                                                          ║
-          ║  OPA Endpoint:  {{ opa_url }}║
-          ║  Policy Path:   v1/data/aap/gateway/decision             ║
-          ║  Status:        ENABLED                                  ║
+          ║  OPA Host:      {{ opa_url | regex_replace('https?://', '') }}
+          ║  Organisation:  {{ aap_organization }} → aap/gateway/decision
+          ║  Status:        CONFIGURED                                 ║
           ║                                                          ║
           ║  Gateway Policy Tests:                                   ║
           ║                                                          ║
           ║  admin (superuser) → Configure VLAN                      ║
-          ║    {{ ('ALLOW' if test_superuser.json.result.allow else 'DENY') }}║
+          ║    {{ ('ALLOW' if test_superuser.json.result.allowed else 'DENY') }}
           ║                                                          ║
-          ║  netadmin (network-admins) → Configure VLAN              ║
-          ║    {{ ('ALLOW' if test_netadmin.json.result.allow else 'DENY') }}║
+          ║  netadmin (Infrastructure) → Configure VLAN              ║
+          ║    {{ ('ALLOW' if test_netadmin.json.result.allowed else 'DENY') }}
           ║                                                          ║
-          ║  neteng (no groups) → Configure VLAN                     ║
-          ║    {{ ('ALLOW' if test_neteng.json.result.allow else 'DENY') }}║
-          ║    {{ test_neteng.json.result.reason | truncate(54) }}║
+          ║  neteng (no teams) → Configure VLAN                      ║
+          ║    {{ ('DENY' if not test_neteng.json.result.allowed else 'ALLOW') }}
+          ║    {{ test_neteng.json.result.violations[0] | default('') | truncate(54) }}
           ║                                                          ║
-          ║  appdev (app-deployers) → Deploy Application             ║
-          ║    {{ ('ALLOW' if test_appdev.json.result.allow else 'DENY') }}║
+          ║  appdev (Applications) → Deploy Application              ║
+          ║    {{ ('ALLOW' if test_appdev.json.result.allowed else 'DENY') }}
           ║                                                          ║
           ║  Defence in Depth:                                       ║
           ║    OUTER RING: AAP checks gateway policy before launch   ║

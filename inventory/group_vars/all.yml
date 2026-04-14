@@ -89,6 +89,8 @@ idm_teams:
     description: Security Operations & Compliance
   - name: team-applications
     description: Application Development
+  - name: team-readonly
+    description: Read-only template visibility (all workshop users)
 
 # ── IdM Functional Groups (used in OPA policies for RBAC) ──────────
 idm_groups:
@@ -131,8 +133,8 @@ idm_workshop_users:
   - uid: neteng
     first: Network
     last: Engineer
-    title: Workshop Network Engineer (no groups — will be denied)
-    groups: []
+    title: Workshop Network Engineer (denied by policy — visible via Readonly team)
+    groups: [team-readonly]
 
   # Infrastructure team
   - uid: jsmith

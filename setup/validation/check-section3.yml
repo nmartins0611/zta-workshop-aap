@@ -53,13 +53,11 @@
         body_format: json
         body:
           input:
-            user:
+            name: Apply Security Patch
+            created_by:
               username: neteng
-              groups: []
               is_superuser: false
-            action: launch
-            resource:
-              name: Apply Security Patch
+              teams: []
       register: s3_gw_deny
       failed_when: false
 
@@ -70,13 +68,12 @@
         body_format: json
         body:
           input:
-            user:
+            name: Apply Security Patch
+            created_by:
               username: ztauser
-              groups: [patch-admins]
               is_superuser: false
-            action: launch
-            resource:
-              name: Apply Security Patch
+              teams:
+                - name: Infrastructure
       register: s3_gw_allow
       failed_when: false
 
@@ -95,7 +92,7 @@
       register: s3_banner_stat
 
     - name: Check login banner content
-      command: grep -c "SECURITY NOTICE" /etc/issue
+      command: grep -c "AUTHORISED ACCESS ONLY" /etc/issue
       register: s3_banner_content
       changed_when: false
       failed_when: false
@@ -137,9 +134,9 @@
       - name: "Template: Apply Security Patch"
         ok: "{{ s3_template_ok | default(false) }}"
       - name: OPA gateway denies neteng (patching)
-        ok: "{{ (c.s3_gw_deny.json.result.allow | default(true)) == false }}"
+        ok: "{{ (c.s3_gw_deny.json.result.allowed | default(true)) == false }}"
       - name: OPA gateway allows ztauser (patching)
-        ok: "{{ (c.s3_gw_allow.json.result.allow | default(false)) == true }}"
+        ok: "{{ (c.s3_gw_allow.json.result.allowed | default(false)) == true }}"
       - name: Login banner deployed
         ok: "{{ (a.s3_banner_content.rc | default(1)) == 0 }}"
       - name: SSH PermitRootLogin disabled

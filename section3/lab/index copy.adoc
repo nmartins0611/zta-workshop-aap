@@ -1,0 +1,183 @@
+= Section 3 — AAP Policy as Code: platform-gated patching
+:toc: left
+:toclevels: 3
+:icons: font
+:idprefix:
+:idseparator: -
+
+Companion to `section3/README.md`. Demonstrates **AAP → OPA gateway** blocking launches before playbooks run.
+
+include::../../docs/lab/common-environment.adoc[]
+
+[IMPORTANT]
+.Prerequisites — verify these before starting
+====
+Section 3 depends on several services and configurations from earlier sections.
+Run the checklist below from `central` or `control` before starting the exercises.
+
+*1. LDAP authentication on the controller*
+
+Students must be able to log into AAP as IdM users (`ztauser`, `neteng`, `appdev`, etc.) with their group memberships visible. If you have not completed **Exercise 1.2** (LDAP via **Access Management → Authentication Methods**) the gateway policy cannot evaluate group membership and every launch will be denied.
+
+*2. OPA policies loaded on central*
+
+The gateway policy (`aap.gateway`) and patching policy (`zta.patching`) must be loaded:
+
+[source,bash]
+----
+# Both should return JSON with a "result" key
+curl -s http://central.zta.lab:8181/v1/data/aap/gateway | python3 -m json.tool | head -3
+curl -s http://central.zta.lab:8181/v1/data/zta/patching | python3 -m json.tool | head -3
+----
+
+If either returns empty or errors, load them:
+
+[source,bash]
+----
+ansible-playbook -i inventory/hosts.ini setup/configure-opa-base.yml
+----
+
+*3. AAP Policy as Code integration*
+
+The controller must call OPA before every job launch (decision path `v1/data/aap/gateway/decision`). Verify under *Settings → Policy as Code* in the controller UI, or deploy it:
+
+[source,bash]
+----
+ansible-playbook -i inventory/hosts.ini setup/configure-aap-policy.yml
+----
+
+*4. Section 3 job templates and RBAC*
+
+The **Apply Security Patch** template (and others) must exist in AAP with team RBAC grants so LDAP users can see them:
+
+[source,bash]
+----
+ansible-playbook -i inventory/hosts.ini setup/configure-aap-project.yml --tags section3,rbac
+----
+
+*5. Quick smoke test*
+
+[source,bash]
+----
+# AAP gateway policy responds
+curl -sk -u admin:ansible123! \
+  "https://control.zta.lab/api/controller/v2/settings/opa/" | python3 -m json.tool | head -5
+
+# Section 3 templates exist
+curl -sk -u admin:ansible123! \
+  "https://control.zta.lab/api/controller/v2/job_templates/?name__icontains=patch" \
+  | python3 -m json.tool | grep '"name"'
+----
+
+If all five checks pass you are ready for Section 3.
+====
+
+== Overview
+
+Template name contains **Patch** → `aap.gateway` requires the **Infrastructure** or **Security** AAP team. Wrong users never start the playbook.
+
+[IMPORTANT]
+.Platform enforcement vs playbook checks
+====
+In Section 2, OPA ran **inside** the workflow. Here, **AAP itself** asks OPA before starting the job. That is **Policy as Code on the automation platform**: even a playbook with *no* internal `uri` call to OPA cannot bypass the gate, because the **PEP (AAP)** refuses to enqueue the run. This models **separation of duties**—only the right **team** may even *attempt* patching templates—and shrinks insider “I’ll run ansible by hand” if your production design wires the same gateway for all changes.
+
+AAP 2.6 sends the full job context to OPA, including `created_by.teams` (the user's AAP team memberships, populated via LDAP). The policy checks these teams — not raw IdM groups — for its decisions.
+====
+
+|===
+| Template pattern | Required AAP team (gateway)
+| Patch | Infrastructure or Security
+| VLAN / Network | Infrastructure
+| Deploy, Credential, Application | Applications or DevOps
+| Everything else | Any authenticated user
+|===
+
+[TIP]
+.Why template names matter
+====
+The gateway policy uses **resource metadata** (here, template name substrings) as a coarse **risk classifier**. Production policies often add **inventory tags, execution environments, survey variables, or SAML claims**—the idea is the same: **encode risk in attributes** the PDP can evaluate consistently, not in tribal knowledge about “who is allowed to click what.”
+====
+
+== Exercise 3.1 — Job template
+
+|===
+| Name | Apply Security Patch
+| Playbook | `section3/playbooks/apply-security-patch.yml`
+| Inventory | ZTA Lab Inventory
+| Credential | ZTA Machine Credential
+| Survey | `target_host` (default `app`)
+|===
+
+**Important:** name must include "Patch" for the lab gateway rule.
+
+[TIP]
+.Auditability
+====
+Denied launches still generate **AAP audit events**—useful when investigating “who tried to patch during the freeze window?” In ZTA, **every decision should leave evidence**, whether allow or deny.
+====
+
+== Exercise 3.2 — Blocked launch
+
+As `neteng`, launch template → AAP denies at platform level (playbook never runs).
+
+[TIP]
+.Stronger than hiding buttons
+====
+Traditional RBAC might hide templates or rely on operator discipline. **Policy as Code** makes denial **explicit and uniform**—the PDP answer can be the same for UI, API, and integrated CI—reducing **policy drift** between teams and making exceptions visible in Git-tracked Rego rather than tribal knowledge.
+====
+
+== Exercise 3.3 — Fix access
+
+* Use `ztauser` (already in the **Infrastructure** AAP team via LDAP), or
+* Add `neteng` to the `team-infrastructure` IdM group so LDAP maps them into the Infrastructure team: `ipa group-add-member team-infrastructure --users=neteng`
+
+[TIP]
+.Identity lifecycle, not ticket forever
+====
+Granting `team-infrastructure` in IdM is how the organisation says “this identity may initiate high-risk automation.” Revoking the group later **closes the gate** without redeploying AAP—**continuous authorisation** tied to the directory.
+====
+
+== Exercise 3.4 — Successful patch
+
+As `ztauser`, patch `app`. Expect banner, SSH hardening, password policy, audit rules (playbook output).
+
+[TIP]
+.Hardening as code
+====
+Once launch is authorised, the playbook still applies **defensive configuration** (banner, `sshd`, password quality, audit). ZTA is not only gates at the edge—it includes **measurable security posture** on endpoints, ideally still delivered *through* the same controlled automation channel.
+====
+
+== Exercise 3.5 — Verify on host
+
+[source,bash]
+----
+ssh -p 2023 rhel@central.zta.lab
+sudo sshd -T | grep -E 'permitrootlogin|maxauthtries|permitemptypasswords'
+----
+
+[TIP]
+.Verify outcomes, not intentions
+====
+Spot-checking `sshd -T` and audit rules proves **the control landed**. Zero Trust operations depend on **observable state** (what the host actually enforces), not only on “the job was green.”
+====
+
+== Exercise 3.6 — Other scenarios
+
+* `appdev` cannot launch patch template.
+* Remove `neteng` from `patch-admins` if added; confirm deny again.
+
+[TIP]
+.Separation of duties
+====
+`appdev` can deploy (Section 2) but must **not** silently patch servers—that is a different risk class. Mapping **different IdM groups** to **different template families** encodes **SoD** in machine-readable policy instead of org-chart prose only.
+====
+
+== Validation checklist
+
+* [ ] Platform deny for unauthorised user
+* [ ] Success for `patch-admins`
+* [ ] Banner and hardening visible on target
+
+== Extended: Section 3B — OPA Rego authoring
+
+include::includes/section-3b-rego.adoc[]

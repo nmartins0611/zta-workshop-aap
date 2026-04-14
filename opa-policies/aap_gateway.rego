@@ -2,134 +2,106 @@ package aap.gateway
 
 import rego.v1
 
-# AAP Platform Policy — evaluated by the AAP Controller BEFORE a job launches.
+# AAP 2.6 Platform Policy — evaluated by the controller BEFORE a job launches.
 #
 # This is the OUTER defence ring:
-#   "Is this user allowed to launch this job template at all?"
+#   "Is this user's team allowed to launch this class of job template?"
 #
-# The in-playbook OPA checks (zta.network, zta.patching, etc.) are the
-# INNER ring, which validate runtime parameters like VLAN IDs and SPIFFE IDs.
+# AAP 2.6 sends the full job context as input (see Configuring automation
+# execution, Chapter 7.4).  Key fields:
+#   input.name                          — job template name
+#   input.created_by.username           — who launched the job
+#   input.created_by.is_superuser       — platform superuser flag
+#   input.created_by.teams[].name       — AAP team memberships (via LDAP)
+#   input.playbook                      — playbook path
+#   input.extra_vars                    — survey / extra variables
+#   input.launched_by                   — launcher metadata
 #
-# AAP sends a POST to OPA with:
-#   input.user        — username, groups, is_superuser
-#   input.action      — "launch", "update", "delete", etc.
-#   input.resource    — job template name, type, inventory
-#   input.extra_vars  — survey/extra variables passed to the job
+# Output contract: {"allowed": bool, "violations": [strings]}
+#
+# Enforcement point: Organisation → policy_enforcement = "aap/gateway/decision"
 
-default allow := false
+# ── Default: allow unless a deny rule fires ───────────────────────
 
-# ── Superusers bypass all checks ────────────────────────────────────
+default decision := {"allowed": true, "violations": []}
 
-allow if {
-	input.user.is_superuser
+# ── Team-to-template mapping ─────────────────────────────────────
+#
+#  | Template pattern        | Required AAP team          |
+#  |-------------------------|----------------------------|
+#  | Patch                   | Infrastructure or Security |
+#  | VLAN, Network           | Infrastructure             |
+#  | Deploy, Credential,     | Applications or DevOps     |
+#  |   Application           |                            |
+#  | Everything else         | Any authenticated user     |
+
+patching_teams := {"Infrastructure", "Security"}
+network_teams := {"Infrastructure"}
+app_teams := {"Applications", "DevOps"}
+
+# ── Extract team names from input ─────────────────────────────────
+
+user_teams := {name | name := input.created_by.teams[_].name}
+
+team_match(required) if {
+	some team in user_teams
+	team in required
 }
 
-# ── Network job templates ───────────────────────────────────────────
-# Only network-admins may launch any template with "VLAN" or "Network"
-# in the name.
+# ── Template name classification ──────────────────────────────────
 
-allow if {
-	input.action == "launch"
-	is_network_template
-	user_in_group("network-admins")
-}
+template_name := lower(input.name)
 
-is_network_template if contains(lower(input.resource.name), "vlan")
-is_network_template if contains(lower(input.resource.name), "network")
+is_patching_template if contains(template_name, "patch")
 
-# ── Patching job templates ──────────────────────────────────────────
-# Only patch-admins may launch patching templates.
+is_network_template if contains(template_name, "vlan")
+is_network_template if contains(template_name, "network")
 
-allow if {
-	input.action == "launch"
-	is_patching_template
-	user_in_group("patch-admins")
-}
+is_app_template if contains(template_name, "deploy")
+is_app_template if contains(template_name, "credential")
+is_app_template if contains(template_name, "application")
 
-is_patching_template if contains(lower(input.resource.name), "patch")
-
-# ── Database / application job templates ────────────────────────────
-# Only app-deployers may launch DB credential or deploy templates.
-
-allow if {
-	input.action == "launch"
-	is_app_template
-	user_in_group("app-deployers")
-}
-
-is_app_template if contains(lower(input.resource.name), "database")
-is_app_template if contains(lower(input.resource.name), "credential")
-is_app_template if contains(lower(input.resource.name), "deploy")
-is_app_template if contains(lower(input.resource.name), "application")
-
-# ── Verification / read-only templates ──────────────────────────────
-# Anyone authenticated can run verification and test templates.
-
-allow if {
-	input.action == "launch"
-	is_readonly_template
-	input.user.username != ""
-}
-
-is_readonly_template if contains(lower(input.resource.name), "verify")
-is_readonly_template if contains(lower(input.resource.name), "test")
-is_readonly_template if contains(lower(input.resource.name), "check")
-is_readonly_template if contains(lower(input.resource.name), "list")
-
-# ── Non-launch actions (view, cancel) ──────────────────────────────
-# Authenticated users can view and cancel their own jobs.
-
-allow if {
-	input.action != "launch"
-	input.user.username != ""
-}
-
-# ── Helper ──────────────────────────────────────────────────────────
-
-user_in_group(group) if {
-	some g in input.user.groups
-	g == group
-}
-
-# ── Decision object ─────────────────────────────────────────────────
+# ── Deny: patching without authorised team ────────────────────────
 
 decision := {
-	"allow": allow,
-	"user": input.user.username,
-	"action": input.action,
-	"template": object.get(input.resource, "name", "unknown"),
-	"reason": reason,
-}
-
-default reason := "all conditions met — job launch permitted"
-
-reason := msg if {
-	not allow
-	input.action == "launch"
-	is_network_template
-	msg := sprintf("DENIED at platform level: user '%s' is not in network-admins — cannot launch network templates", [input.user.username])
-}
-
-reason := msg if {
-	not allow
-	input.action == "launch"
+	"allowed": false,
+	"violations": [sprintf(
+		"user '%s' is not in an authorised team for patching templates (requires: %v, has: %v)",
+		[input.created_by.username, patching_teams, user_teams],
+	)],
+} if {
+	not input.created_by.is_superuser
 	is_patching_template
-	msg := sprintf("DENIED at platform level: user '%s' is not in patch-admins — cannot launch patching templates", [input.user.username])
+	not team_match(patching_teams)
 }
 
-reason := msg if {
-	not allow
-	input.action == "launch"
-	is_app_template
-	msg := sprintf("DENIED at platform level: user '%s' is not in app-deployers — cannot launch application templates", [input.user.username])
-}
+# ── Deny: network without authorised team ─────────────────────────
 
-reason := msg if {
-	not allow
-	input.action == "launch"
-	not is_network_template
+decision := {
+	"allowed": false,
+	"violations": [sprintf(
+		"user '%s' is not in an authorised team for network templates (requires: %v, has: %v)",
+		[input.created_by.username, network_teams, user_teams],
+	)],
+} if {
+	not input.created_by.is_superuser
+	is_network_template
 	not is_patching_template
-	not is_app_template
-	not is_readonly_template
-	msg := sprintf("DENIED at platform level: no policy grants user '%s' access to template '%s'", [input.user.username, input.resource.name])
+	not team_match(network_teams)
+}
+
+# ── Deny: application without authorised team ─────────────────────
+
+decision := {
+	"allowed": false,
+	"violations": [sprintf(
+		"user '%s' is not in an authorised team for application templates (requires: %v, has: %v)",
+		[input.created_by.username, app_teams, user_teams],
+	)],
+} if {
+	not input.created_by.is_superuser
+	is_app_template
+	not is_patching_template
+	not is_network_template
+	not team_match(app_teams)
 }

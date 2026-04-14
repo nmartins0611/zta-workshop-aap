@@ -70,12 +70,12 @@ immediately by AAP. After fixing the group membership, the patch succeeds.
 
 The gateway policy matches template names to required groups:
 
-| Template name contains | Required IdM group |
-|------------------------|--------------------|
-| "Patch" | `patch-admins` |
-| "VLAN" or "Network" | `network-admins` |
-| "Deploy", "Database", "Credential" | `app-deployers` |
-| "Verify", "Test", "Check" | Any authenticated user |
+| Template name contains | Required AAP team |
+|------------------------|-------------------|
+| "Patch" | Infrastructure or Security |
+| "VLAN" or "Network" | Infrastructure |
+| "Deploy", "Credential", "Application" | Applications or DevOps |
+| Everything else | Any authenticated user |
 
 ---
 
@@ -115,8 +115,8 @@ the `aap.gateway` policy to require `patch-admins` membership.
 AAP sends the launch request to OPA. The `aap.gateway` policy evaluates:
 
 ```
-Template: "Apply Security Patch"  → contains "patch"  → requires patch-admins
-User:     neteng                  → groups: []         → NOT in patch-admins
+Template: "Apply Security Patch"  → contains "patch"  → requires Infrastructure or Security team
+User:     neteng                  → teams: []          → NOT in any team
 
 Result: DENIED at platform level
 ```
@@ -132,24 +132,24 @@ playbook to remove a policy check, AAP would still block the launch.
 
 ## Exercise 3.3 — Fix the Access
 
-**Option A** — Log in as a user already in `patch-admins`:
+**Option A** — Log in as a user already in the Infrastructure team:
 
-Use `ztauser` or `jsmith` (both are in `patch-admins` per the IdM configuration).
+Use `ztauser` or `jsmith` (both are in `team-infrastructure` in IdM, which maps to the **Infrastructure** AAP team via LDAP).
 
-**Option B** — Add the user to the group in IdM:
+**Option B** — Add the user to the team group in IdM:
 
 ```bash
 ssh rhel@central.zta.lab
-sudo ipa group-add-member patch-admins --users=neteng
+sudo ipa group-add-member team-infrastructure --users=neteng
 ```
 
 ---
 
 ## Exercise 3.4 — Apply the Patch Successfully
 
-1. Log into AAP as `ztauser` (member of `patch-admins`)
+1. Log into AAP as `ztauser` (member of **Infrastructure** team)
 2. Launch **Apply Security Patch** with `target_host: app`
-3. AAP checks OPA — `ztauser` is in `patch-admins` — **ALLOWED**
+3. AAP checks OPA — `ztauser` is in Infrastructure team — **ALLOWED**
 4. The playbook runs and applies all four hardening measures:
 
 ```
@@ -165,7 +165,7 @@ Security Patch Applied
     ✓ Audit logging (auth, identity, sudoers)
 
   This patch was authorised by AAP Policy as Code.
-  Only users in 'patch-admins' can launch this template.
+  Only Infrastructure or Security teams can launch this template.
 ```
 
 ---
@@ -198,23 +198,23 @@ sudo auditctl -l | grep zta
 
 ### Scenario A — `appdev` tries to patch
 
-1. Log in as `appdev` (in `app-deployers`, **not** `patch-admins`)
+1. Log in as `appdev` (in **Applications** team, not Infrastructure or Security)
 2. Try to launch **Apply Security Patch**
-3. Result: **BLOCKED** — `app-deployers` cannot launch patching templates
+3. Result: **BLOCKED** — Applications team cannot launch patching templates
 
 ### Scenario B — Remove group membership
 
-1. Remove `neteng` from `patch-admins` (if you added them in Exercise 3.3):
+1. Remove `neteng` from `team-infrastructure` (if you added them in Exercise 3.3):
    ```bash
-   ipa group-remove-member patch-admins --users=neteng
+   ipa group-remove-member team-infrastructure --users=neteng
    ```
 2. Try to launch as `neteng` again — **BLOCKED** (back to denied)
 
 ### Scenario C — Separation of duties
 
-Notice that `netadmin` (in `network-admins`) **cannot** launch patching
-templates, and `ztauser` (in `patch-admins`) **can** launch patching but
-different groups control different operations. This is separation of duties
+Notice that `appdev` (in **Applications** team) **cannot** launch patching
+templates, and `ztauser` (in **Infrastructure** team) **can** launch patching but
+different teams control different operations. This is separation of duties
 enforced by policy.
 
 ---
@@ -233,14 +233,14 @@ enforced by policy.
 
 ## Validation Checklist
 
-- [ ] `neteng` (not in `patch-admins`) is **blocked by AAP** before the playbook runs
+- [ ] `neteng` (not in any team) is **blocked by AAP** before the playbook runs
 - [ ] AAP UI shows the denial — the job never starts
-- [ ] `ztauser` (in `patch-admins`) launches successfully
+- [ ] `ztauser` (in Infrastructure team) launches successfully
 - [ ] Login banner is visible when SSH-ing to the patched server
 - [ ] SSH hardening is applied (root login disabled, max 3 auth tries)
 - [ ] Password policy is deployed
 - [ ] Audit rules are active
-- [ ] `appdev` cannot launch patching templates (separation of duties)
+- [ ] `appdev` (Applications team) cannot launch patching templates (separation of duties)
 
 ---
 

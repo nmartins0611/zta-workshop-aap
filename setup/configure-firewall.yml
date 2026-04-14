@@ -52,6 +52,9 @@
       # ── OPA ──
       - 8181     # OPA policy API
 
+      # ── SPIRE ──
+      - 8082     # SPIRE Server (agent attestation)
+
       # ── Splunk ──
       - 8000     # Splunk web UI
       - 8088     # Splunk HEC (event collector)

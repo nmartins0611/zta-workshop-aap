@@ -47,6 +47,13 @@
         mode: '0644'
       register: gateway_policy
 
+    - name: Deploy data classification policy (Section 3B)
+      copy:
+        src: ../opa-policies/data_classification.rego
+        dest: "{{ opa_policy_dir }}/data_classification.rego"
+        mode: '0644'
+      register: data_classification_policy
+
     - name: Deploy identity-based authorisation policy
       copy:
         dest: "{{ opa_policy_dir }}/zta_authz.rego"
@@ -90,7 +97,7 @@
           main := {
             "status": "healthy",
             "version": "1.0",
-            "policies": ["zta_base", "zta_authz", "patching", "network", "db_access", "aap_gateway"],
+            "policies": ["zta_base", "zta_authz", "patching", "network", "db_access", "aap_gateway", "data_classification"],
           }
         mode: '0644'
       register: health_policy
@@ -100,8 +107,8 @@
       when: >
         patching_policy.changed or network_policy.changed or
         db_policy.changed or base_policy.changed or
-        gateway_policy.changed or authz_policy.changed or
-        health_policy.changed
+        gateway_policy.changed or data_classification_policy.changed or
+        authz_policy.changed or health_policy.changed
 
     - name: Wait for OPA health
       uri:

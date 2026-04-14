@@ -45,9 +45,15 @@ expected_section2_workflow: Deploy Application Pipeline
 
 expected_section3_templates:
   - Apply Security Patch
+  - Patch Server
+  - Break OPA Data Policy
+  - Fix OPA Data Policy
 
 expected_section4_templates:
   - Configure VLAN
+  - Manage IdM Identity
+  - Break ACL
+  - Fix ACL
 
 expected_section5_templates:
   - "Emergency: Revoke App Credentials"
@@ -105,22 +111,19 @@ opa_test_network_deny:
   vlan_id: 200
 
 opa_test_gateway_patch_deny:
-  user:
+  name: Apply Security Patch
+  created_by:
     username: neteng
-    groups: []
     is_superuser: false
-  action: launch
-  resource:
-    name: Apply Security Patch
+    teams: []
 
 opa_test_gateway_patch_allow:
-  user:
+  name: Apply Security Patch
+  created_by:
     username: ztauser
-    groups: [patch-admins]
     is_superuser: false
-  action: launch
-  resource:
-    name: Apply Security Patch
+    teams:
+      - name: Infrastructure
 
 # ── Section 3B data classification tests ─────────────────────────────
 

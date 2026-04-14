@@ -109,11 +109,17 @@ Before running this section:
 Open `http://central.zta.lab:8000` and run this search:
 
 ```
-index=main sourcetype=linux_secure "Failed password"
+index=zta_app sourcetype=syslog "Failed password"
 ```
 
-You should see failed SSH login events. If not, verify `integrate-splunk.yml`
-has been run and the Universal Forwarder is sending logs.
+You should see failed SSH login events from the app/db containers. To also
+check VM-level auth logs:
+
+```
+index=zta_syslog sourcetype=syslog sshd "Failed password"
+```
+
+If neither returns results, verify `setup/integrate-splunk.yml` has been run.
 
 ### Step 2 — Create the Saved Search
 
@@ -123,7 +129,7 @@ has been run and the Universal Forwarder is sending logs.
 | Field | Value |
 |-------|-------|
 | Title | `ZTA: SSH Brute Force Detected` |
-| Search | `index=main sourcetype=linux_secure "Failed password" \| stats count by src_ip, host \| where count >= 5` |
+| Search | `index=zta_app OR index=zta_syslog sourcetype=syslog "Failed password" \| stats count by src_ip, host \| where count >= 5` |
 | Time Range | Real-time, 60-second window |
 | Alert type | Real-time |
 | Trigger condition | Number of results > 0 |
@@ -145,10 +151,10 @@ has been run and the Universal Forwarder is sending logs.
 If you prefer automation over UI clicks:
 
 ```bash
-curl -k -u admin:splunkpassword \
-  http://central.zta.lab:8000/servicesNS/admin/search/saved/searches \
+curl -k -u admin:ansible123! \
+  https://central.zta.lab:8089/servicesNS/admin/search/saved/searches \
   -d name="ZTA: SSH Brute Force Detected" \
-  -d search='index=main sourcetype=linux_secure "Failed password" | stats count by src_ip, host | where count >= 5' \
+  -d search='(index=zta_app OR index=zta_syslog) sourcetype=syslog "Failed password" | stats count by src_ip, host | where count >= 5' \
   -d alert_type=always \
   -d alert.severity=4 \
   -d alert.suppress=0 \
@@ -167,7 +173,7 @@ curl -k -u admin:splunkpassword \
 ### Option A — Event-Driven Ansible controller (Red Hat Ansible Automation Platform 2.6)
 
 1. In the **Event-Driven Ansible controller**, ensure a **Project** provides this repository (or the rulebook file), and create a **Decision Environment** if you do not already have one. See [Using automation decisions](https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.6/html/using_automation_decisions/) in the AAP 2.6 documentation.
-2. Add or sync content so `section5/eda/splunk-credential-revoke.yml` is available to activations.
+2. Add or sync content so `extensions/eda/rulebooks/splunk-credential-revoke.yml` is available to activations.
 3. Create a **Rulebook Activation**:
    - Name: `Splunk Brute Force Response`
    - Rulebook: `splunk-credential-revoke`
@@ -179,7 +185,7 @@ curl -k -u admin:splunkpassword \
 
 ```bash
 ssh rhel@control.zta.lab
-ansible-rulebook --rulebook /tmp/zta-workshop-aap/section5/eda/splunk-credential-revoke.yml \
+ansible-rulebook --rulebook /tmp/zta-workshop-aap/extensions/eda/rulebooks/splunk-credential-revoke.yml \
   -i /tmp/zta-workshop-aap/inventory/hosts.ini \
   --verbose
 ```
@@ -230,7 +236,7 @@ After the brute-force simulation completes, observe the chain reaction:
 Open `http://central.zta.lab:8000` and run:
 
 ```
-index=main sourcetype=linux_secure "Failed password" | stats count by src_ip, host | where count >= 5
+(index=zta_app OR index=zta_syslog) sourcetype=syslog "Failed password" | stats count by src_ip, host | where count >= 5
 ```
 
 You should see the brute-force source IP with a high failure count.
@@ -319,7 +325,7 @@ Edit the saved search in **Settings → Searches, reports, and alerts**:
 Change the search to:
 
 ```
-index=main sourcetype=linux_secure "Failed password" NOT src_ip=192.168.1.10
+(index=zta_app OR index=zta_syslog) sourcetype=syslog "Failed password" NOT src_ip=192.168.1.10
 | stats count by src_ip, host
 | where count >= 5
 ```
@@ -358,19 +364,139 @@ Check Splunk — the alert SHOULD fire for central's IP (192.168.1.11).
 - Could EDA trigger additional responses (block IP, isolate network segment)?
 - What if Splunk itself is compromised — how do you protect the SIEM?
 - How would you add a human approval step for less severe alerts?
-- Compare the Splunk webhook approach to Wazuh's native integration — trade-offs?
+- Compare the Splunk webhook approach to alternative SIEM integration — trade-offs?
 
 ---
 
-## Splunk Search Reference
+## Splunk Index & Data Reference
 
-| Search | Purpose |
-|--------|---------|
-| `index=main sourcetype=linux_secure "Failed password"` | All failed SSH logins |
-| `... \| stats count by src_ip` | Group by attacker source IP |
-| `... \| where count >= 5` | Threshold for brute-force detection |
-| `index=main sourcetype=linux_secure "Accepted password"` | Successful logins |
-| `index=main sourcetype=linux_secure "Accepted publickey"` | Key-based logins |
+The workshop lab ships six Splunk indexes, each fed by a dedicated pipeline
+configured in `setup/integrate-splunk.yml`. Understanding what lives where
+helps you write effective searches and troubleshoot missing data.
+
+### Index map
+
+| Index | Sourcetype | What it contains | Source pipeline |
+|-------|-----------|------------------|----------------|
+| `zta_syslog` | `syslog` | Linux VM auth/system logs (sshd, sudo, systemd-logind) | rsyslog → HEC shipper on each VM |
+| `zta_app` | `syslog` | App & DB **container** auth/system logs (sshd, postgres, flask) | rsyslog → HEC shipper inside app/db containers |
+| `zta_vault` | `hashicorp:vault:audit` | Every Vault API call (login, read, lease create/revoke) | File audit → systemd tail shipper on vault host |
+| `zta_opa` | `opa:decision` | OPA policy decisions (allow/deny with full input context) | Podman log tail → HEC shipper on central |
+| `zta_network` | `syslog` | Arista cEOS switch syslog (interface changes, config events) | Arista → UDP 514 → HEC |
+| `zta_wazuh` | `wazuh:alerts` | Wazuh SIEM alerts (level ≥ 3) — only if Wazuh integration is enabled | Wazuh custom-splunk integration → HEC |
+
+### Splunk connection details
+
+| | Value |
+|-|-------|
+| Web UI | `http://central.zta.lab:8000` |
+| Management API | `https://central.zta.lab:8089` |
+| HEC endpoint | `https://central.zta.lab:8088` |
+| Login | `admin` / `ansible123!` |
+
+---
+
+### Brute-force detection searches (Section 5 workflow)
+
+```
+# All failed SSH logins across app/db containers
+index=zta_app sourcetype=syslog "Failed password"
+
+# Failed SSH logins across all VMs
+index=zta_syslog sourcetype=syslog sshd "Failed password"
+
+# Combined — both containers and VMs
+(index=zta_app OR index=zta_syslog) sourcetype=syslog "Failed password"
+
+# Brute-force detection threshold (the saved search)
+(index=zta_app OR index=zta_syslog) sourcetype=syslog "Failed password"
+| stats count by src_ip, host
+| where count >= 5
+
+# Successful SSH logins (compare before/after attack)
+(index=zta_app OR index=zta_syslog) sourcetype=syslog "Accepted password"
+
+# Key-based logins (AAP automation uses SSH keys)
+(index=zta_app OR index=zta_syslog) sourcetype=syslog "Accepted publickey"
+
+# Exclude AAP controller from brute-force search (Exercise 5.8)
+(index=zta_app OR index=zta_syslog) sourcetype=syslog "Failed password" NOT src_ip=192.168.1.10
+| stats count by src_ip, host
+| where count >= 5
+```
+
+### Vault audit searches (correlate with incident response)
+
+```
+# All Vault activity in the last 15 minutes
+index=zta_vault sourcetype="hashicorp:vault:audit" earliest=-15m
+
+# Vault database credential generation (Section 2 flow)
+index=zta_vault sourcetype="hashicorp:vault:audit" "database/creds"
+
+# Vault lease revocations (fired by the revoke playbook)
+index=zta_vault sourcetype="hashicorp:vault:audit" "sys/leases/revoke"
+
+# Vault login events (track who authenticates)
+index=zta_vault sourcetype="hashicorp:vault:audit" "auth/userpass/login"
+```
+
+### OPA policy decision searches
+
+```
+# All OPA decisions
+index=zta_opa sourcetype="opa:decision"
+
+# OPA deny decisions only
+index=zta_opa sourcetype="opa:decision" "allowed.*false"
+
+# DB access policy decisions (Section 2)
+index=zta_opa sourcetype="opa:decision" "db_access"
+
+# AAP gateway policy decisions (Section 3)
+index=zta_opa sourcetype="opa:decision" "aap/gateway"
+```
+
+### Application and infrastructure searches
+
+```
+# Application container logs (health checks, errors)
+index=zta_app sourcetype=syslog host="app*"
+
+# Database container logs
+index=zta_app sourcetype=syslog host="db*"
+
+# Arista switch events (interface up/down, config changes)
+index=zta_network sourcetype=syslog
+
+# All sudo commands across the lab
+(index=zta_syslog OR index=zta_app) sourcetype=syslog sudo
+```
+
+### Incident response correlation (run after Exercise 5.6)
+
+Use these searches in sequence to reconstruct the full attack → response chain:
+
+```
+# 1. The attack — failed SSH logins
+index=zta_app sourcetype=syslog "Failed password" earliest=-10m
+| stats count by src_ip, host
+| sort - count
+
+# 2. The detection — this fires the saved search alert
+# (check Activity → Triggered Alerts in the Splunk UI)
+
+# 3. Vault revocation — credential lifecycle
+index=zta_vault sourcetype="hashicorp:vault:audit" earliest=-10m
+| search "sys/leases/revoke" OR "database/creds"
+| table _time, request.path, request.operation, auth.display_name
+
+# 4. Full timeline — combine all telemetry
+(index=zta_app OR index=zta_vault OR index=zta_opa) earliest=-10m
+| eval source_index=index
+| table _time, source_index, sourcetype, _raw
+| sort _time
+```
 
 ---
 

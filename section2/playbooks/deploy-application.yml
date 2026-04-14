@@ -6,12 +6,22 @@
   gather_facts: false
 
   vars:
-    db_user: "{{ db_dynamic_user | default(lookup('env', 'DB_USER')) }}"
-    db_password: "{{ db_dynamic_password | default(lookup('env', 'DB_PASSWORD')) }}"
+    db_user: "{{ db_dynamic_user | default(lookup('ansible.builtin.env', 'DB_USER', default=''), true) }}"
+    db_password: "{{ db_dynamic_password | default(lookup('ansible.builtin.env', 'DB_PASSWORD', default=''), true) }}"
 
   tasks:
+    - name: Require database credentials (workflow set_stats or extra vars / env)
+      ansible.builtin.assert:
+        that:
+          - db_user | length > 0
+          - db_password | length > 0
+        fail_msg: >-
+          Missing DB credentials. Run this job after "Create DB Credential" in the
+          workflow (set_stats), or pass -e db_dynamic_user=... -e db_dynamic_password=...
+          or set DB_USER / DB_PASSWORD in the execution environment.
+
     - name: Write application environment file with dynamic credentials
-      copy:
+      ansible.builtin.copy:
         dest: "{{ app_deploy_dir }}/env"
         content: |
           DB_HOST={{ db_data_ip }}
@@ -25,24 +35,26 @@
         group: root
       no_log: true
 
-    - name: Update systemd service to use environment file
-      lineinfile:
+    - name: Ensure systemd unit references environment file (non-optional path)
+      ansible.builtin.lineinfile:
         path: /etc/systemd/system/ztaapp.service
         regexp: "^EnvironmentFile="
         line: "EnvironmentFile={{ app_deploy_dir }}/env"
-      notify: Restart application
 
-    - name: Remove hardcoded DB vars from systemd unit
-      lineinfile:
+    # Older workshop images shipped Environment=DB_USER=placeholder after
+    # EnvironmentFile=, which overrides Vault creds from the file — remove it.
+    - name: Remove hardcoded DB user/password from systemd unit (if present)
+      ansible.builtin.lineinfile:
         path: /etc/systemd/system/ztaapp.service
         regexp: "^Environment=DB_(USER|PASSWORD)="
         state: absent
-      notify: Restart application
 
-    - name: Reload systemd and start application
-      systemd:
+    # Always restart: handlers only run on "changed", and podman "CONTAINER uptime"
+    # will not change — only the in-container ztaapp process should restart.
+    - name: Reload systemd and restart application to apply credentials
+      ansible.builtin.systemd:
         name: ztaapp
-        state: started
+        state: restarted
         enabled: true
         daemon_reload: true
 
@@ -55,24 +67,12 @@
       retries: 10
       delay: 3
 
-    - name: Verify application can reach database
-      uri:
-        url: "http://{{ app_host }}:{{ app_port }}/data"
-        method: GET
-      register: app_data
-
     - name: Display deployment result
       debug:
         msg: |
           Application deployed successfully:
-            URL:     http://{{ app_host }}:{{ app_port }}
-            Health:  {{ app_health.json.status }}
-            DB User: {{ db_user }} (dynamic, short-lived)
-            Records: {{ app_data.json.data | length }} rows accessible
+            URL:      http://{{ app_host }}:{{ app_port }}
+            Health:   {{ app_health.json.status }}
+            Database: {{ app_health.json.database }}
+            DB User:  {{ db_user }} (dynamic, short-lived)
 
-  handlers:
-    - name: Restart application
-      systemd:
-        name: ztaapp
-        state: restarted
-        daemon_reload: true

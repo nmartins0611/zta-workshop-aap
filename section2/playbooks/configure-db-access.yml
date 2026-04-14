@@ -10,47 +10,26 @@
 
   vars:
     acl_name: ZTA-APP-TO-DB
-    app_data_ip: "{{ hostvars['app']['ansible_host'] | default(app_data_ip) | default('10.20.0.10') }}"
-    db_data_ip: "{{ hostvars['db']['ansible_host'] | default(db_data_ip) | default('10.30.0.10') }}"
+    # Data-plane IPs come from inventory (group_vars/all.yml: app_data_ip, db_data_ip).
+    # Do not redefine them here with hostvars['app'] — that host is often absent when
+    # this play runs against [network] only (AAP job), and | default(app_data_ip) on
+    # the same variable name causes recursive templating.
     target_switch: ceos2
 
   tasks:
     - name: Configure ACL on data-tier leaf switch (ceos2)
       when: inventory_hostname == target_switch
       block:
+        # eos_acls renders well-known TCP ports (e.g. 5432) as service names (postgres);
+        # cEOS rejects "eq postgres" in this ACL — use eos_config so eq stays numeric.
         - name: Configure ACL permitting app server to database
-          arista.eos.eos_acls:
-            config:
-              - afi: ipv4
-                acls:
-                  - name: "{{ acl_name }}"
-                    aces:
-                      - sequence: 10
-                        grant: permit
-                        protocol: tcp
-                        source:
-                          host: "{{ app_data_ip }}"
-                        destination:
-                          host: "{{ db_data_ip }}"
-                          port_protocol:
-                            eq: "{{ db_port }}"
-                      - sequence: 20
-                        grant: permit
-                        protocol: tcp
-                        source:
-                          host: "{{ db_data_ip }}"
-                          port_protocol:
-                            eq: "{{ db_port }}"
-                        destination:
-                          host: "{{ app_data_ip }}"
-                      - sequence: 100
-                        grant: deny
-                        protocol: ip
-                        source:
-                          any: true
-                        destination:
-                          host: "{{ db_data_ip }}"
-            state: replaced
+          arista.eos.eos_config:
+            replace: block
+            parents: "ip access-list {{ acl_name }}"
+            lines:
+              - "10 permit tcp host {{ app_data_ip }} host {{ db_data_ip }} eq {{ db_port }}"
+              - "20 permit tcp host {{ db_data_ip }} eq {{ db_port }} host {{ app_data_ip }}"
+              - "100 deny ip any host {{ db_data_ip }}"
 
         - name: Display ACL configuration
           debug:

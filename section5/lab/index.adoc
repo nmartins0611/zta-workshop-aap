@@ -47,18 +47,25 @@ This lab **revokes secrets** in Vault (and stops reliance on DB access) instead 
 
 == Exercise 5.2 — Splunk saved search / alert
 
-In Splunk, confirm failed SSH events exist:
+In Splunk (`http://central.zta.lab:8000`), confirm failed SSH events exist:
 
 [source]
 ----
-index=main sourcetype=linux_secure "Failed password"
+index=zta_app sourcetype=syslog "Failed password"
+----
+
+Also check VM-level auth logs:
+
+[source]
+----
+index=zta_syslog sourcetype=syslog sshd "Failed password"
 ----
 
 Create alert (example search from README):
 
 [source]
 ----
-index=main sourcetype=linux_secure "Failed password"
+(index=zta_app OR index=zta_syslog) sourcetype=syslog "Failed password"
 | stats count by src_ip, host
 | where count >= 5
 ----
@@ -75,12 +82,12 @@ Splunk answers “**do we see attack-like behaviour?**” The webhook is a **sta
 
 == Exercise 5.3 — EDA rulebook
 
-* **Event-Driven Ansible controller (AAP 2.6):** Add a **Project** that sources this repository (or upload the rulebook), create a **Decision Environment** for `ansible-rulebook`, then a **Rulebook Activation** that uses `section5/eda/splunk-credential-revoke.yml`. Set the activation listener **host, port, and path** to match the Splunk webhook (e.g. `http://control.zta.lab:5000/endpoint`). See https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.6/html/using_automation_decisions/[Using automation decisions].
+* **Event-Driven Ansible controller (AAP 2.6):** Add a **Project** that sources this repository (or upload the rulebook), create a **Decision Environment** for `ansible-rulebook`, then a **Rulebook Activation** that uses `extensions/eda/rulebooks/splunk-credential-revoke.yml`. Set the activation listener **host, port, and path** to match the Splunk webhook (e.g. `http://control.zta.lab:5000/endpoint`). See https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.6/html/using_automation_decisions/[Using automation decisions].
 * CLI example (no controller):
 
 [source,bash]
 ----
-ansible-rulebook --rulebook section5/eda/splunk-credential-revoke.yml \
+ansible-rulebook --rulebook extensions/eda/rulebooks/splunk-credential-revoke.yml \
   -i inventory/hosts.ini --verbose
 ----
 

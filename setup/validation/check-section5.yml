@@ -1,10 +1,8 @@
 ---
-# Section 5 Validation: Automated Incident Response
+# Section 5 Validation: Automated Incident Response (Splunk → EDA → Vault)
 #
 # Checks:
 #   - 3 job templates exist (Revoke, Simulate, Restore)
-#   - Wazuh agent active on app
-#   - Wazuh Manager API reachable
 #   - EDA webhook endpoint responding on control:5000
 #   - Application is healthy (pre-attack baseline)
 #
@@ -45,32 +43,6 @@
       loop: "{{ s5_template_checks.results }}"
       loop_control:
         label: "{{ item.item }}"
-
-- name: "Section 5 Check | Wazuh & EDA"
-  hosts: zta_services
-  become: true
-  gather_facts: false
-  ignore_errors: true
-  ignore_unreachable: true
-  tags: [section5, wazuh]
-
-  tasks:
-    - name: Check Wazuh Manager API
-      uri:
-        url: "{{ wazuh_api_url }}"
-        method: GET
-        validate_certs: false
-        status_code: [200, 401]
-      register: s5_wazuh_api
-      failed_when: false
-
-    - name: Check Wazuh agent for app.zta.lab
-      command: >
-        podman exec wazuh-manager
-        /var/ossec/bin/agent_control -l
-      register: s5_wazuh_agents
-      changed_when: false
-      failed_when: false
 
 - name: "Section 5 Check | EDA Webhook"
   hosts: automation
@@ -122,10 +94,6 @@
         ok: "{{ (s5_template_results | default({}))['Simulate Brute Force'] | default(false) }}"
       - name: "Template: Restore App Credentials"
         ok: "{{ (s5_template_results | default({}))['Restore App Credentials'] | default(false) }}"
-      - name: Wazuh Manager API reachable
-        ok: "{{ (c.s5_wazuh_api.status | default(0)) in [200, 401] }}"
-      - name: Wazuh agent for app registered
-        ok: "{{ 'app' in (c.s5_wazuh_agents.stdout | default('')) }}"
       - name: EDA webhook port listening (5000)
         ok: "{{ (ctrl.s5_eda_port.state | default('')) == 'started' }}"
       - name: Application healthy (pre-attack)
@@ -141,7 +109,7 @@
       debug:
         msg: |
           ╔══════════════════════════════════════════════════════════════════╗
-          ║   Section 5 — Automated Incident Response                      ║
+          ║   Section 5 — Automated Incident Response (Splunk → EDA)       ║
           ╠══════════════════════════════════════════════════════════════════╣
           ║                                                                ║
           ║  PASSED: {{ passed | length }} / {{ checks | length }}

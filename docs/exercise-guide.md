@@ -701,12 +701,12 @@ User launches job
 
 ---
 
-## Section 5 — Automated Incident Response (Wazuh → EDA → Vault)
+## Section 5 — Automated Incident Response (Splunk → EDA → Vault)
 
 ### Learning Objectives
 
 - See automated incident response triggered by a security event
-- Understand the Wazuh → EDA → AAP → Vault chain
+- Understand the Splunk → EDA → AAP → Vault chain
 - Observe how credential revocation contains a breach
 - Restore the application after investigating
 
@@ -714,14 +714,15 @@ User launches job
 
 ### The Scenario
 
-An attacker brute-forces SSH on the app server. Wazuh detects it (rule 5712),
-sends an alert to Event-Driven Ansible, which triggers an AAP job to **revoke
-the application's database credentials in Vault** — isolating the app from
-sensitive data in under 30 seconds.
+An attacker brute-forces SSH on the app server. Splunk detects it via a saved
+search alert (5+ failed logins in 60 seconds), sends a webhook to Event-Driven
+Ansible, which triggers an AAP job to **revoke the application's database
+credentials in Vault** — isolating the app from sensitive data in under 30
+seconds.
 
 ```
-Attacker → SSH brute force → Wazuh detects → EDA receives → AAP revokes → App isolated
-  T+0s         T+10s            T+12s           T+14s          T+20s         T+25s
+Attacker → SSH brute force → Splunk detects → EDA receives → AAP revokes → App isolated
+  T+0s         T+10s            T+15s           T+17s          T+23s         T+28s
 ```
 
 ---
@@ -755,7 +756,7 @@ SSH login attempts to `app.zta.lab`.
 
 ### Exercise 5.4 — Watch the Automated Response
 
-1. **Wazuh Dashboard** (`http://wazuh.zta.lab:5601`): Alert rule 5712 fires
+1. **Splunk** (`http://central.zta.lab:8000`): Saved search alert fires (Activity → Triggered Alerts)
 2. **Event-Driven Ansible controller**: Event received, rulebook matched, job triggered
 3. **AAP Jobs**: "Emergency: Revoke App Credentials" appears — triggered by EDA,
    no human clicked Launch
@@ -789,9 +790,9 @@ curl http://app.zta.lab:8081/health     # healthy again
 | Time | Event |
 |------|-------|
 | T+0s | Attack starts |
-| T+12s | Wazuh fires brute-force alert |
-| T+14s | EDA triggers AAP job |
-| T+25s | Credentials revoked, app isolated |
+| T+15s | Splunk saved search fires brute-force alert |
+| T+17s | EDA receives webhook, triggers AAP job |
+| T+28s | Credentials revoked, app isolated |
 | — | Human investigates, then restores |
 
 ---

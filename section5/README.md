@@ -167,7 +167,7 @@ curl -k -u admin:splunkpassword \
 ### Option A — Event-Driven Ansible controller (Red Hat Ansible Automation Platform 2.6)
 
 1. In the **Event-Driven Ansible controller**, ensure a **Project** provides this repository (or the rulebook file), and create a **Decision Environment** if you do not already have one. See [Using automation decisions](https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.6/html/using_automation_decisions/) in the AAP 2.6 documentation.
-2. Add or sync content so `section5/eda/splunk-credential-revoke.yml` is available to activations.
+2. Add or sync content so `extensions/eda/rulebooks/splunk-credential-revoke.yml` is available to activations.
 3. Create a **Rulebook Activation**:
    - Name: `Splunk Brute Force Response`
    - Rulebook: `splunk-credential-revoke`
@@ -179,7 +179,7 @@ curl -k -u admin:splunkpassword \
 
 ```bash
 ssh rhel@control.zta.lab
-ansible-rulebook --rulebook /tmp/zta-workshop-aap/section5/eda/splunk-credential-revoke.yml \
+ansible-rulebook --rulebook /tmp/zta-workshop-aap/extensions/eda/rulebooks/splunk-credential-revoke.yml \
   -i /tmp/zta-workshop-aap/inventory/hosts.ini \
   --verbose
 ```
@@ -358,7 +358,7 @@ Check Splunk — the alert SHOULD fire for central's IP (192.168.1.11).
 - Could EDA trigger additional responses (block IP, isolate network segment)?
 - What if Splunk itself is compromised — how do you protect the SIEM?
 - How would you add a human approval step for less severe alerts?
-- Compare the Splunk webhook approach to Wazuh's native integration — trade-offs?
+- Compare the Splunk webhook approach to alternative SIEM integration — trade-offs?
 
 ---
 

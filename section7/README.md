@@ -119,7 +119,7 @@ Before running this section:
 ### Option A — Event-Driven Ansible controller (Red Hat Ansible Automation Platform 2.6)
 
 1. In the **Event-Driven Ansible controller**, ensure a **Project** provides this repository (or the rulebook file), and create a **Decision Environment** if needed. See [Using automation decisions](https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.6/html/using_automation_decisions/) in the AAP 2.6 documentation.
-2. Add or sync content so `section7/eda/wazuh-credential-revoke.yml` is available to activations.
+2. Add or sync content so `extensions/eda/rulebooks/wazuh-credential-revoke.yml` is available to activations.
 3. Create a **Rulebook Activation**:
    - Name: `Wazuh Brute Force Response`
    - Rulebook: `wazuh-credential-revoke`
@@ -131,7 +131,7 @@ Before running this section:
 
 ```bash
 ssh rhel@control.zta.lab
-ansible-rulebook --rulebook /tmp/zta-workshop-aap/section7/eda/wazuh-credential-revoke.yml \
+ansible-rulebook --rulebook /tmp/zta-workshop-aap/extensions/eda/rulebooks/wazuh-credential-revoke.yml \
   -i /tmp/zta-workshop-aap/inventory/hosts.ini \
   --verbose
 ```

@@ -105,14 +105,17 @@
         url: "{{ opa_url }}/v1/data/zta/network/decision"
         method: POST
         body_format: json
-        body:
-          input:
-            user: "{{ network_user }}"
-            user_groups: "{{ network_user_groups }}"
-            action: create_vlan
-            vlan_id: "{{ new_vlan_id | int }}"
-            vlan_name: "{{ new_vlan_name }}"
-            spiffe_id: "{{ workload_spiffe_id }}"
+        body: >-
+          {{ {
+            "input": {
+              "user": network_user,
+              "user_groups": network_user_groups,
+              "action": "create_vlan",
+              "vlan_id": new_vlan_id | int,
+              "vlan_name": new_vlan_name,
+              "spiffe_id": workload_spiffe_id
+            }
+          } }}
       register: opa_decision
 
     - name: Display OPA decision

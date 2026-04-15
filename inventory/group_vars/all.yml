@@ -275,7 +275,7 @@ spire_workloads:
     parent_host: db
     description: PostgreSQL database workload
     selectors:
-      - "unix:uid:26"
+      - "unix:uid:0"
   - spiffe_id: "spiffe://{{ spire_trust_domain }}/workload/vault"
     parent_host: vault
     description: HashiCorp Vault workload

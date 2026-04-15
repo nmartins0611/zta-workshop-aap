@@ -28,6 +28,12 @@
     aap_user: admin
     aap_password: "{{ lookup('env', 'AAP_ADMIN_PASSWORD') | default('ansible123!', true) }}"
     aap_verify_ssl: false
+    aap_organization: Default
+
+    project_name: ZTA Workshop
+    inventory_name: ZTA Lab Inventory
+    netbox_ee_name: Netbox
+    netbox_inv_source_name: NetBox Dynamic Inventory
 
     nb_api_url: "{{ netbox_url | default('http://netbox.zta.lab:8000') }}"
     nb_api_token: "{{ netbox_token | default('0123456789abcdef0123456789abcdef01234567') }}"
@@ -136,40 +142,44 @@
 
     - name: Check if ZTA Workshop project exists
       uri:
-        url: "{{ aap_host }}/api/controller/v2/projects/?name=ZTA+Workshop"
+        url: "{{ aap_host }}/api/controller/v2/projects/?name__exact={{ project_name | urlencode }}"
         method: GET
-        url_username: "{{ aap_user }}"
-        url_password: "{{ aap_password }}"
+        user: "{{ aap_user }}"
+        password: "{{ aap_password }}"
         force_basic_auth: true
         validate_certs: "{{ aap_verify_ssl }}"
         status_code: 200
       register: aap_project_lookup
 
+    - name: Fail if ZTA Workshop project not found
+      fail:
+        msg: >
+          Project '{{ project_name }}' not found on controller.
+          Run setup/configure-aap-project.yml first, then re-run this playbook.
+      when: aap_project_lookup.json.count | default(0) | int == 0
+
     - name: Add NetBox dynamic inventory source
       ansible.controller.inventory_source:
-        name: NetBox Dynamic Inventory
+        name: "{{ netbox_inv_source_name }}"
         description: "Hosts from NetBox CMDB via netbox.netbox.nb_inventory plugin"
-        inventory: ZTA Lab Inventory
-        organization: Default
+        inventory: "{{ inventory_name }}"
+        organization: "{{ aap_organization }}"
         source: scm
-        source_project: ZTA Workshop
+        source_project: "{{ project_name }}"
         source_path: inventory/netbox_inventory.yml
         credential: ZTA NetBox Credential
-        # netbox.netbox collection is only in the workshop EE, not the Default EE
-        execution_environment: Netbox
+        execution_environment: "{{ netbox_ee_name }}"
         overwrite: false
         overwrite_vars: false
         update_on_launch: true
         state: present
-      when: aap_project_lookup.json.count | default(0) | int > 0
 
     - name: Sync NetBox inventory source
       ansible.controller.inventory_source_update:
-        inventory_source: NetBox Dynamic Inventory
-        inventory: ZTA Lab Inventory
+        inventory_source: "{{ netbox_inv_source_name }}"
+        inventory: "{{ inventory_name }}"
         wait: true
         timeout: 120
-      when: aap_project_lookup.json.count | default(0) | int > 0
 
     # ── Summary ───────────────────────────────────────────────────────
 
@@ -182,9 +192,10 @@
           ║                                                              ║
           ║  Credential Type:  NetBox (custom)                           ║
           ║  Credential:       ZTA NetBox Credential                     ║
-          ║  Inventory:        ZTA Lab Inventory                         ║
-          ║  Inventory Source: NetBox Dynamic Inventory                  ║
-          ║    {{ 'CREATED + SYNCED' if aap_project_lookup.json.count | default(0) | int > 0 else 'SKIPPED — ZTA Workshop project not found' }}
+          ║  Inventory:        {{ inventory_name }}
+          ║  Inventory Source: {{ netbox_inv_source_name }} — CREATED + SYNCED
+          ║  Project:          {{ project_name }}
+          ║  Execution Env:    {{ netbox_ee_name }}
           ║                                                              ║
           ║  NetBox Host URL:  {{ nb_api_url }}
           ║                                                              ║
@@ -192,9 +203,4 @@
           ║    NETBOX_API   ← credential field netbox_url                 ║
           ║    NETBOX_TOKEN ← credential field netbox_token (secret)      ║
           ║                                                              ║
-          {% if aap_project_lookup.json.count | default(0) | int == 0 %}
-          ║  NOTE: Run configure-aap-project.yml first, then re-run     ║
-          ║        this playbook to create the inventory source.         ║
-          ║                                                              ║
-          {% endif %}
           ╚════════════════════════════════════════════════════════════════╝

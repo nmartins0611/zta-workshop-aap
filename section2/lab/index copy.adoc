@@ -18,22 +18,7 @@ In NIST SP 800-207 terms, this section moves from *verifying* the ZTA stack (Sec
 
 These hostnames assume workshop DNS (`*.zta.lab`) is configured. Replace with instructor-provided values if different.
 
-.Access information
-[cols="2,2,3",options="header"]
-|===
-| System | URL / address | Credentials
-
-| Automation controller (AAP 2.6)
-| `https://control.zta.lab`
-| `admin` / `ansible123!`
-
-| Event-Driven Ansible controller (AAP 2.6)
-| Same platform as automation controller (EDA UI / route per deployment)
-| `admin` / `ansible123!`
-
-| IdM (FreeIPA)
-| `https://central.zta.lab`
-| `admin` / `ansible123!`
+.Access informatible123!`
 
 | OPA
 | `http://central.zta.lab:8181`
@@ -63,6 +48,21 @@ These hostnames assume workshop DNS (`*.zta.lab`) is configured. Replace with in
 | `http://app.zta.lab:8081`
 | No auth (dashboard)
 |===
+[cols="2,2,3",options="header"]
+|===
+| System | URL / address | Credentials
+
+| Automation controller (AAP 2.6)
+| `https://control.zta.lab`
+| `admin` / `ansible123!`
+
+| Event-Driven Ansible controller (AAP 2.6)
+| Same platform as automation controller (EDA UI / route per deployment)
+| `admin` / `ansible123!`
+
+| IdM (FreeIPA)
+| `https://central.zta.lab`
+| `admin` / `ansi
 
 == Overview
 

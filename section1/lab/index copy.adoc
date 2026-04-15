@@ -33,11 +33,11 @@ These hostnames assume workshop DNS (`*.zta.lab`) is configured. Replace with in
 
 | Automation controller (AAP 2.6)
 | `https://control.zta.lab`
-| As provided by instructor
+| `admin` / `ansible123!`
 
 | Event-Driven Ansible controller (AAP 2.6)
 | Same platform as automation controller (EDA UI / route per deployment)
-| As provided by instructor
+| `admin` / `ansible123!`
 
 | IdM (FreeIPA)
 | `https://central.zta.lab`
@@ -53,19 +53,19 @@ These hostnames assume workshop DNS (`*.zta.lab`) is configured. Replace with in
 
 | NetBox
 | `http://netbox.zta.lab:8880`
-| API token as documented / instructor
+| API token and `admin` / `ansible123!`
 
 | Gitea
 | `http://gitea.zta.lab:3000`
-| As provided by instructor
+| `gitea` / `ansible123!`
 
 | Splunk
 | `http://splunk.zta.lab:8000` or `http://central.zta.lab:8000`
-| As configured during setup
+| `admin` / `ansible123!`
 
-| Wazuh Dashboard
+| Wazuh Dashboard (If available)
 | `http://wazuh.zta.lab:5601`
-| As provided by instructor
+| `admin` / `ansible123!`
 
 | Application (Global Telemetry Platform)
 | `http://app.zta.lab:8081`
@@ -112,7 +112,7 @@ Until AAP is wired to the same **identity, policy, secrets, and inventory truth*
 
 === Goal
 
-Workshop credentials have been created already. You **confirm** Vault KV data and controller objects match the lab—no manual credential creation in the UI for this exercise.
+Workshop credentials have been created already. We should **confirm** Vault KV data and controller objects match the requirements for this lab.
 
 [TIP]
 .Zero Trust: secrets on the platform
@@ -122,7 +122,8 @@ Machine and Arista passwords are **not** stored in AAP: the controller holds **V
 
 === Step 1 — Confirm Vault paths
 
-Navigate to the Terminal tab, and connect to the vault instance.
+Navigate to the Terminal tab, this terminal is directly connected to a machine called central. You can ssh into other machines from here. Let us connect to our vault machine.
+
 
 [source,bash]
 ----
@@ -135,7 +136,8 @@ Warning: Permanently added 'vault' (ED25519) to the list of known hosts.
 rhel@vault's password: 
 ----
 
-Authenticate with ansible123!
+Authenticate with the rhel users password: ansible123!
+Next lets view the details of the vault, we need to unlock the vault and login. 
 
 [source,bash]
 ----
@@ -159,7 +161,9 @@ token_policies         ["default"]
 identity_policies      ["admin-policy.hcl"]
 policies               ["admin-policy.hcl" "default"]
 token_meta_username    admin
+
 [rhel@vault ~]$ vault kv get secret/machine/rhel
+
 vault kv get secret/network/arista
 vault kv get secret/db/admin
 ====== Secret Path ======
@@ -217,6 +221,17 @@ password    postgres123!
 port        5432
 username    postgres
 ----
+
+[NOTE]
+.Why we verify Vault before anything else
+====
+In later sections, AAP will request **short-lived database credentials** and **signed SSH certificates** from Vault at job time. Before relying on that chain, you need to confirm it is wired correctly — this is the ZTA principle of **never trust, always verify** applied to your own infrastructure.
+
+Notice that AAP credential objects store **Vault paths**, not passwords. The actual secrets live in Vault and are resolved at runtime. That indirection is deliberate: AAP is the *Policy Enforcement Point* that consumes secrets, not a password store. If a credential is compromised, you rotate it in **one place** (Vault) and every job template picks up the change automatically.
+
+By inspecting both sides — Vault KV data *and* AAP lookup metadata — you are practising the **audit discipline** Zero Trust demands: for any credential you should be able to answer *where it comes from*, *who can read it*, and *what its scope is*.
+====
+
 
 === Step 2 — Confirm credentials in the controller
 
@@ -298,16 +313,6 @@ name_attr: cn
 member_attr: member
 ----
 
-. **LDAP User Search** (YAML list — three elements):
-
-+
-[source,yaml]
-----
-- cn=users,cn=accounts,dc=zta,dc=lab
-- SCOPE_SUBTREE
-- (uid=%(user)s)
-----
-
 . **LDAP Group Search** (YAML list — three elements):
 
 +
@@ -328,7 +333,24 @@ last_name: sn
 email: mail
 ----
 
+. **LDAP User Search** (YAML list — three elements):
+
++
+[source,yaml]
+----
+- cn=users,cn=accounts,dc=zta,dc=lab
+- SCOPE_SUBTREE
+- (uid=%(user)s)
+----
+
 . Enable **Enabled** (and **Create objects** if you want local user records on first IdM login). Save (**Create Authentication Method**).
+
+Click 'Save Authentication Method', and then navigte to 'Mapping'.
+
+<PICTURE>
+
+
+
 
 === Organisation and team mapping
 
@@ -353,6 +375,7 @@ These are the IdM groups the workshop uses in **Group** triggers (`dc=zta,dc=lab
 | `team-devops` | `cn=team-devops,cn=groups,cn=accounts,dc=zta,dc=lab`
 | `team-security` | `cn=team-security,cn=groups,cn=accounts,dc=zta,dc=lab`
 | `team-applications` | `cn=team-applications,cn=groups,cn=accounts,dc=zta,dc=lab`
+| `team-readonly` | `cn=team-readonly,cn=groups,cn=accounts,dc=zta,dc=lab`
 |===
 
 [NOTE]
@@ -361,9 +384,9 @@ These are the IdM groups the workshop uses in **Group** triggers (`dc=zta,dc=lab
 You are **not** "allowing" only these users to log in **unless** you add a separate **Allow** map that lists those DNs. **Organization**, **Team**, **Superuser**, and similar maps mean: *if* the authenticated user is in that LDAP group, *then* grant the mapped organisation role, team membership, or superuser flag. Everyone else can still log in if LDAP authentication itself permits them; they simply will not receive those grants without a matching map.
 ====
 
-==== Suggested maps (UI)
+==== Required Mapping
 
-Use **Add authentication mapping** on your LDAP authenticator. Create these maps in order:
+Use **Mapping** on your LDAP authenticator and click on 'Create mapping' to create each of these maps in order:
 
 . **Organisation → Member (Always)** — ensures every LDAP-authenticated user becomes a member of the **Default** organisation. Without this map, users log in but see an empty platform with no resources.
 
@@ -371,11 +394,17 @@ Use **Add authentication mapping** on your LDAP authenticator. Create these maps
 [cols="2,3",options="header"]
 |===
 | Field | Value
-| Map type | Organisation
-| Organisation | Default
-| Role | Member
+| Authentication mapping | Organisation
+| Name | ZTA-ORG
 | Trigger | Always
+| Organization | Default
+| Role | Organization Member
 |===
+
+Click 'Save mapping' to view the details, and to create the next one. You can click on 'Mapping' to get back to the mapping page. Continue with the rest of the mappings.
+
+<PICTURE>
+
 
 . **Organisation → Admin (Group)** — grants organisation admin to `zta-admins`:
 
@@ -383,23 +412,30 @@ Use **Add authentication mapping** on your LDAP authenticator. Create these maps
 [cols="2,3",options="header"]
 |===
 | Field | Value
-| Map type | Organisation
+| Authentication mapping | Organisation
+| Name | ZTA-Admins
+| Trigger | Groups
+| Operation | or
+| Groups | `cn=zta-admins,cn=groups,cn=accounts,dc=zta,dc=lab`
 | Organisation | Default
 | Role | Organization Admin
-| Trigger | Group
-| Groups | `cn=zta-admins,cn=groups,cn=accounts,dc=zta,dc=lab`
 |===
 
-. **Superuser (Group)** — (**optional**; use only if IdM `zta-admins` should equal full platform admin):
+. **Superuser (Group)** — :
 
 +
 [cols="2,3",options="header"]
 |===
 | Field | Value
-| Map type | Superuser
-| Trigger | Group
+| Authentication mapping | Superuser
+| Name | ZTA-SuperUser
+| Trigger | Groups
+| Operation | or
 | Groups | `cn=zta-admins,cn=groups,cn=accounts,dc=zta,dc=lab`
 |===
+
+
+Below is an example for the Infrastructure team, create this and continue with the remaining teams referenced below.
 
 . **Team (Group)** — one map per team, each mapping an IdM group to an AAP team in **Default**:
 
@@ -411,27 +447,44 @@ Use **Add authentication mapping** on your LDAP authenticator. Create these maps
 | `team-devops` | DevOps
 | `team-security` | Security
 | `team-applications` | Applications
+| `team-readonly` | Readonly
+
 |===
 
+. **Infrastructure (Group)** — :
+
 +
-For each row, create a map with **Map type** = Team, **Team** = the AAP team name, **Organisation** = Default, **Trigger** = Group, and paste the **full DN** into the **Groups** field.
+[cols="2,3",options="header"]
+|===
+| Field | Value
+| Authentication mapping | Team
+| Name | Infrastructure
+| Trigger | Groups
+| Operation | or
+| Groups | `cn=team-infrastructure,cn=groups,cn=accounts,dc=zta,dc=lab`
+| Team | Infrastructure
+| Organization | Default
+| Role | Team Member
+|===
+
 
 === Verify
 
-. Open an the Automation tab sign out. Log into `https://control.zta.lab` as **`ztauser`** / `ansible123!`.
-. Confirm the user lands on a populated dashboard (not an empty platform).
+. Open an the Automation tab, select the 'admin' user in the top right and sign out. Log into the platform now as **`ztauser`** / `ansible123!`.
+. Confirm the user lands on a populated dashboard.
 . Check that team membership is visible under **Access Management** → **Users** → `ztauser` → **Teams**.
 
 
 [TIP]
-.Source of truth and GitOps
+.Source of truth and GitOps - TIP
 ====
 **NetBox** is the *infrastructure source of truth* in this workshop: if a host is decommissioned there, it should disappear from automation inventory on sync—reducing "ghost" targets attackers or operators could hit. **Gitea** holds *intent* (playbooks); together they separate **what exists** (CMDB) from **what we want to do** (code), both subject to policy in later sections.
 ====
 
-== Exercise 1.3 — Verify ZTA services
+NOTE: In order to save time for this workshop, we will provide the templates for each section.
 
-Run **Verify ZTA Services**. Expect healthy IdM, Vault, OPA, NetBox, DNS, PostgreSQL, and Arista facts.
+
+== Exercise 1.3 — Verify ZTA services
 
 [TIP]
 .Never trust, always verify
@@ -439,9 +492,14 @@ Run **Verify ZTA Services**. Expect healthy IdM, Vault, OPA, NetBox, DNS, Postgr
 **Service checks** are the operational face of "never trust, always verify": you do not assume IdM or OPA is up because yesterday it was. For the workshop, this mirrors **continuous diagnostics** on which policy decisions and secret issuance depend.
 ====
 
-== Exercise 1.4 — Test Vault integration
 
-Run **Test Vault Integration**. Observe short-lived PostgreSQL users (unique name per run, TTL, revoke at end).
+Navigate on the automation platform to Automation Execution -> Templates. We have a number of templates avaiable.
+Run **Verify ZTA Services** by clicking on the rocket on the right of the template. 
+
+Inspect the output of the template, at the bottom we have a summury of the checks. If successful we can proceed.
+
+
+== Exercise 1.4 — Test Vault integration
 
 [TIP]
 .Short-lived database identities
@@ -449,21 +507,25 @@ Run **Test Vault Integration**. Observe short-lived PostgreSQL users (unique nam
 Dynamic DB users with a **TTL** limit how long a leaked credential is useful—core **assume breach** hygiene. Vault **revokes** the lease so the database role disappears without a human running `DROP USER`. That is how **least privilege** becomes **time-bound privilege**.
 ====
 
+Next execute the  **Test Vault Integration**. Observe short-lived PostgreSQL users (unique name per run, TTL, revoke at end).
+
+[source]
+----
+TASK [Display Vault integration results] ***************************************
+ok: [vault] => {
+"msg": [
+"Vault integration test — results",
+"KV secret read: PASS (secret/network/arista)",
+"Dynamic DB username: v-userpass-ztaapp-s-anmlwAfJij4NVbUPFDjj-1776239621",
+"Dynamic DB TTL: 300s",
+"Lease ID: database/creds/ztaapp-short-lived/OmVYG5cQm5PqMdPe7Wh6fd4v",
+"Short-lived DB user expires after TTL (Zero Trust / least privilege)."
+]
+}
+----
+
+
 == Exercise 1.5 — Test Vault SSH certificates
-
-Run **Test Vault SSH Certificates**. Observe CA-signed cert, TTL, principals, successful SSH to app/db.
-
-Optional manual sign (from README):
-
-[source,bash]
-----
-export VAULT_ADDR=http://vault.zta.lab:8200
-vault login -method=userpass username=admin password=ansible123!
-ssh-keygen -t rsa -b 2048 -f /tmp/ephemeral -N '' -q
-vault write -field=signed_key ssh/sign/ssh-signer \
-  public_key=@/tmp/ephemeral.pub valid_principals=rhel > /tmp/ephemeral-cert.pub
-ssh-keygen -L -f /tmp/ephemeral-cert.pub
-----
 
 [TIP]
 .Cryptographic proof of permission to log in
@@ -471,13 +533,32 @@ ssh-keygen -L -f /tmp/ephemeral-cert.pub
 The certificate encodes **who may act as which principal** and **for how long**. Hosts need only trust the CA once; they do not need network reachability to Vault at login time. That separation is useful in segmented networks and matches the ZTA idea that **access is explicitly granted and expires**.
 ====
 
-== Exercise 1.6 — Test OPA policy
+Run **Test Vault SSH Certificates**. Observe CA-signed cert, TTL, principals, successful SSH to app/db.
 
-Run **Test OPA Policy**. Expect allow/deny scenarios for patching, VLAN, and DB access per group membership.
+
+
+== Exercise 1.6 — Test OPA policy
 
 [TIP]
 .Deny by default (PDP)
 ====
 OPA returns **allow** only when Rego rules fire; everything else is **implicit deny**. **IdM groups** supply *role-like* attributes the PDP can use, but unlike a static RBAC matrix in one app, the same policy can be **versioned, tested, and shared** across AAP and other PEPs. You are seeing **central policy** backing **distributed enforcement**.
 ====
+
+Lastly, run **Test OPA Policy**. Expect allow/deny scenarios for patching, VLAN, and DB access per group membership.
+
+[source]
+TASK [OPA policy test summary] *************************************************
+ok: [central] => {
+"msg": [
+"OPA policy test — summary",
+"Test 1 — Patch (authorised): ALLOW",
+"Test 2 — Patch (wrong group): DENY",
+"Test 3 — VLAN (network-admin): DENY",
+"Test 4 — VLAN (no group): DENY",
+"Test 5 — DB (app-deployer): ALLOW",
+"Zero Trust: deny-by-default, policy-driven access."
+]
+
+If all tests were successful we can move on to the next exercise. 
 

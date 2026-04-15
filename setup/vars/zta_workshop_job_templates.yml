@@ -152,8 +152,6 @@ zta_workshop_job_templates:
           required: true
           type: integer
           variable: new_vlan_id
-          min: 100
-          max: 999
           default: 200
         - question_name: VLAN Name
           question_description: "Name for the new VLAN"

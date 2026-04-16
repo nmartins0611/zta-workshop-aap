@@ -20,7 +20,8 @@ CREATE TABLE IF NOT EXISTS metrics (
     baseline_epoch  BIGINT DEFAULT EXTRACT(EPOCH FROM now())::BIGINT,
     confidence      NUMERIC(4, 2) DEFAULT 0.95,
     source          VARCHAR(256),
-    updated_at      TIMESTAMPTZ DEFAULT now()
+    updated_at      TIMESTAMPTZ DEFAULT now(),
+    UNIQUE (category_id, name)
 );
 
 CREATE TABLE IF NOT EXISTS metric_snapshots (
@@ -33,14 +34,32 @@ CREATE TABLE IF NOT EXISTS metric_snapshots (
 CREATE INDEX IF NOT EXISTS idx_snapshots_metric_time
     ON metric_snapshots (metric_id, recorded_at DESC);
 
--- Seed categories
+-- Seed categories (digital first so it renders above consumption on the dashboard)
 INSERT INTO metric_categories (slug, name, description, icon) VALUES
-    ('consumption',  'Global Consumption',     'Worldwide resource consumption telemetry',  '&#x1F30D;'),
-    ('digital',      'Digital Infrastructure',  'Internet and digital service metrics',      '&#x1F4BB;')
+    ('digital',      'Digital Infrastructure',  'Internet and digital service metrics',      '&#x1F4BB;'),
+    ('consumption',  'Global Consumption',     'Worldwide resource consumption telemetry',  '&#x1F30D;')
 ON CONFLICT (slug) DO NOTHING;
 
--- Seed metrics with authoritative-sounding rates
+-- Seed metrics (digital first to match category order)
 INSERT INTO metrics (category_id, name, unit, rate_per_second, baseline_total, confidence, source) VALUES
+    (
+        (SELECT id FROM metric_categories WHERE slug = 'digital'),
+        'Netflix "Are You Still Watching?" Prompts',
+        'prompts/hr',
+        13.3333,
+        0,
+        0.91,
+        'Streaming Behavioral Analytics Institute, Q4 Engagement Study'
+    ),
+    (
+        (SELECT id FROM metric_categories WHERE slug = 'digital'),
+        'Password Reset Requests',
+        'clicks/min',
+        58.3333,
+        0,
+        0.96,
+        'Federated Identity Frustration Index (FIFI), Continuous Monitoring Feed'
+    ),
     (
         (SELECT id FROM metric_categories WHERE slug = 'consumption'),
         'Global Pizza Consumption',
@@ -67,23 +86,5 @@ INSERT INTO metrics (category_id, name, unit, rate_per_second, baseline_total, c
         0,
         0.97,
         'Global Caffeine Monitoring Authority (GCMA), Real-Time Brew Index'
-    ),
-    (
-        (SELECT id FROM metric_categories WHERE slug = 'digital'),
-        'Netflix "Are You Still Watching?" Prompts',
-        'prompts/hr',
-        13.3333,
-        0,
-        0.91,
-        'Streaming Behavioral Analytics Institute, Q4 Engagement Study'
-    ),
-    (
-        (SELECT id FROM metric_categories WHERE slug = 'digital'),
-        'Password Reset Requests',
-        'clicks/min',
-        58.3333,
-        0,
-        0.96,
-        'Federated Identity Frustration Index (FIFI), Continuous Monitoring Feed'
     )
-ON CONFLICT DO NOTHING;
+ON CONFLICT (category_id, name) DO NOTHING;

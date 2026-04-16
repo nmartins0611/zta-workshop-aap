@@ -9,323 +9,354 @@ include::../../docs/lab/common-environment.adoc[]
 
 == What is Zero Trust Architecture?
 
-Zero Trust Architecture (ZTA) is a security model built on a single premise: *no actor, system, network, or service operating inside or outside the security perimeter is trusted by default*.
-Every request for access — whether from a human, an application, or a workload — must be *verified, authorised, and continuously validated* before it is granted.
+Think about how most networks are built today: there's a firewall at the edge, and once you're inside, you're more or less trusted.
+That worked when everyone sat in the same office and servers lived in one data centre.
+It doesn't work when attackers can phish their way past the perimeter, when insiders go rogue, or when your workloads are spread across clouds, containers, and partner networks where "inside" no longer means anything.
 
-The term was formalised by **NIST Special Publication 800-207**, which defines Zero Trust as:
+Zero Trust flips that model on its head.
+Instead of trusting anyone based on where they are, *every single request* — from a person, an app, or an automation job — has to prove it should be allowed.
+Every time.
+No exceptions.
+
+**NIST Special Publication 800-207** put a name to this idea:
 
 [quote, NIST SP 800-207]
 ____
-Zero trust assumes there is no implicit trust granted to assets or user accounts based solely on their physical or network location (i.e., local area networks versus the internet) or based on asset ownership (enterprise or personally owned).
+Zero trust assumes there is no implicit trust granted to assets or user accounts based solely on their physical or network location or based on asset ownership.
 ____
 
-Traditional perimeter security draws a hard line at the network edge: everything inside the firewall is trusted, everything outside is not.
-That model fails when attackers breach the perimeter (lateral movement), when insiders misuse access, or when workloads span clouds, containers, and partner networks where "inside" has no fixed meaning.
+In practice, that means replacing the old perimeter with three things: **strong identity**, **explicit policy**, and **continuous verification** — enforced as close to the resource as possible, no matter what network you're on.
 
-Zero Trust replaces the perimeter with **identity-centric, policy-driven, continuously verified access** — enforced as close to the resource as possible, regardless of network location.
+That's exactly what you'll build in this workshop.
 
 == Core principles
 
-ZTA is not a single product or technology.
-It is a set of design principles that govern how systems grant, limit, and revoke access.
-This workshop demonstrates each principle through hands-on exercises.
+Zero Trust isn't a product you can buy — it's a set of design principles.
+Over the next seven sections, you'll see each one in action.
 
-=== Never trust, always verify
+[cols="2,3,4",options="header"]
+|===
+| Principle | In plain terms | You'll see this when...
 
-Every access request is treated as though it originates from an untrusted network.
-Authentication and authorisation happen *before every action*, not once at session start.
+| **Never trust, always verify**
+| Don't assume someone is who they say they are just because they got in before. Check every request, every time.
+| Every AAP job launch queries OPA for a fresh allow/deny decision — even if the same user ran the same job five minutes ago.
 
-_Workshop example:_ Every AAP job template launch queries OPA for an allow/deny decision — even if the same user ran the same job five minutes earlier.
+| **Least privilege**
+| Give people (and systems) only what they need, only for as long as they need it. No more, no less.
+| Vault issues database credentials scoped to a single database with a five-minute TTL. They expire on their own — nobody has to remember to revoke them.
 
-=== Least privilege
+| **Assume breach**
+| Accept that someone *will* get in eventually. Design your systems so that when it happens, the damage is contained and the response is fast.
+| Splunk spots a brute-force SSH attack and fires a webhook to Event-Driven Ansible, which revokes the app's database credentials in under 30 seconds — no human in the loop.
 
-Subjects receive the *minimum permissions necessary* to complete a task, and only for the duration required.
-Standing access — persistent credentials or broad group memberships that outlive a task — is the primary target of reduction.
+| **Deny by default**
+| Start from "no" and only say "yes" when there's an explicit policy match. If it's not specifically allowed, it's blocked.
+| OPA policies return `allowed: false` unless every rule passes. A user who isn't in the `app-deployers` group never gets database credentials — the pipeline stops before Vault is even contacted.
 
-_Workshop example:_ Vault issues PostgreSQL credentials scoped to a single database with a five-minute TTL. The credentials expire automatically; no human intervenes to revoke them.
+| **Identity-driven access**
+| Base decisions on *who* (or *what*) is asking — not what network they're on. Prove identity with certificates, tokens, or SVIDs, and enrich it with group memberships and roles.
+| IdM provides the user directory. LDAP group memberships flow into AAP teams. OPA checks those teams to decide who can launch which templates.
 
-=== Assume breach
+| **Micro-segmentation**
+| Don't let everything talk to everything. Carve the network into small zones and only allow the traffic that needs to flow.
+| Arista cEOS switches enforce ACLs between the app tier and data tier. Having valid database credentials isn't enough — you also need a permitted network path from the right source IP.
 
-System design accepts that compromise *will* happen and limits the blast radius.
-Controls focus on detection, containment, and rapid response rather than solely on prevention.
+| **Continuous monitoring**
+| Trust isn't a one-time decision. Keep watching, detect anomalies, and respond automatically when something looks wrong.
+| Splunk and Wazuh aggregate security events around the clock. When a brute-force pattern appears, a webhook triggers EDA, which launches a remediation job — no manual intervention needed.
 
-_Workshop example:_ When Splunk detects a brute-force SSH attack, Event-Driven Ansible automatically revokes the application's database credentials in Vault — isolating data access in under 30 seconds without waiting for a human to respond.
+| **Workload identity**
+| It's not just people who need to prove their identity — services, containers, and automation jobs do too. A process should have cryptographic proof that it is what it claims to be.
+| SPIFFE/SPIRE issues identity documents (SVIDs) to the automation platform. OPA checks the SVID before allowing any network changes — making sure the request comes from AAP, not something pretending to be AAP.
 
-=== Deny by default
+|===
 
-Access decisions start from *deny* and require an explicit policy match to reach *allow*.
-Anything not specifically permitted is forbidden.
+== The NIST model, mapped to this lab
 
-_Workshop example:_ OPA policies return `allowed: false` unless every Rego rule fires. A user who is not in `app-deployers` never receives database credentials — the pipeline stops before Vault is contacted.
-
-=== Identity-driven access
-
-Decisions are based on the *identity* of the requester — human or workload — not on the network they happen to be on.
-Identity is established cryptographically (certificates, tokens, SPIFFE SVIDs) and enriched with attributes (group membership, role, device posture).
-
-_Workshop example:_ IdM (FreeIPA) provides the identity layer. LDAP group memberships flow into AAP teams via authenticator maps. OPA policies reference those team memberships to decide who may launch which job templates.
-
-=== Micro-segmentation
-
-Network paths are scoped to the minimum required connectivity.
-Flat networks with unrestricted lateral movement are replaced by segmented zones where traffic is allowed only between explicitly permitted endpoints.
-
-_Workshop example:_ Arista cEOS switches enforce ACLs between the app tier (`10.20.0.0/24`) and data tier (`10.30.0.0/24`). Even with valid database credentials, connections are only permitted from the app container's IP — not from arbitrary hosts on the same VLAN.
-
-=== Continuous monitoring and response
-
-Trust is not a one-time decision.
-Systems continuously observe behaviour, detect anomalies, and trigger automated responses when indicators of compromise appear.
-
-_Workshop example:_ Splunk and Wazuh aggregate security events. When a brute-force pattern is detected, a webhook triggers Event-Driven Ansible, which launches a remediation job — closing the loop from detection to containment without manual intervention.
-
-=== Workload identity
-
-Trust is extended to *workloads* (services, containers, automation jobs), not just humans.
-Workload identity frameworks provide cryptographic proof that a process *is what it claims to be*, independent of the network it runs on.
-
-_Workshop example:_ SPIFFE/SPIRE issues SVIDs (SPIFFE Verifiable Identity Documents) to the automation platform. OPA validates the SVID before permitting network changes — ensuring that the VLAN management request comes from a legitimate AAP workload, not an impersonator.
-
-== The NIST Zero Trust model in this workshop
-
-NIST SP 800-207 introduces three logical components that appear throughout the lab:
+NIST 800-207 breaks Zero Trust into three logical components.
+Here's how they map to the tools you'll use:
 
 [cols="2,3,3",options="header"]
 |===
-| Component | Role | Workshop mapping
+| Component | What it does | In this lab
 
 | **Policy Decision Point (PDP)**
-| Evaluates access requests against policy and context; returns allow or deny
-| **Open Policy Agent (OPA)** — evaluates Rego policies using identity from IdM, state from NetBox, and context from the request
+| Looks at a request, checks it against policy, and answers: allow or deny.
+| **Open Policy Agent (OPA)** — evaluates Rego policies using identity from IdM, infrastructure state from NetBox, and context from the request itself.
 
 | **Policy Enforcement Point (PEP)**
-| Intercepts requests and enforces the PDP's decision; blocks or permits the action
-| **Ansible Automation Platform (AAP)** — the controller queries OPA before launching jobs (Policy as Code); playbooks query OPA before issuing secrets or changing networks
+| Sits in the path of every request and enforces whatever the PDP decided. If the answer was "deny", the action never happens.
+| **Ansible Automation Platform (AAP)** — the controller asks OPA before launching any job (Policy as Code), and playbooks can ask OPA again mid-run for finer-grained checks.
 
 | **Policy Information Point (PIP)**
-| Supplies contextual data the PDP needs — identity attributes, asset state, threat intelligence
-| **IdM** (identity, group membership), **NetBox** (infrastructure state, maintenance windows), **Vault** (credential status), **Splunk/Wazuh** (threat signals)
+| Feeds the PDP with the context it needs to make good decisions — who is this user, what state is the infrastructure in, are there any active threats?
+| **IdM** (identity, groups), **NetBox** (infrastructure state, maintenance windows), **Vault** (credential status), **Splunk/Wazuh** (threat signals).
+
 |===
 
+Here's how all of that fits together:
+
+[mermaid]
 ....
-                  ┌────────────────────────┐
-                  │   Policy Decision      │
-                  │   Point (PDP)          │
-                  │                        │
-                  │   Open Policy Agent    │
-                  │   opa-policies/*.rego  │
-                  └──────────┬─────────────┘
-                             │
-                    allow / deny + violations
-                             │
-┌──────────────┐    ┌────────▼─────────────┐    ┌──────────────────────┐
-│ Identity     │    │  Policy Enforcement  │    │ Secrets              │
-│ (PIP)        │◄───┤  Point (PEP)         ├───►│                      │
-│              │    │                      │    │ HashiCorp Vault      │
-│ IdM/FreeIPA  │    │  AAP Controller      │    │ Dynamic creds, SSH   │
-│ SPIFFE/SPIRE │    │  + EDA Controller    │    │ CA, secret storage   │
-└──────────────┘    └────────┬─────────────┘    └──────────────────────┘
-                             │
-                    execute / configure
-                             │
-                    ┌────────▼─────────────┐    ┌──────────────────────┐
-                    │ Infrastructure       │    │ Monitoring           │
-                    │                      │    │ (PIP)                │
-                    │ App, DB, Arista cEOS │    │                      │
-                    │ RHEL containers      │    │ Splunk / Wazuh       │
-                    └──────────────────────┘    │ → EDA → remediation  │
-                                                └──────────────────────┘
+flowchart TB
+    PDP("<b>Policy Decision Point — PDP</b><br/>Open Policy Agent<br/><i>opa-policies/*.rego</i>")
+    PEP("<b>Policy Enforcement Point — PEP</b><br/>AAP Controller + EDA Controller")
+    PIP_ID("<b>Identity — PIP</b><br/>IdM / FreeIPA<br/>SPIFFE / SPIRE")
+    SECRETS("<b>Secrets Management</b><br/>HashiCorp Vault<br/>Dynamic creds · SSH CA · Secret storage")
+    INFRA("<b>Infrastructure</b><br/>App · DB · Arista cEOS · RHEL containers")
+    NETBOX("<b>State — PIP</b><br/>NetBox CMDB<br/>Inventory · Maintenance windows")
+    MONITOR("<b>Monitoring — PIP</b><br/>Splunk / Wazuh")
+
+    PDP -- "allow / deny + violations" --> PEP
+    PEP -. "query policy" .-> PDP
+    PIP_ID <-- "resolve identity + groups" --> PEP
+    PEP <-- "request credentials" --> SECRETS
+    NETBOX -- "infrastructure state" --> PDP
+    PEP -- "execute / configure" --> INFRA
+    MONITOR -- "webhook alert → EDA" --> PEP
+    PEP -. "revoke / remediate" .-> SECRETS
+    INFRA -. "security events" .-> MONITOR
+
+    style PDP fill:#4a90d9,color:#fff,stroke:#2a6cb8
+    style PEP fill:#d94a4a,color:#fff,stroke:#b82a2a
+    style PIP_ID fill:#50b848,color:#fff,stroke:#3a8a34
+    style SECRETS fill:#f5a623,color:#fff,stroke:#d4891a
+    style INFRA fill:#7b7b7b,color:#fff,stroke:#5a5a5a
+    style NETBOX fill:#50b848,color:#fff,stroke:#3a8a34
+    style MONITOR fill:#50b848,color:#fff,stroke:#3a8a34
 ....
 
-== Why Ansible Automation Platform for Zero Trust
+== Why Ansible Automation Platform?
 
-Zero Trust demands that every operational change — patching a server, rotating a credential, reconfiguring a network ACL — passes through the same identity, policy, and audit gates.
-Without a central orchestration layer, each of those actions would require its own bespoke integration with the identity provider, policy engine, secrets manager, and SIEM.
+Every operational change in a Zero Trust environment — patching a server, rotating a credential, updating a firewall rule — needs to pass through the same identity checks, policy gates, and audit trail.
+If you tried to wire each of those actions individually to your identity provider, policy engine, secrets manager, and SIEM, you'd end up with a tangled mess of one-off integrations.
 
-Ansible Automation Platform fills the role of *Policy Enforcement Point* for operational automation:
+AAP sits in the middle and ties it all together.
+It acts as the *Policy Enforcement Point* — the single place where policy decisions get enforced for every kind of infrastructure change.
 
-=== Single control plane for heterogeneous infrastructure
+Here's what that gives you:
 
-AAP manages RHEL hosts, Arista network switches, PostgreSQL databases, and containerised applications from one platform.
-A ZTA that only covers servers but ignores the network fabric or the application layer leaves gaps attackers will find.
-AAP closes those gaps by bringing every layer under the same policy-governed workflow.
+=== One platform for everything
 
-=== Policy as Code — pre-launch authorisation
+AAP manages RHEL hosts, Arista switches, PostgreSQL databases, and containerised apps from the same interface.
+A Zero Trust approach that only covers your servers but ignores the network or the application layer has blind spots.
+AAP eliminates those by bringing every layer under the same policy-governed workflow.
 
-AAP 2.6 integrates directly with OPA through **Policy as Code**.
-Before a job template starts, the controller sends the full job context — template name, launching user, team memberships, inventory — to OPA for an allow/deny decision.
-Unauthorised launches are blocked *before any playbook task executes*, not after damage is done.
+=== Policy checks before anything runs
 
-This creates two enforcement rings:
+AAP 2.6 talks directly to OPA through **Policy as Code**.
+Before a job template starts, the controller sends the full context — template name, who's launching it, which teams they belong to, what inventory it targets — to OPA for a decision.
+If OPA says no, the job never starts. Not "it fails partway through" — it never even begins.
 
-* **Outer ring (platform):** AAP queries OPA at launch time. Wrong user, wrong team, wrong template → the job never starts.
-* **Inner ring (playbook):** Individual tasks can query OPA mid-execution for fine-grained checks (SPIFFE validation, VLAN range, data classification).
+This gives you two enforcement layers:
 
-=== Secrets integration — no credentials at rest
+* **Outer ring (platform):** AAP checks with OPA at launch time. Wrong user or wrong team? The job is blocked before a single task runs.
+* **Inner ring (playbook):** Individual tasks can query OPA mid-run for more specific checks — like validating a SPIFFE identity or confirming a VLAN ID is in the allowed range.
 
-AAP resolves machine and network passwords from **Vault at job time** through credential lookups.
-The platform database never stores the actual passwords.
-If the controller is compromised, the attacker finds Vault paths — not usable credentials.
+=== No passwords sitting on disk
 
-For SSH, Vault acts as a **certificate authority**, issuing short-lived signed certificates instead of distributing static keys.
-Hosts trust the Vault CA; they do not need a list of authorised public keys that grows stale and unaudited.
+AAP pulls machine and network credentials from **Vault at job time** through credential lookups.
+The AAP database never holds the actual passwords.
+If the controller were compromised, an attacker would find Vault paths — not usable credentials.
 
-=== Identity-aware automation
+For SSH, Vault acts as a **certificate authority**.
+Instead of distributing static keys that sit on disk and go stale, Vault signs short-lived certificates on demand.
+Hosts trust the Vault CA — no more maintaining a growing, unaudited list of authorised public keys.
 
-AAP authenticates operators through **IdM LDAP**.
-Group memberships (mapped to AAP teams) determine which job templates a user can see and launch.
-This means the same playbook can exist in the catalog, but only the right team can execute it — enforced by both AAP RBAC and OPA policy.
+=== People get only what they should
 
-=== Event-driven response
+AAP authenticates users through **IdM LDAP**.
+Their group memberships get mapped to AAP teams, and those teams determine which job templates they can see and launch.
+The same playbook can sit in the catalog for everyone, but only the right team can run it — enforced by AAP RBAC and OPA policy together.
 
-**Event-Driven Ansible (EDA)** receives webhooks from Splunk or Wazuh when security events are detected.
-EDA matches events against rulebooks and triggers remediation jobs on the automation controller — revoking credentials, isolating hosts, or escalating alerts — in seconds rather than the minutes or hours a manual incident response process requires.
+=== Automated responses in seconds
 
-=== Auditability and repeatability
+**Event-Driven Ansible (EDA)** watches for webhooks from Splunk or Wazuh.
+When a security event fires — say, a brute-force attack — EDA matches it against a rulebook and kicks off a remediation job on the controller.
+Credentials get revoked, hosts get isolated, or alerts get escalated — in seconds, not the minutes or hours of a manual incident response.
 
-Every job run is logged with the user who launched it, the policy decision that allowed it, the credentials that were issued, and the changes that were made.
-Playbooks are version-controlled in Gitea.
-This gives security teams a complete, reproducible chain of evidence from *intent* (code commit) through *authorisation* (OPA decision) to *execution* (job output) — which is the audit trail Zero Trust demands.
+=== A complete audit trail
 
-== Workshop components at a glance
+Every job run records who launched it, which policy allowed it, what credentials were issued, and what changed.
+Playbooks live in version control in Gitea.
+That gives your security team a full chain of evidence from *intent* (the code commit) through *authorisation* (the OPA decision) to *execution* (the job output).
+That's the kind of audit trail Zero Trust demands.
 
-The lab deploys a complete ZTA stack.
-Each component maps to a specific Zero Trust function:
+== What you'll be working with
+
+The lab deploys a full ZTA stack.
+Here's every component, what role it plays, and what it actually does in the exercises:
 
 [cols="2,2,3",options="header"]
 |===
-| Component | ZTA function | What it does in the lab
+| Component | ZTA role | What it does in the lab
 
 | **IdM (FreeIPA)**
 | Identity provider
-| Provides users, groups, Kerberos, LDAP, and the CA trust chain. IdM groups drive AAP team membership and OPA policy decisions.
+| Your user directory — provides users, groups, Kerberos, LDAP, and the CA trust chain. Group memberships drive AAP team assignments and OPA policy decisions.
 
 | **HashiCorp Vault**
 | Secrets manager + SSH CA
-| Issues short-lived database credentials, signs SSH certificates, and stores secrets that AAP resolves at job time.
+| Issues short-lived database credentials, signs SSH certificates on demand, and stores secrets that AAP pulls at job time.
 
 | **Open Policy Agent (OPA)**
 | Policy decision point
-| Evaluates Rego policies for job launch authorisation (`aap.gateway`), database access (`zta.db_access`), network changes (`zta.network`), and data classification.
+| The brain that says yes or no. Evaluates Rego policies for job launches, database access, network changes, and data classification.
 
 | **SPIFFE / SPIRE**
 | Workload identity
-| Issues SVIDs that prove the automation platform's identity to OPA. Prevents impersonation of AAP by rogue processes.
+| Proves the automation platform is who it says it is. Issues cryptographic identity documents (SVIDs) that OPA checks before allowing sensitive operations.
 
 | **NetBox**
-| Infrastructure source of truth
-| Provides dynamic inventory to AAP and maintenance-window state to OPA. Ensures automation targets *what actually exists*, not a stale static list.
+| Source of truth
+| Your infrastructure CMDB — provides dynamic inventory to AAP and maintenance-window state to OPA. Automation targets what actually exists, not a stale spreadsheet.
 
 | **Arista cEOS**
-| Network micro-segmentation
-| Three-switch fabric (spine + two leaf) enforcing ACLs between app and data tiers. Demonstrates that valid credentials alone are insufficient without a permitted network path.
+| Network segmentation
+| A three-switch fabric (one spine, two leaf) that enforces ACLs between the app and data tiers. Valid credentials aren't enough — you also need an allowed network path.
 
 | **Splunk**
-| Security monitoring (SIEM)
-| Aggregates logs, detects brute-force patterns, and sends webhook alerts to EDA for automated incident response.
+| Security monitoring
+| Aggregates logs, detects attack patterns (like brute-force SSH), and sends webhook alerts to EDA for automated response.
 
 | **Wazuh**
 | Security monitoring (optional)
-| Alternative SIEM path for brute-force detection and EDA integration.
+| An alternative SIEM path for the same detection-and-response pattern. Used in the optional Section 7.
 
 | **Gitea**
-| Git server (GitOps)
-| Hosts playbooks and inventory plugins. AAP syncs projects from Gitea, ensuring automation intent is version-controlled and auditable.
+| Git server
+| Hosts the playbooks and inventory plugins. AAP syncs projects from Gitea, so everything is version-controlled and auditable.
 
 | **AAP Controller**
 | Policy enforcement point
-| Orchestrates all automation: job templates, workflows, credential resolution, Policy as Code enforcement, RBAC, and audit logging.
+| The hub of the lab — runs job templates, resolves credentials, enforces Policy as Code, manages RBAC, and logs everything.
 
 | **EDA Controller**
 | Event-driven response
-| Receives SIEM webhooks, matches rulebook conditions, and triggers remediation jobs on the automation controller.
+| Listens for SIEM webhooks, matches them against rulebook conditions, and triggers remediation jobs on the controller.
 
 | **PostgreSQL + Flask App**
-| Target workloads
-| The "Global Telemetry Platform" — a database-backed web application that is the subject of deployment, credential rotation, and incident response exercises.
+| The thing you're protecting
+| The "Global Telemetry Platform" — a database-backed web app that you'll deploy, rotate credentials for, and defend through incident response exercises.
+
 |===
 
-== Workshop journey
+== Your journey through the workshop
 
-The seven sections build on each other, progressively layering ZTA controls from verification through automated incident response.
+Each section layers on more Zero Trust controls.
+By the end, you'll have built a complete ZTA — from basic integration checks all the way through automated breach response.
 
-=== Section 1 — Verify ZTA components and AAP integration
+=== Section 1 — Wire it all together
 
-*Wire AAP into the Zero Trust fabric.* Confirm that the automation controller resolves credentials from Vault, authenticates users through IdM, queries OPA for policy, and pulls inventory from NetBox. Until these integrations are verified, later sections cannot function.
+Start by connecting AAP to every service in the lab: IdM for identity, Vault for secrets, OPA for policy, NetBox for inventory, and Gitea for code.
+You'll verify that each integration works and configure LDAP authentication.
+Nothing else in the workshop works until this foundation is solid.
 
-_ZTA focus:_ Secrets management, identity integration, policy connectivity, source-of-truth inventory.
+_You'll practice:_ Secrets management, identity integration, policy connectivity, source-of-truth inventory.
 
-=== Section 2 — Deploy application with short-lived credentials
+=== Section 2 — Deploy an app the Zero Trust way
 
-*Experience deny-then-allow in a real deployment pipeline.* Attempt to deploy as the wrong user — OPA denies the request before Vault is contacted. Switch to the correct user and deploy with dynamic database credentials that expire automatically. Observe the Arista ACL update that permits only the app tier to reach the database.
+Try to deploy the Global Telemetry Platform as the wrong user — OPA blocks you before Vault is even contacted.
+Switch to the right user and deploy with database credentials that expire in five minutes.
+Watch the Arista switches open an ACL just for your app's traffic.
 
-_ZTA focus:_ Deny by default, least privilege, short-lived credentials, micro-segmentation.
+_You'll practice:_ Deny by default, least privilege, short-lived credentials, micro-segmentation.
 
-=== Section 3 — AAP Policy as Code: platform-gated patching
+=== Section 3 — See Policy as Code in action
 
-*Block unauthorised launches at the platform level.* AAP queries OPA before the job even starts — this is the outer policy ring. Only members of the Infrastructure or Security team can launch patch templates. Inspect the Rego policy, fix team membership, and successfully apply a security hardening patch.
+Attempt to run a security patch.
+AAP checks with OPA *before the job starts* and blocks it because you're not on the right team.
+Fix your team membership, try again, and successfully apply a hardening patch that sets login banners, tightens SSH, enforces password policy, and enables audit logging.
 
-_ZTA focus:_ Platform enforcement, policy as code, role-based launch authorisation.
+_You'll practice:_ Platform enforcement, policy as code, role-based launch control.
 
-=== Section 4 — SPIFFE-verified network VLAN management
+=== Section 4 — Prove your workload's identity
 
-*Add workload identity to the policy chain.* The outer ring (AAP gateway policy) checks the user's team. The inner ring (in-playbook OPA query) validates the SPIFFE SVID, IdM group, VLAN range, and requested action. Both rings must pass before a VLAN change is committed to the switch fabric and registered in NetBox.
+Create a VLAN, but this time you have to pass *two* policy gates.
+The outer ring (AAP gateway) checks your team membership.
+The inner ring (inside the playbook) validates a SPIFFE identity document, your IdM group, the VLAN range, and the action you requested.
+Both gates must pass before the switch config changes and NetBox gets updated.
 
-_ZTA focus:_ Workload identity, dual policy rings, defence in depth, CMDB-as-truth.
+_You'll practice:_ Workload identity, dual policy rings, defence in depth, CMDB as source of truth.
 
-=== Section 5 — Automated incident response (Splunk -> EDA -> Vault)
+=== Section 5 — Respond to an attack automatically
 
-*Close the detection-to-containment loop.* Simulate a brute-force SSH attack. Splunk detects the pattern and sends a webhook to Event-Driven Ansible. EDA triggers an AAP job that revokes the application's Vault database credentials — cutting off data access in under 30 seconds without human intervention.
+Simulate a brute-force SSH attack against the app server.
+Splunk picks it up and sends a webhook to Event-Driven Ansible.
+EDA triggers a job on the controller that revokes the app's database credentials in Vault — cutting off access to sensitive data in under 30 seconds, with no human in the loop.
 
-_ZTA focus:_ Assume breach, continuous monitoring, automated response, blast-radius containment.
+_You'll practice:_ Assume breach, continuous monitoring, automated response, blast-radius containment.
 
-=== Section 6 — SSH lockdown and break-glass
+=== Extended Security Workshop
 
-*Layer four SSH hardening controls and practise emergency access.* Apply firewall rules, IdM HBAC policies, Vault SSH certificate requirements, and SIEM monitoring as progressive lockdown layers. Then simulate a break-glass scenario where an emergency bypasses normal controls under full audit.
+[NOTE]
+====
+Sections 6 and 7 are part of the **Extended Security Workshop**. They cover advanced hardening and alternative SIEM integration. Your instructor will confirm whether these are included in your session.
+====
 
-_ZTA focus:_ Defence in depth, no standing access, certificate-based authentication, auditable emergency procedures.
+=== Section 6 — Lock down SSH and practise break-glass _(Extended)_
 
-=== Section 7 — Wazuh integration (optional)
+Apply four layers of SSH hardening, one at a time: firewall rules, IdM HBAC policies, Vault SSH certificate requirements, and SIEM monitoring.
+Then simulate an emergency where you need to bypass those controls — under full audit — to regain access.
 
-*Alternative SIEM path.* Mirror the Section 5 incident-response flow using Wazuh instead of Splunk. Demonstrates that the ZTA architecture is *SIEM-agnostic* — the same EDA rulebook pattern works regardless of the detection source.
+_You'll practice:_ Defence in depth, eliminating standing access, certificate-based auth, auditable emergency procedures.
 
-_ZTA focus:_ Tooling independence, continuous monitoring, automated containment.
+=== Section 7 — Wazuh path _(Extended)_
 
-== How the sections connect
+Run the same incident-response flow from Section 5, but with Wazuh doing the detection instead of Splunk.
+Same EDA pattern, same revocation playbooks — just a different SIEM feeding the alerts.
+This shows the architecture is tool-agnostic.
 
-Each section adds a layer of Zero Trust control.
-The diagram below shows the progression:
+_You'll practice:_ Tooling independence, continuous monitoring, automated containment.
 
+== How it all connects
+
+Each section adds a layer.
+Here's the big picture:
+
+[mermaid]
 ....
-Section 1                Section 2              Section 3             Section 4
-┌─────────────────┐     ┌─────────────────┐    ┌─────────────────┐   ┌─────────────────┐
-│ VERIFY           │     │ DEPLOY           │    │ ENFORCE          │   │ PROVE IDENTITY   │
-│                  │     │                  │    │                  │   │                  │
-│ Wire AAP to:    │────►│ OPA + Vault +   │───►│ OPA blocks at   │──►│ SPIFFE SVID +   │
-│ IdM, Vault, OPA,│     │ Arista in a     │    │ AAP launch      │   │ dual OPA rings  │
-│ NetBox, Gitea   │     │ deploy workflow  │    │ (platform gate) │   │ + VLAN + NetBox  │
-└─────────────────┘     └─────────────────┘    └─────────────────┘   └─────────────────┘
-        │                                                                     │
-        │                 Section 5              Section 6                    │
-        │                ┌─────────────────┐    ┌─────────────────┐          │
-        │                │ RESPOND          │    │ HARDEN           │          │
-        │                │                  │    │                  │          │
-        └───────────────►│ SIEM detects    │───►│ Layered SSH     │◄─────────┘
-                         │ attack → EDA    │    │ lockdown +      │
-                         │ revokes creds   │    │ break-glass     │
-                         └─────────────────┘    └─────────────────┘
+flowchart LR
+    S1("<b>Section 1 — VERIFY</b><br/>Wire AAP to IdM,<br/>Vault, OPA, NetBox, Gitea")
+    S2("<b>Section 2 — DEPLOY</b><br/>OPA + Vault + Arista<br/>in a deploy workflow")
+    S3("<b>Section 3 — ENFORCE</b><br/>OPA blocks at AAP<br/>launch — platform gate")
+    S4("<b>Section 4 — PROVE IDENTITY</b><br/>SPIFFE SVID + dual<br/>OPA rings + VLAN + NetBox")
+    S5("<b>Section 5 — RESPOND</b><br/>SIEM detects attack<br/>→ EDA revokes creds")
+
+    subgraph EXT["Extended Security Workshop"]
+        S6("<b>Section 6 — HARDEN</b><br/>Layered SSH lockdown<br/>+ break-glass")
+        S7("<b>Section 7 — WAZUH</b><br/>Alternative SIEM path")
+    end
+
+    S1 --> S2 --> S3 --> S4
+    S1 --> S5 --> S6
+    S4 --> S6
+    S5 -.-> S7
+
+    style S1 fill:#4a90d9,color:#fff,stroke:#2a6cb8
+    style S2 fill:#f5a623,color:#fff,stroke:#d4891a
+    style S3 fill:#d94a4a,color:#fff,stroke:#b82a2a
+    style S4 fill:#50b848,color:#fff,stroke:#3a8a34
+    style S5 fill:#9b59b6,color:#fff,stroke:#7d3c98
+    style S6 fill:#7b7b7b,color:#fff,stroke:#5a5a5a
+    style S7 fill:#7b7b7b,color:#fff,stroke:#5a5a5a
+    style EXT fill:none,stroke:#999,stroke-width:2px,stroke-dasharray: 5 5
 ....
 
 == Before you begin
 
-. Confirm you can access the **automation controller** at `https://control.zta.lab` with the credentials provided by your instructor.
-. Review the <<lab-common-environment,Lab environment reference>> above for hostnames, URLs, and workshop accounts.
-. Sections build on each other — complete them in order unless your instructor directs otherwise.
-. Each section includes a **validation checklist** at the end. Use it to confirm you have met the objectives before moving on.
-. Extended exercises are optional and marked as such. Prioritise the core track in time-limited workshops.
+. Confirm you can log into the **automation controller** at `https://control.zta.lab` with the credentials your instructor provides.
+. Review the <<lab-common-environment,Lab environment reference>> at the top of this page for hostnames, URLs, and workshop accounts.
+. Work through the sections in order — each one builds on what came before. Your instructor will let you know if you should skip ahead.
+. Every section ends with a **validation checklist**. Use it to make sure you've hit the objectives before moving on.
+. Extended exercises are optional and clearly marked. If you're short on time, stick to the core track.
 
 [TIP]
-.Automation-first mindset
+.One thing to keep in mind
 ====
-Throughout this workshop, notice that every integration — LDAP, Vault, OPA, NetBox, Arista, Splunk — is *codified as an Ansible playbook*, not a manual procedure. That is the operational discipline Zero Trust demands: **repeatable, auditable, version-controlled** configurations that can be rebuilt from scratch, diff'd for drift, and reviewed before deployment. The playbooks *are* the security posture.
+As you work through these labs, notice that every integration — LDAP, Vault, OPA, NetBox, Arista, Splunk — is defined as an Ansible playbook, not a manual procedure.
+That's the discipline Zero Trust demands: configurations that are **repeatable, auditable, and version-controlled**.
+They can be rebuilt from scratch, checked for drift, and reviewed before deployment.
+In this workshop, the playbooks *are* the security posture.
 ====

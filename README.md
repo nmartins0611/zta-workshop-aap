@@ -48,23 +48,25 @@ and Arista cEOS network infrastructure.
 
 ## Components
 
-| Component | Role | Host |
-|-----------|------|------|
-| **IdM (FreeIPA)** | Identity, LDAP, Kerberos, CA, DNS | central.zta.lab |
-| **Open Policy Agent** | Policy-based authorisation (deny-by-default) | central.zta.lab |
-| **Keycloak** | SSO / OIDC (future use) | central.zta.lab |
-| **SPIRE Server** | Trust root for SPIFFE workload identity | central.zta.lab |
-| **SPIRE Agents** | Workload attestation, SVID issuance | control, db, vault |
-| **HashiCorp Vault** | Secrets management, dynamic DB creds, SSH CA | vault.zta.lab (own VM) |
-| **Netbox** | CMDB / source of truth for infrastructure | netbox.zta.lab (own VM) |
-| **Gitea** | Git server for GitOps workflows | gitea.zta.lab |
-| **Splunk** | Log aggregation, security analytics | central.zta.lab (container) |
-| **Wazuh** | SIEM, vulnerability scanning, brute-force detection | central.zta.lab (container) |
-| **Automation controller (AAP 2.6)** | Automation orchestration (Policy Enforcement Point) | control.zta.lab (own VM) |
-| **Event-Driven Ansible controller (AAP 2.6)** | Event-Driven Ansible (automated incident response) | control.zta.lab (own VM) |
-| **Arista cEOS** | 3-switch fabric (spine + 2 leaf), VLANs, ACLs | central.zta.lab (containers) |
-| **PostgreSQL** | Application database | central.zta.lab (RHEL container, 10.30.0.10) |
-| **App Server** | Global Telemetry Platform (Flask) | central.zta.lab (RHEL container, 10.20.0.10) |
+
+| Component                                     | Role                                                | Host                                         |
+| --------------------------------------------- | --------------------------------------------------- | -------------------------------------------- |
+| **IdM (FreeIPA)**                             | Identity, LDAP, Kerberos, CA, DNS                   | central.zta.lab                              |
+| **Open Policy Agent**                         | Policy-based authorisation (deny-by-default)        | central.zta.lab                              |
+| **Keycloak**                                  | SSO / OIDC (future use)                             | central.zta.lab                              |
+| **SPIRE Server**                              | Trust root for SPIFFE workload identity             | central.zta.lab                              |
+| **SPIRE Agents**                              | Workload attestation, SVID issuance                 | control, db, vault                           |
+| **HashiCorp Vault**                           | Secrets management, dynamic DB creds, SSH CA        | vault.zta.lab (own VM)                       |
+| **Netbox**                                    | CMDB / source of truth for infrastructure           | netbox.zta.lab (own VM)                      |
+| **Gitea**                                     | Git server for GitOps workflows                     | gitea.zta.lab                                |
+| **Splunk**                                    | Log aggregation, security analytics                 | central.zta.lab (container)                  |
+| **Wazuh**                                     | SIEM, vulnerability scanning, brute-force detection | central.zta.lab (container)                  |
+| **Automation controller (AAP 2.6)**           | Automation orchestration (Policy Enforcement Point) | control.zta.lab (own VM)                     |
+| **Event-Driven Ansible controller (AAP 2.6)** | Event-Driven Ansible (automated incident response)  | control.zta.lab (own VM)                     |
+| **Arista cEOS**                               | 3-switch fabric (spine + 2 leaf), VLANs, ACLs       | central.zta.lab (containers)                 |
+| **PostgreSQL**                                | Application database                                | central.zta.lab (RHEL container, 10.30.0.10) |
+| **App Server**                                | Global Telemetry Platform (Flask)                   | central.zta.lab (RHEL container, 10.20.0.10) |
+
 
 ## Network Architecture
 
@@ -73,6 +75,7 @@ All VMs (central, AAP, Vault, Netbox) on this network. External VMs reach
 containers via published ports on central's management IP.
 
 **Data plane** (internal Podman networks, routed via Arista cEOS):
+
 - `net2` = `10.30.0.0/24` (data-tier) — DB container, ceos2 gateway
 - `net3` = `10.20.0.0/24` (app-tier) — App container, ceos3 gateway
 - ACLs on switches control cross-tier traffic
@@ -223,19 +226,22 @@ section7/README.md   — Wazuh EDA path (optional)
 
 ## Zero Trust Principles Demonstrated
 
-| Principle | Where |
-|-----------|-------|
-| **Never trust, always verify** | Every AAP job checks OPA policy before execution |
-| **Least privilege** | Vault issues DB credentials with minimum grants |
-| **Short-lived credentials** | Dynamic DB users expire; SSH certificates are time-bound |
-| **No standing access** | SSH requires a Vault-signed certificate — no static keys |
-| **Deny by default** | OPA blocks all actions unless explicitly allowed |
-| **Identity-driven access** | IdM groups control who can run which operations |
-| **Workload identity** | SPIFFE/SPIRE proves the automation platform is legitimate |
-| **Platform enforcement** | AAP Policy as Code blocks unauthorised launches |
-| **Micro-segmentation** | Arista ACLs isolate app and data tiers on the switch fabric |
-| **Continuous monitoring** | Wazuh watches every authentication attempt |
-| **Assume breach** | EDA automatically revokes credentials on attack detection |
-| **Blast radius containment** | Credential revocation limits attacker data access |
-| **CMDB as source of truth** | Netbox validates infrastructure state for policy |
-| **GitOps** | Code push triggers automated, policy-governed pipelines |
+
+| Principle                      | Where                                                       |
+| ------------------------------ | ----------------------------------------------------------- |
+| **Never trust, always verify** | Every AAP job checks OPA policy before execution            |
+| **Least privilege**            | Vault issues DB credentials with minimum grants             |
+| **Short-lived credentials**    | Dynamic DB users expire; SSH certificates are time-bound    |
+| **No standing access**         | SSH requires a Vault-signed certificate — no static keys    |
+| **Deny by default**            | OPA blocks all actions unless explicitly allowed            |
+| **Identity-driven access**     | IdM groups control who can run which operations             |
+| **Workload identity**          | SPIFFE/SPIRE proves the automation platform is legitimate   |
+| **Platform enforcement**       | AAP Policy as Code blocks unauthorised launches             |
+| **Micro-segmentation**         | Arista ACLs isolate app and data tiers on the switch fabric |
+| **Continuous monitoring**      | Wazuh watches every authentication attempt                  |
+| **Assume breach**              | EDA automatically revokes credentials on attack detection   |
+| **Blast radius containment**   | Credential revocation limits attacker data access           |
+| **CMDB as source of truth**    | Netbox validates infrastructure state for policy            |
+| **GitOps**                     | Code push triggers automated, policy-governed pipelines     |
+
+

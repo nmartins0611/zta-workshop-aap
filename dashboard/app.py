@@ -272,6 +272,10 @@ def _check_http(url: str) -> bool:
         req = Request(url, method="GET")
         with urlopen(req, timeout=TIMEOUT, context=_make_ssl_ctx()) as r:
             return r.status < 500
+    except URLError as e:
+        if hasattr(e, "code") and e.code < 500:
+            return True
+        return False
     except Exception:
         return False
 

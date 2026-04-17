@@ -71,7 +71,8 @@
     netbox_ee_image: quay.io/acme_corp/network-netbox-eda-ee:netbox-3.21
 
     project_name: ZTA Workshop
-    project_scm_url: https://github.com/nmartins0611/zta-workshop-aap.git
+    project_scm_url: http://gitea:3000/gitea/zta-workshop-aap.git
+    #project_scm_url: https://github.com/nmartins0611/zta-workshop-aap.git
 
     inventory_name: ZTA Lab Inventory
     machine_credential_name: ZTA Machine Credential

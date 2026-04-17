@@ -35,19 +35,17 @@
     - name: Display breakage confirmation (instructor only)
       debug:
         msg: |
-          ╔════════════════════════════════════════════════════════════════╗
-          ║       ACL BREAKAGE APPLIED ON ceos2                          ║
-          ╠════════════════════════════════════════════════════════════════╣
-          ║                                                              ║
-          ║  Changed: ZTA-APP-TO-DB ACL                                  ║
-          ║    FROM: permit tcp host 10.20.0.10 host 10.30.0.10 eq 5432  ║
-          ║          deny ip any host 10.30.0.10                         ║
-          ║    TO:   permit ip any host 10.30.0.10                       ║
-          ║                                                              ║
-          ║  Effect: ANY host can reach the database on ANY port         ║
-          ║          Micro-segmentation is broken                        ║
-          ║                                                              ║
-          ║  Instructor fix:                                             ║
-          ║    ansible-playbook section4/playbooks/fix-acl.yml           ║
-          ╚════════════════════════════════════════════════════════════════╝
+          ACL BREAKAGE APPLIED ON ceos2
+          ==============================
+
+          Changed: ZTA-APP-TO-DB ACL
+            FROM: permit tcp host 10.20.0.10 host 10.30.0.10 eq 5432
+                  deny ip any host 10.30.0.10
+            TO:   permit ip any host 10.30.0.10
+
+          Effect: ANY host can reach the database on ANY port
+                  Micro-segmentation is broken
+
+          Instructor fix:
+            ansible-playbook section4/playbooks/fix-acl.yml
       when: inventory_hostname == 'ceos2'

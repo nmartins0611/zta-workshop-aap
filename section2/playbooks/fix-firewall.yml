@@ -25,12 +25,10 @@
     - name: Display fix confirmation
       debug:
         msg: |
-          ╔════════════════════════════════════════════════════════════════╗
-          ║       FIREWALL FIX APPLIED                                   ║
-          ╠════════════════════════════════════════════════════════════════╣
-          ║                                                              ║
-          ║  Restored port {{ db_port }}/tcp on DB host                  ║
-          ║  Current open ports: {{ ports_after.stdout }}                 ║
-          ║                                                              ║
-          ║  App should be able to reach PostgreSQL again.               ║
-          ╚════════════════════════════════════════════════════════════════╝
+          FIREWALL FIX APPLIED
+          ====================
+
+          Restored port {{ db_port }}/tcp on DB host
+          Current open ports: {{ ports_after.stdout }}
+
+          App should be able to reach PostgreSQL again.

@@ -68,19 +68,17 @@
     - name: Service verification summary
       debug:
         msg: |
-          ╔════════════════════════════════════════════════════════════╗
-          ║       Section 1 — ZTA Service Verification               ║
-          ╠════════════════════════════════════════════════════════════╣
-          ║                                                          ║
-          ║  IdM:      {{ 'RUNNING' if 'RUNNING' in idm_status.stdout else 'FAILED' }}
-          ║  Vault:    {{ 'HEALTHY (unsealed)' if vault_health.status == 200 else 'CHECK REQUIRED' }}
-          ║  OPA:      {{ 'HEALTHY (' + (opa_policies.json.result | length | string) + ' policies)' }}
-          ║  Netbox:   {{ 'ACCESSIBLE' if netbox_health.status == 200 else 'FAILED' }}
-          ║  Kerberos: {{ 'OK' if krb_check.rc == 0 else 'FAILED' }}
-          ║  DNS:      ALL RECORDS RESOLVE
-          ║                                                          ║
-          ║  Zero Trust infrastructure is ready for AAP integration  ║
-          ╚════════════════════════════════════════════════════════════╝
+          Section 1 — ZTA Service Verification
+          =====================================
+
+          IdM:      {{ 'RUNNING' if 'RUNNING' in idm_status.stdout else 'FAILED' }}
+          Vault:    {{ 'HEALTHY (unsealed)' if vault_health.status == 200 else 'CHECK REQUIRED' }}
+          OPA:      {{ 'HEALTHY (' + (opa_policies.json.result | length | string) + ' policies)' }}
+          Netbox:   {{ 'ACCESSIBLE' if netbox_health.status == 200 else 'FAILED' }}
+          Kerberos: {{ 'OK' if krb_check.rc == 0 else 'FAILED' }}
+          DNS:      ALL RECORDS RESOLVE
+
+          Zero Trust infrastructure is ready for AAP integration.
 
 - name: Verify Database Server
   hosts: db_servers

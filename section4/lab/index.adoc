@@ -359,6 +359,55 @@ Each edge case exposes a gap that a single policy layer cannot cover alone:
 Ansible makes this layered approach **operationally simple**: the outer ring is built into AAP (zero playbook changes), and the inner ring is a few `uri` and `command` tasks in the playbook. Together they implement **defence in depth** -- a misconfiguration or bypass in one layer does not automatically grant access to the network.
 ====
 
+== Exercise 4.5 -- Verify SPIFFE trust
+
+_ZTA concept: *Ephemeral credentials and authentication ≠ authorisation* -- a valid certificate from the right CA does not grant access. The SPIFFE ID inside the certificate must also be in OPA's trusted set. Short-lived SVIDs limit the blast radius of compromise._
+
+This exercise uses the **Verify SPIFFE Trust** job template. It runs three parts automatically -- your job is to read the output and understand what each part proves.
+
+=== 4.5a -- SVID certificate inspection
+
+The playbook fetches the current SVID from the SPIRE agent and runs `openssl` to display the certificate properties.
+
+. In AAP (as `netadmin`), launch **Verify SPIFFE Trust**.
+. In the job output, find the **SVID Certificate Analysis** banner. Note:
+* The **SPIFFE ID** in the Subject Alternative Name (SAN) -- this is the workload's identity.
+* The **Not Before / Not After** timestamps -- the certificate's total lifetime.
+* The **Remaining** minutes -- how long until this SVID expires and SPIRE auto-rotates it.
+. Compare with a traditional SSH key: SSH keys have **no expiry**. If an attacker steals one, it works forever (or until someone manually revokes it). An SVID expires in minutes to hours -- a stolen SVID is a rapidly depreciating asset.
+
+[TIP]
+.Why short-lived credentials matter
+====
+In a traditional PKI, certificates last months or years. Revocation depends on CRLs or OCSP -- infrastructure that is often slow, misconfigured, or not checked at all. SPIRE sidesteps the entire revocation problem: SVIDs expire so quickly that revocation is rarely needed. The worst case for a stolen SVID is measured in **minutes**, not the months it takes most organisations to notice and rotate a compromised SSH key.
+====
+
+=== 4.5b -- Rogue workload identity
+
+The same job output shows a **side-by-side comparison** of two OPA queries: one with the legitimate SPIFFE ID (`spiffe://zta.lab/workload/network-automation`) and one with a rogue ID (`spiffe://zta.lab/workload/rogue-automation`).
+
+. Find the **Workload Identity: Legitimate vs Rogue** banner in the job output.
+. Both requests use the **same user** (`netadmin`), **same group** (`network-admins`), **same VLAN** (200). Only the SPIFFE ID differs.
+. The legitimate workload is **ALLOWED**. The rogue workload is **DENIED**.
+
+This proves that stolen user credentials are not enough. Even `netadmin` with full group membership is denied when the request comes from an untrusted workload. OPA checks the SPIFFE ID against an explicit allowlist in the `zta.network` policy.
+
+=== 4.5c -- Rogue SPIRE registration (advanced)
+
+The final part of the job goes further: it actually **registers** a rogue workload entry (`rogue-automation`) in the SPIRE server, shows it alongside the legitimate entries, then cleans it up.
+
+. Find the **before/after entry listings** in the job output.
+. Notice that the rogue entry is a **valid SPIRE registration** -- the SPIRE server would happily issue it an X.509 SVID signed by the same trust domain CA.
+. But OPA's policy only trusts `network-automation`. Having a valid certificate from the right CA is **not the same as authorisation**.
+
+This is the core distinction: **SPIRE handles authentication** (proving who the workload is), **OPA handles authorisation** (deciding what it may do). A rogue workload can prove its identity -- it just does not have permission to do anything.
+
+[TIP]
+.Authentication vs authorisation in workload identity
+====
+This mirrors the user-side pattern from Sections 1--3: `neteng` can **authenticate** via IdM (valid credentials, successful login) but is **not authorised** to launch network templates (wrong group, denied by OPA). SPIFFE works the same way for workloads. Keeping authentication and authorisation separate means you can change policy (OPA rules) without changing identity infrastructure (SPIRE registrations), and vice versa.
+====
+
 == Playbook flow (summary)
 
 SPIFFE verification on AAP -> OPA decision on central -> Arista VLAN module -> NetBox update (see README diagram).
@@ -416,6 +465,9 @@ Why verify workload and user? What breaks if SPIRE is down? How does NetBox audi
 * [ ] Out-of-range VLAN denied
 * [ ] SPIRE agent stop causes verification failure
 * [ ] Student NetBox update playbook works: creates VLAN in NetBox, reports "Already exists" on re-run
+* [ ] SVID certificate shows short TTL (minutes/hours, not months)
+* [ ] Rogue SPIFFE ID denied by OPA despite same user credentials
+* [ ] Rogue SPIRE registration shown and cleaned up
 
 == Extended exercises
 

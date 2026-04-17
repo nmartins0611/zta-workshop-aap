@@ -211,6 +211,11 @@ zta_workshop_job_templates:
           variable: user_last
           default: ""
   - section: 4
+    name: Verify SPIFFE Trust
+    description: "Section 4 — SVID inspection, short-lived credentials, and rogue workload identity test"
+    playbook: section4/playbooks/verify-spiffe-trust.yml
+    credentials: [ZTA Machine Credential]
+  - section: 4
     name: Break ACL
     description: "Section 4 — Lab break step (ACL)"
     playbook: section4/playbooks/break-acl.yml

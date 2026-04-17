@@ -66,16 +66,14 @@
     - name: Display fix confirmation
       debug:
         msg: |
-          ╔════════════════════════════════════════════════════════════════╗
-          ║       CERTIFICATE TRUST FIXED                                ║
-          ╠════════════════════════════════════════════════════════════════╣
-          ║                                                              ║
-          ║  IdM CA certificate issued for central.zta.lab               ║
-          ║  Test endpoint now serves IdM-signed cert                    ║
-          ║                                                              ║
-          ║  curl https://central.zta.lab:{{ test_port }}/ should work   ║
-          ║  (from any host that trusts the IdM CA)                      ║
-          ╚════════════════════════════════════════════════════════════════╝
+          CERTIFICATE TRUST FIXED
+          =======================
+
+          IdM CA certificate issued for central.zta.lab
+          Test endpoint now serves IdM-signed cert
+
+          curl https://central.zta.lab:{{ test_port }}/ should work
+          (from any host that trusts the IdM CA)
 
   handlers:
     - name: Restart test endpoint

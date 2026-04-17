@@ -29,23 +29,21 @@
     - name: Display breakage confirmation (instructor only)
       debug:
         msg: |
-          ╔════════════════════════════════════════════════════════════════╗
-          ║       HBAC BREAKAGE APPLIED — AAP IS NOW LOCKED OUT          ║
-          ╠════════════════════════════════════════════════════════════════╣
-          ║                                                              ║
-          ║  What changed:                                               ║
-          ║    aap-service removed from allow_aap_automation HBAC rule   ║
-          ║                                                              ║
-          ║  Effect:                                                     ║
-          ║    ALL AAP job templates will fail with SSH errors            ║
-          ║    The aap-service user is denied login by IdM HBAC          ║
-          ║                                                              ║
-          ║  Participants must:                                          ║
-          ║    1. Observe the AAP job failure                            ║
-          ║    2. SSH to central as a breakglass-admins user             ║
-          ║    3. Diagnose with: ipa hbactest                            ║
-          ║    4. Fix with: ipa hbacrule-add-user                        ║
-          ║                                                              ║
-          ║  Instructor fix (if needed):                                 ║
-          ║    ansible-playbook section6/playbooks/fix-hbac.yml          ║
-          ╚════════════════════════════════════════════════════════════════╝
+          HBAC BREAKAGE APPLIED — AAP IS NOW LOCKED OUT
+          ==============================================
+
+          What changed:
+            aap-service removed from allow_aap_automation HBAC rule
+
+          Effect:
+            ALL AAP job templates will fail with SSH errors
+            The aap-service user is denied login by IdM HBAC
+
+          Participants must:
+            1. Observe the AAP job failure
+            2. SSH to central as a breakglass-admins user
+            3. Diagnose with: ipa hbactest
+            4. Fix with: ipa hbacrule-add-user
+
+          Instructor fix (if needed):
+            ansible-playbook section6/playbooks/fix-hbac.yml

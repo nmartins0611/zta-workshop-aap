@@ -105,18 +105,16 @@
     - name: Display deployment info (instructor only)
       debug:
         msg: |
-          ╔════════════════════════════════════════════════════════════════╗
-          ║       SELF-SIGNED HTTPS ENDPOINT DEPLOYED                    ║
-          ╠════════════════════════════════════════════════════════════════╣
-          ║                                                              ║
-          ║  URL:  https://central.zta.lab:{{ test_port }}/              ║
-          ║  Cert: Self-signed (NOT from IdM CA)                         ║
-          ║  CN:   {{ test_cert_cn }}                                    ║
-          ║  Org:  Self-Signed / NOT-IDM-CA                              ║
-          ║                                                              ║
-          ║  curl https://central.zta.lab:{{ test_port }}/ will FAIL     ║
-          ║  with "certificate verify failed"                            ║
-          ║                                                              ║
-          ║  Instructor fix:                                             ║
-          ║    ansible-playbook section1/playbooks/fix-cert-trust.yml    ║
-          ╚════════════════════════════════════════════════════════════════╝
+          SELF-SIGNED HTTPS ENDPOINT DEPLOYED
+          =====================================
+
+          URL:  https://central.zta.lab:{{ test_port }}/
+          Cert: Self-signed (NOT from IdM CA)
+          CN:   {{ test_cert_cn }}
+          Org:  Self-Signed / NOT-IDM-CA
+
+          curl https://central.zta.lab:{{ test_port }}/ will FAIL
+          with "certificate verify failed"
+
+          Instructor fix:
+            ansible-playbook section1/playbooks/fix-cert-trust.yml

@@ -52,18 +52,15 @@
         - name: Display group creation result
           debug:
             msg: |
-              ╔════════════════════════════════════════════════════════════════╗
-              ║       IdM Group {{ 'Created' if group_create.changed else 'Already Exists' }}
-              ╠════════════════════════════════════════════════════════════════╣
-              ║                                                              ║
-              ║  Group:       {{ group_name }}
-              ║  Description: {{ group_desc | default('Created by ZTA Workshop automation') }}
-              ║  DN:          cn={{ group_name }},{{ idm_groups_dn }}
-              ║                                                              ║
-              ║  LDAP authenticator map value (paste into AAP):              ║
-              ║  cn={{ group_name }},{{ idm_groups_dn }}
-              ║                                                              ║
-              ╚════════════════════════════════════════════════════════════════╝
+              IdM Group {{ 'Created' if group_create.changed else 'Already Exists' }}
+              ===========================================================
+
+              Group:       {{ group_name }}
+              Description: {{ group_desc | default('Created by ZTA Workshop automation') }}
+              DN:          cn={{ group_name }},{{ idm_groups_dn }}
+
+              LDAP authenticator map value (paste into AAP):
+              cn={{ group_name }},{{ idm_groups_dn }}
 
     # ── Create User ─────────────────────────────────────────────────────
     - name: Create IdM user
@@ -101,16 +98,13 @@
         - name: Display user creation result
           debug:
             msg: |
-              ╔════════════════════════════════════════════════════════════════╗
-              ║       IdM User {{ 'Created' if user_create.changed else 'Already Exists' }}
-              ╠════════════════════════════════════════════════════════════════╣
-              ║                                                              ║
-              ║  UID:      {{ user_id }}
-              ║  Name:     {{ user_first }} {{ user_last }}
-              ║  DN:       uid={{ user_id }},{{ idm_users_dn }}
-              ║  Password: {{ user_password | default(idm_admin_password) }}
-              ║                                                              ║
-              ╚════════════════════════════════════════════════════════════════╝
+              IdM User {{ 'Created' if user_create.changed else 'Already Exists' }}
+              ============================================================
+
+              UID:      {{ user_id }}
+              Name:     {{ user_first }} {{ user_last }}
+              DN:       uid={{ user_id }},{{ idm_users_dn }}
+              Password: {{ user_password | default(idm_admin_password) }}
 
     # ── Add User to Group ───────────────────────────────────────────────
     - name: Add user to IdM group
@@ -143,23 +137,20 @@
         - name: Display membership result
           debug:
             msg: |
-              ╔════════════════════════════════════════════════════════════════╗
-              ║       Group Membership Updated                               ║
-              ╠════════════════════════════════════════════════════════════════╣
-              ║                                                              ║
-              ║  User:  {{ user_id }} → Group: {{ group_name }}
-              ║  Status: {{ 'Added' if membership_add.changed else 'Already a member' }}
-              ║                                                              ║
-              ║  Group DN:  cn={{ group_name }},{{ idm_groups_dn }}
-              ║  User DN:   uid={{ user_id }},{{ idm_users_dn }}
-              ║                                                              ║
-              ║  ── Group details ──                                         ║
-              {{ group_info.stdout | regex_replace('^', '              ║  ') }}
-              ║                                                              ║
-              ║  ── User details ──                                          ║
-              {{ user_info.stdout | regex_replace('^', '              ║  ') }}
-              ║                                                              ║
-              ╚════════════════════════════════════════════════════════════════╝
+              Group Membership Updated
+              ========================
+
+              User:   {{ user_id }} → Group: {{ group_name }}
+              Status: {{ 'Added' if membership_add.changed else 'Already a member' }}
+
+              Group DN: cn={{ group_name }},{{ idm_groups_dn }}
+              User DN:  uid={{ user_id }},{{ idm_users_dn }}
+
+              --- Group details ---
+              {{ group_info.stdout }}
+
+              --- User details ---
+              {{ user_info.stdout }}
 
     # ── Show Identity ───────────────────────────────────────────────────
     - name: Show identity details
@@ -180,30 +171,24 @@
         - name: Display user identity
           debug:
             msg: |
-              ╔════════════════════════════════════════════════════════════════╗
-              ║       IdM Identity Details                                   ║
-              ╠════════════════════════════════════════════════════════════════╣
-              ║                                                              ║
-              ║  User DN: uid={{ user_id }},{{ idm_users_dn }}
-              ║                                                              ║
-              {{ user_detail.stdout | regex_replace('^', '              ║  ') }}
-              ║                                                              ║
-              ╚════════════════════════════════════════════════════════════════╝
+              IdM Identity Details
+              ====================
+
+              User DN: uid={{ user_id }},{{ idm_users_dn }}
+
+              {{ user_detail.stdout }}
           when: user_id is defined and user_id | length > 0
 
         - name: Display group identity
           debug:
             msg: |
-              ╔════════════════════════════════════════════════════════════════╗
-              ║       IdM Group Details                                      ║
-              ╠════════════════════════════════════════════════════════════════╣
-              ║                                                              ║
-              ║  Group DN: cn={{ group_name }},{{ idm_groups_dn }}
-              ║                                                              ║
-              {{ group_detail.stdout | regex_replace('^', '              ║  ') }}
-              ║                                                              ║
-              ║  LDAP authenticator map value (paste into AAP):              ║
-              ║  cn={{ group_name }},{{ idm_groups_dn }}
-              ║                                                              ║
-              ╚════════════════════════════════════════════════════════════════╝
+              IdM Group Details
+              =================
+
+              Group DN: cn={{ group_name }},{{ idm_groups_dn }}
+
+              {{ group_detail.stdout }}
+
+              LDAP authenticator map value (paste into AAP):
+              cn={{ group_name }},{{ idm_groups_dn }}
           when: group_name is defined and group_name | length > 0

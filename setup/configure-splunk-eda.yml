@@ -155,7 +155,7 @@
           alert.severity: "4"
           alert.track: "1"
           alert.suppress: "0"
-          enableSched: "1"
+          disabled: "0"
         status_code: [200, 201]
       register: alert_created
 

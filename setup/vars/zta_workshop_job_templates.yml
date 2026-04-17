@@ -150,9 +150,9 @@ zta_workshop_job_templates:
         - question_name: VLAN ID
           question_description: "VLAN ID to create (100-999)"
           required: true
-          type: text
+          type: integer
           variable: new_vlan_id
-          default: "200"
+          default: 200
         - question_name: VLAN Name
           question_description: "Name for the new VLAN"
           required: true
@@ -228,8 +228,8 @@ zta_workshop_job_templates:
     playbook: section5/playbooks/simulate-bruteforce.yml
     credentials: [ZTA Machine Credential]
   - section: 5
-    name: Revoke App Credentials
-    description: "Section 5 — Revoke application credentials"
+    name: "Emergency: Revoke App Credentials"
+    description: "Section 5 — Emergency revoke application credentials (triggered by EDA)"
     playbook: section5/playbooks/revoke-app-credentials.yml
     credentials: [ZTA Machine Credential]
   - section: 5

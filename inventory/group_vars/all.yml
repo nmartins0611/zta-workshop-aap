@@ -36,6 +36,7 @@ wazuh_manager_host: wazuh.zta.lab
 splunk_url: "http://splunk.zta.lab:8000"
 splunk_hec_url: "https://splunk.zta.lab:8088"
 splunk_hec_token: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+eda_webhook_token: "zta-eda-webhook-a1b2c3d4-e5f6-7890"
 
 # ── Keycloak (container on central) ─────────────────────────────────
 keycloak_url: "https://keycloak.zta.lab:8543"
@@ -274,7 +275,7 @@ spire_workloads:
     parent_host: db
     description: PostgreSQL database workload
     selectors:
-      - "unix:uid:26"
+      - "unix:uid:0"
   - spiffe_id: "spiffe://{{ spire_trust_domain }}/workload/vault"
     parent_host: vault
     description: HashiCorp Vault workload

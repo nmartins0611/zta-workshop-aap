@@ -52,9 +52,9 @@
             - question_name: VLAN ID
               question_description: "VLAN ID to create (100-999)"
               required: true
-              type: text
+              type: integer
               variable: new_vlan_id
-              default: "200"
+              default: 200
             - question_name: VLAN Name
               question_description: "Name for the new VLAN"
               required: true

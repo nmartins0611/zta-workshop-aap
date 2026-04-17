@@ -70,6 +70,7 @@ These will be created during deployment but are listed here for reference:
 | Vault root token | Phase 2 (`deploy-vault.yml`) | Vault configuration |
 | Vault unseal keys | Phase 2 (`deploy-vault.yml`) | Vault unsealing |
 | Netbox API token | Phase 2 (`deploy-netbox.yml`) | AAP inventory source |
+| EDA webhook token | Phase 2 (`configure-vault.yml`) | Splunk webhook → EDA event stream auth |
 
 ---
 
@@ -254,9 +255,10 @@ After `deploy-vault.yml` runs, note the root token from the output and set:
 export VAULT_TOKEN="<root-token-from-output>"
 ```
 
-Creates Vault KV secrets (Arista creds, DB admin, IdM admin), database
-secrets engine with a `ztaapp-short-lived` role (5-min TTL), SSH CA signing role,
-and policies for `app-deployer`, `network-admin`, `patch-admin`, `ssh-access`.
+Creates Vault KV secrets (Arista creds, DB admin, IdM admin, EDA webhook
+token), database secrets engine with a `ztaapp-short-lived` role (5-min TTL),
+SSH CA signing role, and policies for `app-deployer`, `network-admin`,
+`patch-admin`, `ssh-access`, `eda-webhook-read`.
 
 #### Layer 3 — Network Fabric and Compute (~5 min)
 
@@ -567,10 +569,42 @@ project below) so attendees skip Section 1 hands-on.
 
 ### Event-Driven Ansible configuration (AAP 2.6)
 
-1. In the **Event-Driven Ansible controller**, add a **Project** that includes this repo (or upload the rulebook) and a **Decision Environment** if needed. See [Using automation decisions](https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.6/html/using_automation_decisions/).
-2. Create a **Rulebook Activation** for `extensions/eda/rulebooks/splunk-credential-revoke.yml` named **Splunk Brute Force Response**
+**Automated setup (recommended):** Run Section 5 deployment after Vault is configured:
+
+```bash
+ansible-playbook -i inventory/hosts.ini setup/configure-aap-project.yml --tags eda,section5,rbac
+```
+
+This creates the EDA project, Decision Environment, AAP credential in EDA,
+**ZTA Vault Credential (EDA)** (HashiCorp Vault Secret Lookup), and
+**ZTA EDA Event Stream** credential (Token Event Stream with the webhook
+token read from Vault KV at `secret/services/eda-webhook`).
+
+The default webhook token is `zta-eda-webhook-a1b2c3d4-e5f6-7890` (defined
+as `eda_webhook_token` in `inventory/group_vars/all.yml`). Use this token
+when manually configuring the Splunk webhook notification.
+
+**Manual steps remaining:**
+
+1. Create a **Rulebook Activation** for `extensions/eda/rulebooks/splunk-credential-revoke.yml` named **Splunk Brute Force Response**
+2. Attach the **ZTA EDA Event Stream** credential to the activation
 3. Set restart policy to **On failure**
-4. Enable the activation (starts listening on port 5000, or the port configured for your activation)
+4. Enable the activation (starts listening on port 5000)
+5. Configure the Splunk webhook alert action with the token above
+
+See [Using automation decisions](https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.6/html/using_automation_decisions/).
+
+**Token rotation:** To rotate the EDA webhook token in both Vault and the
+Splunk webhook:
+
+```bash
+ansible-playbook -i inventory/hosts.ini setup/rotate-eda-webhook-token.yml
+ansible-playbook -i inventory/hosts.ini setup/configure-aap-project.yml --tags eda,section5
+```
+
+The rotation playbook generates a new random token, updates Vault KV, and
+patches the Splunk "SplunkEDA" webhook. The second command refreshes the
+EDA credential with the new token from Vault.
 
 ---
 
@@ -739,6 +773,7 @@ Total time: ~50 minutes (mostly automated).
 | `configure-aap-ldap.yml` | 7 | policy, aap | Configure AAP → IdM LDAP |
 | `deploy-spire.yml` | 8 | spire | Deploy SPIRE server + agents |
 | `configure-wazuh-eda.yml` | 9 | eda, siem | Configure Wazuh → EDA webhook |
+| `rotate-eda-webhook-token.yml` | — | vault, splunk | Rotate EDA webhook token (Vault + Splunk) |
 | `verify-lab.yml` | 10 | verify | Full lab verification |
 
 ### Optional Playbooks

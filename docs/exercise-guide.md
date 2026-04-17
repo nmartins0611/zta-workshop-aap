@@ -781,7 +781,7 @@ and response as a single timeline:
 
 ```
 # The attack (failed SSH logins)
-index=zta_app sourcetype=syslog "Failed password" earliest=-10m
+index=zta_app sourcetype=syslog "Authentication failure" earliest=-10m
 | stats count by src_ip, host | sort - count
 
 # Vault's response (credential revocation)

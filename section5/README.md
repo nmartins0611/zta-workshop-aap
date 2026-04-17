@@ -89,6 +89,12 @@ Before running this section:
 3. **Splunk log shipping** must be configured — `/var/log/secure` from app/db
    containers is forwarded to Splunk (`setup/integrate-splunk.yml`)
 4. **Event-Driven Ansible controller** (AAP 2.6) must be running, or standalone `ansible-rulebook` for CLI-only demos
+5. **Section 5 EDA setup** must be deployed:
+   ```bash
+   ansible-playbook -i inventory/hosts.ini setup/configure-aap-project.yml --tags eda,section5,rbac
+   ```
+   This creates the EDA project, Decision Environment, AAP credential, and
+   the **ZTA EDA Event Stream** credential (token from Vault).
 
 ---
 
@@ -109,14 +115,14 @@ Before running this section:
 Open `http://central.zta.lab:8000` and run this search:
 
 ```
-index=zta_app sourcetype=syslog "Failed password"
+index=zta_app sourcetype=syslog "Authentication failure"
 ```
 
 You should see failed SSH login events from the app/db containers. To also
 check VM-level auth logs:
 
 ```
-index=zta_syslog sourcetype=syslog sshd "Failed password"
+index=zta_syslog sourcetype=syslog sshd "Authentication failure"
 ```
 
 If neither returns results, verify `setup/integrate-splunk.yml` has been run.
@@ -129,7 +135,7 @@ If neither returns results, verify `setup/integrate-splunk.yml` has been run.
 | Field | Value |
 |-------|-------|
 | Title | `ZTA: SSH Brute Force Detected` |
-| Search | `index=zta_app OR index=zta_syslog sourcetype=syslog "Failed password" \| stats count by src_ip, host \| where count >= 5` |
+| Search | `index=zta_app OR index=zta_syslog sourcetype=syslog "Authentication failure" \| stats count by src_ip, host \| where count >= 5` |
 | Time Range | Real-time, 60-second window |
 | Alert type | Real-time |
 | Trigger condition | Number of results > 0 |
@@ -139,6 +145,10 @@ If neither returns results, verify `setup/integrate-splunk.yml` has been run.
 | Field | Value |
 |-------|-------|
 | URL | `http://control.zta.lab:5000/endpoint` |
+| Auth Token | `zta-eda-webhook-a1b2c3d4-e5f6-7890` |
+
+   The auth token must match the **ZTA EDA Event Stream** credential in EDA
+   (sourced from Vault KV `secret/services/eda-webhook`).
 
 4. Click **Save**
 
@@ -154,7 +164,7 @@ If you prefer automation over UI clicks:
 curl -k -u admin:ansible123! \
   https://central.zta.lab:8089/servicesNS/admin/search/saved/searches \
   -d name="ZTA: SSH Brute Force Detected" \
-  -d search='(index=zta_app OR index=zta_syslog) sourcetype=syslog "Failed password" | stats count by src_ip, host | where count >= 5' \
+  -d search='(index=zta_app OR index=zta_syslog) sourcetype=syslog "Authentication failure" | stats count by src_ip, host | where count >= 5' \
   -d alert_type=always \
   -d alert.severity=4 \
   -d alert.suppress=0 \
@@ -172,14 +182,20 @@ curl -k -u admin:ansible123! \
 
 ### Option A — Event-Driven Ansible controller (Red Hat Ansible Automation Platform 2.6)
 
-1. In the **Event-Driven Ansible controller**, ensure a **Project** provides this repository (or the rulebook file), and create a **Decision Environment** if you do not already have one. See [Using automation decisions](https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.6/html/using_automation_decisions/) in the AAP 2.6 documentation.
-2. Add or sync content so `extensions/eda/rulebooks/splunk-credential-revoke.yml` is available to activations.
-3. Create a **Rulebook Activation**:
+If you ran the prerequisite setup (`configure-aap-project.yml --tags eda,section5`), the EDA project, Decision Environment, and credentials already exist. You only need to create the activation.
+
+1. In the **Event-Driven Ansible controller**, verify the **ZTA Workshop EDA** project is synced and `extensions/eda/rulebooks/splunk-credential-revoke.yml` is available.
+2. Create a **Rulebook Activation**:
    - Name: `Splunk Brute Force Response`
    - Rulebook: `splunk-credential-revoke`
-   - Decision Environment: your EDA decision environment
+   - Decision Environment: `ZTA Decision Environment`
+   - Credential: **ZTA EDA Event Stream** (token-based webhook authentication — token sourced from Vault)
    - Restart policy: `On failure`
-4. Enable the activation — it starts listening on port 5000
+3. Enable the activation — it starts listening on port 5000
+
+The webhook token for Splunk is `zta-eda-webhook-a1b2c3d4-e5f6-7890` (stored in Vault at `secret/services/eda-webhook`). Use this when configuring the Splunk webhook alert action in Exercise 5.2.
+
+> **Zero Trust note**: The webhook token is managed in Vault, not hardcoded in Splunk or EDA configuration files. To rotate it, run `setup/rotate-eda-webhook-token.yml` — this updates both Vault and the Splunk webhook, then re-run the EDA credential setup to pick up the new token.
 
 ### Option B — Standalone ansible-rulebook
 
@@ -236,7 +252,7 @@ After the brute-force simulation completes, observe the chain reaction:
 Open `http://central.zta.lab:8000` and run:
 
 ```
-(index=zta_app OR index=zta_syslog) sourcetype=syslog "Failed password" | stats count by src_ip, host | where count >= 5
+(index=zta_app OR index=zta_syslog) sourcetype=syslog "Authentication failure" | stats count by src_ip, host | where count >= 5
 ```
 
 You should see the brute-force source IP with a high failure count.
@@ -325,7 +341,7 @@ Edit the saved search in **Settings → Searches, reports, and alerts**:
 Change the search to:
 
 ```
-(index=zta_app OR index=zta_syslog) sourcetype=syslog "Failed password" NOT src_ip=192.168.1.10
+(index=zta_app OR index=zta_syslog) sourcetype=syslog "Authentication failure" NOT src_ip=192.168.1.10
 | stats count by src_ip, host
 | where count >= 5
 ```
@@ -400,27 +416,27 @@ helps you write effective searches and troubleshoot missing data.
 
 ```
 # All failed SSH logins across app/db containers
-index=zta_app sourcetype=syslog "Failed password"
+index=zta_app sourcetype=syslog "Authentication failure"
 
 # Failed SSH logins across all VMs
-index=zta_syslog sourcetype=syslog sshd "Failed password"
+index=zta_syslog sourcetype=syslog sshd "Authentication failure"
 
 # Combined — both containers and VMs
-(index=zta_app OR index=zta_syslog) sourcetype=syslog "Failed password"
+(index=zta_app OR index=zta_syslog) sourcetype=syslog "Authentication failure"
 
 # Brute-force detection threshold (the saved search)
-(index=zta_app OR index=zta_syslog) sourcetype=syslog "Failed password"
+(index=zta_app OR index=zta_syslog) sourcetype=syslog "Authentication failure"
 | stats count by src_ip, host
 | where count >= 5
 
 # Successful SSH logins (compare before/after attack)
-(index=zta_app OR index=zta_syslog) sourcetype=syslog "Accepted password"
+(index=zta_app OR index=zta_syslog) sourcetype=syslog "Accepted"
 
 # Key-based logins (AAP automation uses SSH keys)
 (index=zta_app OR index=zta_syslog) sourcetype=syslog "Accepted publickey"
 
 # Exclude AAP controller from brute-force search (Exercise 5.8)
-(index=zta_app OR index=zta_syslog) sourcetype=syslog "Failed password" NOT src_ip=192.168.1.10
+(index=zta_app OR index=zta_syslog) sourcetype=syslog "Authentication failure" NOT src_ip=192.168.1.10
 | stats count by src_ip, host
 | where count >= 5
 ```
@@ -479,7 +495,7 @@ Use these searches in sequence to reconstruct the full attack → response chain
 
 ```
 # 1. The attack — failed SSH logins
-index=zta_app sourcetype=syslog "Failed password" earliest=-10m
+index=zta_app sourcetype=syslog "Authentication failure" earliest=-10m
 | stats count by src_ip, host
 | sort - count
 
@@ -505,8 +521,8 @@ index=zta_vault sourcetype="hashicorp:vault:audit" earliest=-10m
 - [ ] Application is healthy before the attack (Section 2 deployed)
 - [ ] Splunk is receiving `/var/log/secure` logs from app/db hosts
 - [ ] Splunk saved search `ZTA: SSH Brute Force Detected` is created
-- [ ] Webhook action points to `http://control.zta.lab:5000/endpoint`
-- [ ] EDA rulebook activation is running (port 5000 listening)
+- [ ] Webhook action points to `http://control.zta.lab:5000/endpoint` with auth token
+- [ ] EDA rulebook activation is running with **ZTA EDA Event Stream** credential (port 5000 listening)
 - [ ] Brute-force simulation generates 10 failed SSH attempts
 - [ ] Splunk alert fires (visible in Activity → Triggered Alerts)
 - [ ] Splunk webhook POSTs to EDA

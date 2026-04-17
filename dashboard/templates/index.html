@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>ZTA Workshop — Live Topology</title>
+<title>ZTA Workshop &mdash; Live Topology</title>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 :root{
@@ -91,6 +91,51 @@ header .subtitle{color:var(--muted);font-size:.85rem;margin-top:.3rem}
 .net-summary td{padding:.2rem .4rem;color:var(--muted)}
 .net-summary td:first-child{color:var(--text);font-weight:500;white-space:nowrap}
 
+/* ── Tooltip popup ──────────────────────────────────────────────────── */
+.tooltip-popup{
+  display:none;position:absolute;z-index:100;
+  left:50%;bottom:calc(100% + 10px);transform:translateX(-50%);
+  width:340px;max-width:90vw;
+  background:#1c2333;border:1px solid var(--accent);border-radius:10px;
+  padding:.9rem 1rem;font-size:.73rem;line-height:1.5;
+  color:var(--text);box-shadow:0 8px 32px rgba(0,0,0,.45);
+  pointer-events:none;
+}
+.tooltip-popup::after{
+  content:'';position:absolute;top:100%;left:50%;transform:translateX(-50%);
+  border:7px solid transparent;border-top-color:var(--accent);
+}
+.card:hover .tooltip-popup{display:block}
+
+.tooltip-popup .tt-row{margin-bottom:.5rem}
+.tooltip-popup .tt-row:last-child{margin-bottom:0}
+.tooltip-popup .tt-label{
+  font-size:.62rem;font-weight:700;text-transform:uppercase;
+  letter-spacing:.06em;color:var(--accent);margin-bottom:.1rem;
+}
+.tooltip-popup .tt-value{color:var(--text)}
+
+.tooltip-popup .tt-aap-badge{
+  display:inline-block;font-size:.62rem;font-weight:600;
+  padding:.12rem .4rem;border-radius:4px;margin-top:.15rem;
+}
+.tooltip-popup .tt-aap-badge.managed{
+  background:rgba(63,185,80,.15);color:var(--green);border:1px solid rgba(63,185,80,.3);
+}
+.tooltip-popup .tt-aap-badge.self{
+  background:rgba(88,166,255,.15);color:var(--accent);border:1px solid rgba(88,166,255,.3);
+}
+.tooltip-popup .tt-sections{
+  display:inline-block;font-size:.62rem;color:var(--muted);
+  background:rgba(255,255,255,.05);padding:.1rem .35rem;border-radius:3px;
+  margin-top:.15rem;
+}
+
+.tooltip-popup.flipped::after{
+  top:auto;bottom:100%;
+  border-top-color:transparent;border-bottom-color:var(--accent);
+}
+
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}
 .card .status-ring.down{animation:pulse 2s ease-in-out infinite}
 
@@ -99,6 +144,7 @@ header .subtitle{color:var(--muted);font-size:.85rem;margin-top:.3rem}
   .card{min-width:150px;max-width:170px;padding:.7rem .8rem}
   .switch-leaves{gap:2rem}
   .workload-row{gap:1.5rem}
+  .tooltip-popup{width:280px;font-size:.68rem}
 }
 </style>
 </head>
@@ -106,7 +152,7 @@ header .subtitle{color:var(--muted);font-size:.85rem;margin-top:.3rem}
 
 <header>
   <h1>Zero Trust Architecture &mdash; Live Topology</h1>
-  <p class="subtitle">ZTA Workshop Lab &middot; Real-time component health</p>
+  <p class="subtitle">ZTA Workshop Lab &middot; Real-time component health &middot; Hover any card for details</p>
   <div id="last-update">Connecting&hellip;</div>
   <div class="legend">
     <span><span class="dot healthy"></span> Healthy</span>
@@ -164,6 +210,55 @@ header .subtitle{color:var(--muted);font-size:.85rem;margin-top:.3rem}
     return el;
   }
 
+  function buildTooltip(tooltip) {
+    if (!tooltip || !tooltip.description) return null;
+
+    var popup = createEl('div', 'tooltip-popup');
+
+    var rows = [
+      {label: 'What', value: tooltip.description},
+      {label: 'ZTA Role', value: tooltip.zta_role},
+    ];
+
+    rows.forEach(function(row) {
+      if (!row.value) return;
+      var div = createEl('div', 'tt-row');
+      var lbl = createEl('div', 'tt-label');
+      lbl.textContent = row.label;
+      var val = createEl('div', 'tt-value');
+      val.textContent = row.value;
+      div.appendChild(lbl);
+      div.appendChild(val);
+      popup.appendChild(div);
+    });
+
+    if (tooltip.aap_managed) {
+      var aapRow = createEl('div', 'tt-row');
+      var aapLbl = createEl('div', 'tt-label');
+      aapLbl.textContent = 'AAP Managed';
+      aapRow.appendChild(aapLbl);
+      var badge = createEl('span', 'tt-aap-badge');
+      var isSelf = tooltip.aap_managed.toLowerCase().indexOf('self') !== -1;
+      badge.classList.add(isSelf ? 'self' : 'managed');
+      badge.textContent = tooltip.aap_managed;
+      aapRow.appendChild(badge);
+      popup.appendChild(aapRow);
+    }
+
+    if (tooltip.workshop_sections) {
+      var secRow = createEl('div', 'tt-row');
+      var secLbl = createEl('div', 'tt-label');
+      secLbl.textContent = 'Workshop Sections';
+      secRow.appendChild(secLbl);
+      var secVal = createEl('span', 'tt-sections');
+      secVal.textContent = tooltip.workshop_sections;
+      secRow.appendChild(secVal);
+      popup.appendChild(secRow);
+    }
+
+    return popup;
+  }
+
   function buildCard(comp) {
     var card = createEl('div', 'card');
     card.id = 'card-' + comp.id;
@@ -199,6 +294,9 @@ header .subtitle{color:var(--muted);font-size:.85rem;margin-top:.3rem}
       });
       card.appendChild(checksDiv);
     }
+
+    var tooltipEl = buildTooltip(comp.tooltip);
+    if (tooltipEl) card.appendChild(tooltipEl);
 
     return card;
   }
@@ -287,6 +385,25 @@ header .subtitle{color:var(--muted);font-size:.85rem;margin-top:.3rem}
 
   poll();
   setInterval(poll, 10000);
+
+  /* Keep tooltips visible when card is near the top of the viewport —
+     flip to show below the card instead of above. */
+  document.addEventListener('mouseover', function(e) {
+    var card = e.target.closest('.card');
+    if (!card) return;
+    var popup = card.querySelector('.tooltip-popup');
+    if (!popup) return;
+    var rect = card.getBoundingClientRect();
+    if (rect.top < 260) {
+      popup.style.bottom = 'auto';
+      popup.style.top = 'calc(100% + 10px)';
+      popup.classList.add('flipped');
+    } else {
+      popup.style.bottom = 'calc(100% + 10px)';
+      popup.style.top = 'auto';
+      popup.classList.remove('flipped');
+    }
+  });
 })();
 </script>
 

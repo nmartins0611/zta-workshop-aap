@@ -155,6 +155,42 @@
       retries: 15
       delay: 3
 
+    - name: List stale agents from previous runs
+      shell: >
+        {{ spire_install_dir }}/bin/spire-server agent list
+        -socketPath {{ spire_server_socket }}
+        | grep 'SPIFFE ID' | awk '{print $NF}'
+      register: stale_agents
+      changed_when: false
+
+    - name: Evict stale agents for clean re-attestation
+      command: >
+        {{ spire_install_dir }}/bin/spire-server agent evict
+        -socketPath {{ spire_server_socket }}
+        -spiffeID {{ item }}
+      loop: "{{ stale_agents.stdout_lines }}"
+      loop_control:
+        label: "{{ item }}"
+      when: stale_agents.stdout_lines | length > 0
+
+    - name: Delete stale workload entries from previous runs
+      shell: >
+        {{ spire_install_dir }}/bin/spire-server entry show
+        -socketPath {{ spire_server_socket }}
+        | grep 'Entry ID' | awk '{print $NF}'
+      register: stale_entries
+      changed_when: false
+
+    - name: Remove stale entries
+      command: >
+        {{ spire_install_dir }}/bin/spire-server entry delete
+        -socketPath {{ spire_server_socket }}
+        -entryID {{ item }}
+      loop: "{{ stale_entries.stdout_lines }}"
+      loop_control:
+        label: "{{ item }}"
+      when: stale_entries.stdout_lines | length > 0
+
     - name: Export trust bundle for agents
       shell: >
         {{ spire_install_dir }}/bin/spire-server bundle show
@@ -202,6 +238,23 @@
     - name: Create agent socket directory
       file:
         path: "{{ spire_agent_socket | dirname }}"
+        state: directory
+        mode: '0755'
+
+    - name: Stop SPIRE Agent if running (before clearing data)
+      systemd:
+        name: spire-agent
+        state: stopped
+      failed_when: false
+
+    - name: Clear agent attestation state for clean re-attestation
+      file:
+        path: "{{ spire_install_dir }}/data/agent"
+        state: absent
+
+    - name: Recreate agent data directory
+      file:
+        path: "{{ spire_install_dir }}/data/agent"
         state: directory
         mode: '0755'
 
@@ -405,13 +458,13 @@
   tasks:
     - name: Wait for agents to sync new workload entries
       pause:
-        seconds: 5
+        seconds: 10
 
     - name: Fetch X.509 SVID from local SPIRE Agent
       command: "{{ spire_install_dir }}/bin/spire-agent api fetch x509 -socketPath {{ spire_agent_socket }}"
       register: svid_fetch
-      retries: 5
-      delay: 3
+      retries: 10
+      delay: 5
       until: "'Received' in svid_fetch.stdout"
 
     - name: Display fetched SVID info

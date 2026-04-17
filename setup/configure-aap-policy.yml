@@ -19,6 +19,9 @@
   connection: local
   gather_facts: false
 
+  vars_files:
+    - ../inventory/group_vars/all.yml
+
   vars:
     aap_host: "{{ aap_controller_url | default('https://control.zta.lab') }}"
     aap_user: admin

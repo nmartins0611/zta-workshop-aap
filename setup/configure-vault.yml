@@ -63,6 +63,12 @@
         realm={{ idm_realm }}
       environment: "{{ vault_env }}"
 
+    - name: Store EDA webhook token
+      command: >
+        vault kv put {{ vault_kv_secrets_path }}/services/eda-webhook
+        token={{ eda_webhook_token }}
+      environment: "{{ vault_env }}"
+
     # ── Database Secrets Engine ──
     - name: Enable database secrets engine
       command: vault secrets enable -path={{ vault_db_secrets_path }} database
@@ -176,6 +182,15 @@
           }
         mode: '0644'
 
+    - name: Write eda-webhook-read policy
+      copy:
+        dest: /tmp/vault-policy-eda-webhook-read.hcl
+        content: |
+          path "{{ vault_kv_secrets_path }}/data/services/eda-webhook" {
+            capabilities = ["read"]
+          }
+        mode: '0644'
+
     - name: Apply Vault policies
       command: "vault policy write {{ item.name }} {{ item.file }}"
       environment: "{{ vault_env }}"
@@ -184,6 +199,7 @@
         - { name: network-admin, file: /tmp/vault-policy-network-admin.hcl }
         - { name: patch-admin, file: /tmp/vault-policy-patch-admin.hcl }
         - { name: ssh-access, file: /tmp/vault-policy-ssh-access.hcl }
+        - { name: eda-webhook-read, file: /tmp/vault-policy-eda-webhook-read.hcl }
       loop_control:
         label: "{{ item.name }}"
 
@@ -196,6 +212,7 @@
         - /tmp/vault-policy-network-admin.hcl
         - /tmp/vault-policy-patch-admin.hcl
         - /tmp/vault-policy-ssh-access.hcl
+        - /tmp/vault-policy-eda-webhook-read.hcl
 
     # ── Vault userpass accounts for workshop users ──
     # Each IdM user that runs Section 2+ workflows needs a matching Vault
@@ -261,6 +278,7 @@
             - {{ vault_kv_secrets_path }}/network/arista
             - {{ vault_kv_secrets_path }}/db/admin
             - {{ vault_kv_secrets_path }}/idm/admin
+            - {{ vault_kv_secrets_path }}/services/eda-webhook
 
           Database Engine:
             - Path: {{ vault_db_secrets_path }}
@@ -274,8 +292,9 @@
             - Users: {{ vault_ssh_allowed_users }}
 
           Policies:
-            - app-deployer  (DB creds read)
-            - network-admin (network creds read)
-            - patch-admin   (IdM creds read)
-            - ssh-access    (SSH cert signing)
+            - app-deployer      (DB creds read)
+            - network-admin     (network creds read)
+            - patch-admin       (IdM creds read)
+            - ssh-access        (SSH cert signing)
+            - eda-webhook-read  (EDA event stream token read)
           ═══════════════════════════════════════════

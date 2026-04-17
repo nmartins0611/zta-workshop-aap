@@ -34,21 +34,19 @@
     - name: Display breakage confirmation (instructor only)
       debug:
         msg: |
-          ╔════════════════════════════════════════════════════════════════╗
-          ║       SELINUX CONTEXT BREAKAGE APPLIED                       ║
-          ╠════════════════════════════════════════════════════════════════╣
-          ║                                                              ║
-          ║  Changed: SELinux context on {{ app_deploy_dir }}            ║
-          ║    FROM: container_file_t (allows container access)          ║
-          ║    TO:   default_t (denies container access)                 ║
-          ║                                                              ║
-          ║  App status: {{ app_status.status.ActiveState | default('unknown') }}║
-          ║                                                              ║
-          ║  Effect:                                                     ║
-          ║    Application cannot write to its data directory            ║
-          ║    Container logs show "Permission denied" errors            ║
-          ║    ausearch will show AVC denials                            ║
-          ║                                                              ║
-          ║  Instructor fix:                                             ║
-          ║    ansible-playbook section2/playbooks/fix-selinux.yml       ║
-          ╚════════════════════════════════════════════════════════════════╝
+          SELINUX CONTEXT BREAKAGE APPLIED
+          =================================
+
+          Changed: SELinux context on {{ app_deploy_dir }}
+            FROM: container_file_t (allows container access)
+            TO:   default_t (denies container access)
+
+          App status: {{ app_status.status.ActiveState | default('unknown') }}
+
+          Effect:
+            Application cannot write to its data directory
+            Container logs show "Permission denied" errors
+            ausearch will show AVC denials
+
+          Instructor fix:
+            ansible-playbook section2/playbooks/fix-selinux.yml

@@ -53,22 +53,19 @@
     - name: Display deployment confirmation (instructor only)
       debug:
         msg: |
-          ╔════════════════════════════════════════════════════════════════╗
-          ║       BUGGY OPA POLICY DEPLOYED                              ║
-          ╠════════════════════════════════════════════════════════════════╣
-          ║                                                              ║
-          ║  Policy: zta.data_classification (with 3 bugs)               ║
-          ║                                                              ║
-          ║  BUG 1: PII uses OR instead of AND                           ║
-          ║    → security-ops alone can access PII (should need BOTH)    ║
-          ║                                                              ║
-          ║  BUG 2: Confidential checks wrong group                      ║
-          ║    → app-deployers can access confidential (should be        ║
-          ║      db-admins only)                                         ║
-          ║                                                              ║
-          ║  BUG 3: Internal rule missing classification check           ║
-          ║    → app-deployers can access ANY classification level       ║
-          ║                                                              ║
-          ║  Instructor fix:                                             ║
-          ║    ansible-playbook section3/playbooks/fix-opa-policy.yml    ║
-          ╚════════════════════════════════════════════════════════════════╝
+          BUGGY OPA POLICY DEPLOYED
+          ==========================
+
+          Policy: zta.data_classification (with 3 bugs)
+
+          BUG 1: PII uses OR instead of AND
+            → security-ops alone can access PII (should need BOTH)
+
+          BUG 2: Confidential checks wrong group
+            → app-deployers can access confidential (should be db-admins only)
+
+          BUG 3: Internal rule missing classification check
+            → app-deployers can access ANY classification level
+
+          Instructor fix:
+            ansible-playbook section3/playbooks/fix-opa-policy.yml

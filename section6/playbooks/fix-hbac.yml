@@ -34,11 +34,8 @@
     - name: Display fix confirmation
       debug:
         msg: |
-          ╔════════════════════════════════════════════════════════════════╗
-          ║       HBAC FIX APPLIED — AAP ACCESS RESTORED                 ║
-          ╠════════════════════════════════════════════════════════════════╣
-          ║                                                              ║
-          ║  aap-service restored to allow_aap_automation HBAC rule      ║
-          ║  AAP job templates should now succeed again                  ║
-          ║                                                              ║
-          ╚════════════════════════════════════════════════════════════════╝
+          HBAC FIX APPLIED — AAP ACCESS RESTORED
+          ========================================
+
+          aap-service restored to allow_aap_automation HBAC rule
+          AAP job templates should now succeed again.

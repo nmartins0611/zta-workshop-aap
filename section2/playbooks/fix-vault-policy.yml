@@ -69,12 +69,10 @@
     - name: Display fix confirmation
       debug:
         msg: |
-          ╔════════════════════════════════════════════════════════════════╗
-          ║       VAULT POLICY FIX APPLIED                               ║
-          ╠════════════════════════════════════════════════════════════════╣
-          ║                                                              ║
-          ║  app-deployer policy restored to correct path:               ║
-          ║    database/creds/{{ vault_db_role_name }}                    ║
-          ║                                                              ║
-          ║  Deploy Application Pipeline should now succeed.             ║
-          ╚════════════════════════════════════════════════════════════════╝
+          VAULT POLICY FIX APPLIED
+          =========================
+
+          app-deployer policy restored to correct path:
+            database/creds/{{ vault_db_role_name }}
+
+          Deploy Application Pipeline should now succeed.

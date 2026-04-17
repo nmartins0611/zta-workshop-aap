@@ -46,15 +46,13 @@
     - name: Display fix confirmation
       debug:
         msg: |
-          ╔════════════════════════════════════════════════════════════════╗
-          ║       CORRECT OPA POLICY DEPLOYED                            ║
-          ╠════════════════════════════════════════════════════════════════╣
-          ║                                                              ║
-          ║  All 3 bugs fixed:                                           ║
-          ║    ✓ PII requires BOTH security-ops AND db-admins            ║
-          ║    ✓ Confidential requires db-admins (not app-deployers)     ║
-          ║    ✓ Internal rule checks classification level               ║
-          ║                                                              ║
-          ║  PII test (security-ops only): {{ pii_test.json.result.allow }}║
-          ║  Expected: false                                             ║
-          ╚════════════════════════════════════════════════════════════════╝
+          CORRECT OPA POLICY DEPLOYED
+          ============================
+
+          All 3 bugs fixed:
+            PII requires BOTH security-ops AND db-admins
+            Confidential requires db-admins (not app-deployers)
+            Internal rule checks classification level
+
+          PII test (security-ops only): {{ pii_test.json.result.allow }}
+          Expected: false

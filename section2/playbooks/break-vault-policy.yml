@@ -66,18 +66,16 @@
     - name: Display breakage confirmation (instructor only)
       debug:
         msg: |
-          ╔════════════════════════════════════════════════════════════════╗
-          ║       VAULT POLICY BREAKAGE APPLIED                          ║
-          ╠════════════════════════════════════════════════════════════════╣
-          ║                                                              ║
-          ║  Changed: app-deployer policy path                           ║
-          ║    FROM: database/creds/ztaapp-short-lived                   ║
-          ║    TO:   database/creds/ztaapp-readonly (does not exist)     ║
-          ║                                                              ║
-          ║  Effect:                                                     ║
-          ║    Deploy Application Pipeline will pass OPA check           ║
-          ║    but FAIL at "Create DB Credential" with 403               ║
-          ║                                                              ║
-          ║  Instructor fix:                                             ║
-          ║    ansible-playbook section2/playbooks/fix-vault-policy.yml  ║
-          ╚════════════════════════════════════════════════════════════════╝
+          VAULT POLICY BREAKAGE APPLIED
+          ==============================
+
+          Changed: app-deployer policy path
+            FROM: database/creds/ztaapp-short-lived
+            TO:   database/creds/ztaapp-readonly (does not exist)
+
+          Effect:
+            Deploy Application Pipeline will pass OPA check
+            but FAIL at "Create DB Credential" with 403
+
+          Instructor fix:
+            ansible-playbook section2/playbooks/fix-vault-policy.yml

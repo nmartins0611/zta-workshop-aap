@@ -29,17 +29,15 @@
     - name: Display breakage confirmation (instructor only)
       debug:
         msg: |
-          ╔════════════════════════════════════════════════════════════════╗
-          ║       FIREWALL BREAKAGE APPLIED                              ║
-          ╠════════════════════════════════════════════════════════════════╣
-          ║                                                              ║
-          ║  Removed port {{ db_port }}/tcp from firewalld on DB host    ║
-          ║  Current open ports: {{ ports_after.stdout | default('none') }}║
-          ║                                                              ║
-          ║  Effect:                                                     ║
-          ║    App cannot reach PostgreSQL on port {{ db_port }}          ║
-          ║    curl http://app.zta.lab:8081/health → unhealthy           ║
-          ║                                                              ║
-          ║  Instructor fix:                                             ║
-          ║    ansible-playbook section2/playbooks/fix-firewall.yml      ║
-          ╚════════════════════════════════════════════════════════════════╝
+          FIREWALL BREAKAGE APPLIED
+          =========================
+
+          Removed port {{ db_port }}/tcp from firewalld on DB host
+          Current open ports: {{ ports_after.stdout | default('none') }}
+
+          Effect:
+            App cannot reach PostgreSQL on port {{ db_port }}
+            curl http://app.zta.lab:8081/health → unhealthy
+
+          Instructor fix:
+            ansible-playbook section2/playbooks/fix-firewall.yml

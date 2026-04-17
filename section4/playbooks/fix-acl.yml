@@ -25,14 +25,12 @@
     - name: Display fix confirmation
       debug:
         msg: |
-          ╔════════════════════════════════════════════════════════════════╗
-          ║       ACL FIX APPLIED ON ceos2                               ║
-          ╠════════════════════════════════════════════════════════════════╣
-          ║                                                              ║
-          ║  Restored: ZTA-APP-TO-DB ACL                                 ║
-          ║    10 permit tcp host {{ app_data_ip }} host {{ db_data_ip }} eq {{ db_port }}║
-          ║    20 deny ip any host {{ db_data_ip }}                      ║
-          ║                                                              ║
-          ║  Only the app server can reach the database on port {{ db_port }}.║
-          ╚════════════════════════════════════════════════════════════════╝
+          ACL FIX APPLIED ON ceos2
+          =========================
+
+          Restored: ZTA-APP-TO-DB ACL
+            10 permit tcp host {{ app_data_ip }} host {{ db_data_ip }} eq {{ db_port }}
+            20 deny ip any host {{ db_data_ip }}
+
+          Only the app server can reach the database on port {{ db_port }}.
       when: inventory_hostname == 'ceos2'

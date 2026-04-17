@@ -37,13 +37,11 @@
     - name: Display fix confirmation
       debug:
         msg: |
-          ╔════════════════════════════════════════════════════════════════╗
-          ║       SELINUX CONTEXT FIXED                                  ║
-          ╠════════════════════════════════════════════════════════════════╣
-          ║                                                              ║
-          ║  Restored: container_file_t on {{ app_deploy_dir }}          ║
-          ║  App health: {{ health.status | default('pending') }}        ║
-          ║                                                              ║
-          ║  Context:                                                    ║
-          {{ context_check.stdout_lines | join('\n          ') }}
-          ╚════════════════════════════════════════════════════════════════╝
+          SELINUX CONTEXT FIXED
+          =====================
+
+          Restored: container_file_t on {{ app_deploy_dir }}
+          App health: {{ health.status | default('pending') }}
+
+          Context:
+          {{ context_check.stdout_lines | join('\n') }}

@@ -27,18 +27,16 @@
     - name: Display workload identity verification
       debug:
         msg: |
-          ╔════════════════════════════════════════════════════════════╗
-          ║       SPIFFE Workload Identity Verification              ║
-          ╠════════════════════════════════════════════════════════════╣
-          ║                                                          ║
-          ║  SPIFFE ID: {{ workload_spiffe_id }}
-          ║  Host:      {{ inventory_hostname }}
-          ║  Status:    VERIFIED                                     ║
-          ║                                                          ║
-          ║  The automation platform has proven its identity via      ║
-          ║  a cryptographic X.509 SVID issued by the SPIRE Server.  ║
-          ║  This SVID will be included in the OPA policy check.     ║
-          ╚════════════════════════════════════════════════════════════╝
+          SPIFFE Workload Identity Verification
+          ======================================
+
+          SPIFFE ID: {{ workload_spiffe_id }}
+          Host:      {{ inventory_hostname }}
+          Status:    VERIFIED
+
+          The automation platform has proven its identity via
+          a cryptographic X.509 SVID issued by the SPIRE Server.
+          This SVID will be included in the OPA policy check.
 
 
 - name: "Pre-check: Validate Network Policy with OPA"
@@ -121,26 +119,24 @@
     - name: Display OPA decision
       debug:
         msg: |
-          ╔════════════════════════════════════════════════════════════╗
-          ║       OPA Network Policy Decision                       ║
-          ╠════════════════════════════════════════════════════════════╣
-          ║                                                          ║
-          ║  User:      {{ network_user }}
-          ║  Groups:    {{ network_user_groups | join(', ') }}
-          ║  Action:    create_vlan                                  ║
-          ║  VLAN ID:   {{ new_vlan_id }}
-          ║  Name:      {{ new_vlan_name }}
-          ║  SPIFFE ID: {{ workload_spiffe_id }}
-          ║  Result:    {{ 'ALLOWED' if opa_decision.json.result.allow else 'DENIED' }}
-          ║                                                          ║
-          ║  Conditions:                                             ║
-          ║    Workload verified:      {{ 'PASS' if opa_decision.json.result.conditions.workload_verified else 'FAIL' }}
-          ║    User in network-admins: {{ 'PASS' if opa_decision.json.result.conditions.user_authorized else 'FAIL' }}
-          ║    Valid VLAN ID:          {{ 'PASS' if opa_decision.json.result.conditions.valid_vlan else 'FAIL' }}
-          ║    Action permitted:       {{ 'PASS' if opa_decision.json.result.conditions.action_permitted else 'FAIL' }}
-          ║                                                          ║
-          ║  {{ opa_decision.json.result.reason }}
-          ╚════════════════════════════════════════════════════════════╝
+          OPA Network Policy Decision
+          =============================
+
+          User:      {{ network_user }}
+          Groups:    {{ network_user_groups | join(', ') }}
+          Action:    create_vlan
+          VLAN ID:   {{ new_vlan_id }}
+          Name:      {{ new_vlan_name }}
+          SPIFFE ID: {{ workload_spiffe_id }}
+          Result:    {{ 'ALLOWED' if opa_decision.json.result.allow else 'DENIED' }}
+
+          Conditions:
+            Workload verified:      {{ 'PASS' if opa_decision.json.result.conditions.workload_verified else 'FAIL' }}
+            User in network-admins: {{ 'PASS' if opa_decision.json.result.conditions.user_authorized else 'FAIL' }}
+            Valid VLAN ID:          {{ 'PASS' if opa_decision.json.result.conditions.valid_vlan else 'FAIL' }}
+            Action permitted:       {{ 'PASS' if opa_decision.json.result.conditions.action_permitted else 'FAIL' }}
+
+          {{ opa_decision.json.result.reason }}
 
     - name: Enforce OPA decision
       assert:
@@ -246,17 +242,15 @@
         - name: CMDB update summary
           debug:
             msg: |
-              ╔════════════════════════════════════════════════════════════╗
-              ║       VLAN Configuration Complete                       ║
-              ╠════════════════════════════════════════════════════════════╣
-              ║                                                          ║
-              ║  VLAN {{ new_vlan_id }} ({{ new_vlan_name }})
-              ║  Switches:   ceos1, ceos2, ceos3 (Arista cEOS fabric)    ║
-              ║  Netbox:     {{ 'Created' if netbox_vlan_check.json.count == 0 else 'Already exists' }}
-              ║  User:       {{ network_user }}
-              ║  Workload:   {{ workload_spiffe_id }}
-              ║                                                          ║
-              ║  Both user identity (IdM) and workload identity          ║
-              ║  (SPIFFE) were verified before this change was allowed.   ║
-              ║  CMDB is now the source of truth for this VLAN.          ║
-              ╚════════════════════════════════════════════════════════════╝
+              VLAN Configuration Complete
+              ===========================
+
+              VLAN {{ new_vlan_id }} ({{ new_vlan_name }})
+              Switches: ceos1, ceos2, ceos3 (Arista cEOS fabric)
+              Netbox:   {{ 'Created' if netbox_vlan_check.json.count == 0 else 'Already exists' }}
+              User:     {{ network_user }}
+              Workload: {{ workload_spiffe_id }}
+
+              Both user identity (IdM) and workload identity (SPIFFE)
+              were verified before this change was allowed.
+              CMDB is now the source of truth for this VLAN.

@@ -1,4 +1,4 @@
-=== Exercise 4.5 — Arista ACL hands-on (extended)
+=== Exercise 4.6 — Arista ACL hands-on (extended)
 
 [TIP]
 .Least privilege on the wire

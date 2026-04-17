@@ -140,6 +140,7 @@
         password: "{{ splunk_password }}"
         force_basic_auth: true
         validate_certs: false
+        return_content: true
         body_format: form-urlencoded
         body:
           name: "{{ alert_name }}"
@@ -155,8 +156,6 @@
           alert.track: "1"
           alert.suppress: "0"
           enableSched: "1"
-          action.ansible_core: "1"
-          actions: "ansible_core"
         status_code: [200, 201]
       register: alert_created
 

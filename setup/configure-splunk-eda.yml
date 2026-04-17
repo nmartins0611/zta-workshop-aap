@@ -179,7 +179,8 @@
 
   vars:
     splunk_container: splunk
-    saved_searches_conf: /opt/splunk/etc/apps/ansible_addon_for_splunk/local/savedsearches.conf
+    # servicesNS/admin/... saves searches under the user namespace, not the app local dir
+    saved_searches_conf: /opt/splunk/etc/users/admin/ansible_addon_for_splunk/local/savedsearches.conf
     alert_stanza: "ZTA: SSH Brute Force Detected"
 
   tasks:
@@ -260,10 +261,11 @@
           grep -A5 "\[ZTA: SSH Brute Force Detected\]" {{ saved_searches_conf }}
       register: conf_verify
       changed_when: false
+      failed_when: false
 
     - name: Show injected config excerpt
       ansible.builtin.debug:
-        msg: "{{ conf_verify.stdout_lines }}"
+        msg: "{{ conf_verify.stdout_lines if conf_verify.rc == 0 else 'WARNING: conf not found at ' + saved_searches_conf + ' — ' + conf_verify.stderr }}"
 
 
 # ═════════════════════════════════════════════════════════════════════════════

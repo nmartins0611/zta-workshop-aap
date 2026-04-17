@@ -58,25 +58,25 @@
       vars:
         parts: "{{ svid_lifetime.stdout.split('|') }}"
       debug:
-        msg: |
-          ╔════════════════════════════════════════════════════════════╗
-          ║       SVID Certificate Analysis                          ║
-          ╠════════════════════════════════════════════════════════════╣
-          ║                                                          ║
-          ║  SPIFFE ID:  {{ workload_spiffe_id }}
-          ║  Issuer:     {{ svid_issuer.stdout }}
-          ║  Not Before: {{ parts[2] }}
-          ║  Not After:  {{ parts[3] }}
-          ║  Total TTL:  {{ parts[0] }} minutes
-          ║  Remaining:  {{ parts[1] }} minutes
-          ║                                                          ║
-          ║  ── Compare with traditional credentials ──              ║
-          ║  SSH key:       no expiry (compromised = permanent)      ║
-          ║  This SVID:     {{ parts[0] }} min TTL, auto-rotated by SPIRE  ║
-          ║  Vault DB cred: 5 min TTL (Section 2)                    ║
-          ║                                                          ║
-          ║  Short-lived + auto-rotated = stolen certs expire fast.  ║
-          ╚════════════════════════════════════════════════════════════╝
+        msg: |-
+          ══════════════════════════════════════════════════════════
+            SVID Certificate Analysis
+          ══════════════════════════════════════════════════════════
+
+            SPIFFE ID:  {{ workload_spiffe_id }}
+            Issuer:     {{ svid_issuer.stdout }}
+            Not Before: {{ parts[2] }}
+            Not After:  {{ parts[3] }}
+            Total TTL:  {{ parts[0] }} minutes
+            Remaining:  {{ parts[1] }} minutes
+
+          ── Compare with traditional credentials ──────────────
+            SSH key:       no expiry (compromised = permanent)
+            This SVID:     {{ parts[0] }} min TTL, auto-rotated by SPIRE
+            Vault DB cred: 5 min TTL (Section 2)
+
+            Short-lived + auto-rotated = stolen certs expire fast.
+          ══════════════════════════════════════════════════════════
 
     - name: Clean up exported SVID
       file:
@@ -132,29 +132,29 @@
 
     - name: Display side-by-side comparison
       debug:
-        msg: |
-          ╔════════════════════════════════════════════════════════════╗
-          ║       Workload Identity: Legitimate vs Rogue             ║
-          ╠════════════════════════════════════════════════════════════╣
-          ║                                                          ║
-          ║  Both requests use the SAME user (netadmin), SAME group  ║
-          ║  (network-admins), SAME VLAN (200). Only the workload    ║
-          ║  SPIFFE ID differs.                                      ║
-          ║                                                          ║
-          ║  ── Test 1: Legitimate workload ──                       ║
-          ║  SPIFFE ID:  {{ workload_spiffe_id }}
-          ║  Result:     {{ 'ALLOWED' if legitimate_result.json.result.allow else 'DENIED' }}
-          ║  Workload:   {{ 'TRUSTED' if legitimate_result.json.result.conditions.workload_verified else 'UNTRUSTED' }}
-          ║                                                          ║
-          ║  ── Test 2: Rogue workload ──                            ║
-          ║  SPIFFE ID:  {{ rogue_spiffe_id }}
-          ║  Result:     {{ 'ALLOWED' if rogue_result.json.result.allow else 'DENIED' }}
-          ║  Workload:   {{ 'TRUSTED' if rogue_result.json.result.conditions.workload_verified else 'UNTRUSTED' }}
-          ║                                                          ║
-          ║  Same user credentials, different outcome.               ║
-          ║  Stolen credentials are useless without a trusted        ║
-          ║  workload identity from the attested platform.           ║
-          ╚════════════════════════════════════════════════════════════╝
+        msg: |-
+          ══════════════════════════════════════════════════════════
+            Workload Identity: Legitimate vs Rogue
+          ══════════════════════════════════════════════════════════
+
+            Both requests use the SAME user (netadmin), SAME group
+            (network-admins), SAME VLAN (200). Only the workload
+            SPIFFE ID differs.
+
+          ── Test 1: Legitimate workload ───────────────────────
+            SPIFFE ID:  {{ workload_spiffe_id }}
+            Result:     {{ 'ALLOWED' if legitimate_result.json.result.allow else 'DENIED' }}
+            Workload:   {{ 'TRUSTED' if legitimate_result.json.result.conditions.workload_verified else 'UNTRUSTED' }}
+
+          ── Test 2: Rogue workload ────────────────────────────
+            SPIFFE ID:  {{ rogue_spiffe_id }}
+            Result:     {{ 'ALLOWED' if rogue_result.json.result.allow else 'DENIED' }}
+            Workload:   {{ 'TRUSTED' if rogue_result.json.result.conditions.workload_verified else 'UNTRUSTED' }}
+
+            Same user credentials, different outcome.
+            Stolen credentials are useless without a trusted
+            workload identity from the attested platform.
+          ══════════════════════════════════════════════════════════
 
 
 - name: "Part 3: Register Rogue Entry in SPIRE (advanced)"
@@ -166,23 +166,24 @@
     rogue_spiffe_id: "spiffe://{{ spire_trust_domain }}/workload/rogue-automation"
 
   tasks:
-    - name: Get the agent SPIFFE ID for control
-      shell: >
-        {{ spire_install_dir }}/bin/spire-server agent list
-        -socketPath {{ spire_server_socket }}
-        | grep -oP 'spiffe://\S+/host/control'
-      register: control_agent_id
-      failed_when: control_agent_id.stdout == ""
-
     - name: Show current registered workloads (before)
       command: >
         {{ spire_install_dir }}/bin/spire-server entry show
         -socketPath {{ spire_server_socket }}
       register: entries_before
 
+    - name: Extract parent ID from the network-automation entry
+      shell: >
+        {{ spire_install_dir }}/bin/spire-server entry show
+        -socketPath {{ spire_server_socket }}
+        -spiffeID spiffe://{{ spire_trust_domain }}/workload/network-automation
+        | grep -oP 'Parent ID\s*:\s*\K\S+'
+      register: parent_id_result
+      failed_when: parent_id_result.stdout == ""
+
     - name: Display registered entries (before)
       debug:
-        msg: |
+        msg: |-
           ── Currently registered workloads ──
           {{ entries_before.stdout }}
 
@@ -191,7 +192,7 @@
         {{ spire_install_dir }}/bin/spire-server entry create
         -socketPath {{ spire_server_socket }}
         -spiffeID {{ rogue_spiffe_id }}
-        -parentID {{ control_agent_id.stdout }}
+        -parentID {{ parent_id_result.stdout }}
         -selector unix:uid:0
       register: rogue_entry
 
@@ -207,13 +208,13 @@
 
     - name: Display registered entries (after)
       debug:
-        msg: |
-          ── Registered workloads (rogue added) ──
+        msg: |-
+          ── Registered workloads (rogue entry added) ──
           {{ entries_after.stdout }}
 
           The rogue workload now has a VALID SPIRE registration.
           SPIRE would issue it a real X.509 SVID.
-          But OPA's policy only trusts 'network-automation' — not 'rogue-automation'.
+          But OPA only trusts 'network-automation' — not 'rogue-automation'.
           A valid certificate is NOT the same as authorisation.
 
     - name: Delete rogue entry (cleanup)
@@ -230,21 +231,21 @@
 
     - name: Display final summary
       debug:
-        msg: |
-          ╔════════════════════════════════════════════════════════════╗
-          ║       SPIFFE Trust Verification — Summary                ║
-          ╠════════════════════════════════════════════════════════════╣
-          ║                                                          ║
-          ║  1. SVID certificates are SHORT-LIVED — stolen certs     ║
-          ║     expire within minutes, not months.                   ║
-          ║                                                          ║
-          ║  2. A valid SVID alone is not enough — OPA checks the    ║
-          ║     SPIFFE ID against a trusted allowlist. Having a      ║
-          ║     certificate from the same CA does not grant access.  ║
-          ║                                                          ║
-          ║  3. Authentication (SPIRE) ≠ Authorisation (OPA).        ║
-          ║     SPIRE proves WHO the workload is.                    ║
-          ║     OPA decides WHAT it may do.                          ║
-          ║                                                          ║
-          ║  Rogue entry has been cleaned up.                        ║
-          ╚════════════════════════════════════════════════════════════╝
+        msg: |-
+          ══════════════════════════════════════════════════════════
+            SPIFFE Trust Verification — Summary
+          ══════════════════════════════════════════════════════════
+
+            1. SVID certificates are SHORT-LIVED — stolen certs
+               expire within minutes, not months.
+
+            2. A valid SVID alone is not enough — OPA checks the
+               SPIFFE ID against a trusted allowlist. Having a
+               certificate from the same CA does not grant access.
+
+            3. Authentication (SPIRE) ≠ Authorisation (OPA).
+               SPIRE proves WHO the workload is.
+               OPA decides WHAT it may do.
+
+            Rogue entry has been cleaned up.
+          ══════════════════════════════════════════════════════════

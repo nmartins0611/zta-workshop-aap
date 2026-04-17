@@ -19,7 +19,7 @@
     target_port: "{{ hostvars['app']['ansible_port'] | default(22) }}"
     target_hostname: app.zta.lab
     attack_user: rhel
-    attempt_count: 10
+    attempt_count: 20
     attempt_delay: 1
 
   tasks:

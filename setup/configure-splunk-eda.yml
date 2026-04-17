@@ -192,31 +192,27 @@
       failed_when: current_conf.rc != 0 and 'No such file' not in current_conf.stderr
       changed_when: false
 
-    - name: Inject actions and action.ansible_core via Python inside container
+    - name: Copy conf-inject script into container
       ansible.builtin.command:
         cmd: >-
           podman exec --user splunk {{ splunk_container }}
-          python3 -c "
+          sh -c "cat > /tmp/inject_actions.py"
+        stdin: |
           import re, sys
-
           conf_path = '{{ saved_searches_conf }}'
           stanza    = '[{{ alert_stanza }}]'
-
           try:
               with open(conf_path, 'r') as f:
                   content = f.read()
           except FileNotFoundError:
               content = ''
-
           if stanza not in content:
               sys.exit(1)
-
           lines = content.splitlines(keepends=True)
           result = []
           in_stanza = False
           has_actions = False
           has_ansible_core = False
-
           for line in lines:
               stripped = line.strip()
               if stripped == stanza:
@@ -230,7 +226,6 @@
                   in_stanza = False
                   has_actions = False
                   has_ansible_core = False
-
               if in_stanza:
                   if re.match(r'^actions\s*=', stripped):
                       result.append('actions = ansible_core\n')
@@ -240,20 +235,20 @@
                       result.append('action.ansible_core = 1\n')
                       has_ansible_core = True
                       continue
-
               result.append(line)
-
           if in_stanza:
               if not has_actions:
                   result.append('actions = ansible_core\n')
               if not has_ansible_core:
                   result.append('action.ansible_core = 1\n')
-
           with open(conf_path, 'w') as f:
               f.writelines(result)
-
           print('OK')
-          "
+      changed_when: false
+
+    - name: Inject actions and action.ansible_core via Python inside container
+      ansible.builtin.command:
+        cmd: podman exec --user splunk {{ splunk_container }} python3 /tmp/inject_actions.py
       register: conf_inject
       failed_when: conf_inject.rc != 0
       changed_when: "'OK' in conf_inject.stdout"

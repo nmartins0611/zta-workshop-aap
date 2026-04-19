@@ -331,7 +331,7 @@
         password: "{{ splunk_password }}"
         force_basic_auth: true
         validate_certs: false
-        status_code: [200, 404]
+        status_code: [200, 404, 500]
       register: eda_env_check
 
     - name: Create EDA webhook environment via REST API
@@ -354,7 +354,7 @@
           retries: "3"
           ssl_check_hostname: "0"
         status_code: [200, 201]
-      when: eda_env_check.status == 404
+      when: eda_env_check.status != 200
 
     - name: Update existing EDA webhook environment
       ansible.builtin.uri:
@@ -381,7 +381,7 @@
       ansible.builtin.debug:
         msg: >-
           EDA add-on configured — environment 'ZTA'
-          {{ '(created)' if eda_env_check.status == 404 else '(updated)' }},
+          {{ '(created)' if eda_env_check.status != 200 else '(updated)' }},
           saved search written to host volume.
           {% if eda_event_stream_url is not defined or eda_event_stream_url == 'CHANGE_ME_EDA_EVENT_STREAM_URL' %}
           NOTE: Update the webhook_endpoint in Splunk GUI (Apps → Ansible Add-on for Splunk → Configuration → ZTA) with the real EDA Token Event Stream URL.

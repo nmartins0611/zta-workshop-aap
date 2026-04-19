@@ -215,75 +215,27 @@
     alert_stanza: "ZTA: SSH Brute Force Detected"
 
   tasks:
-    - name: Read current savedsearches.conf from container
+    - name: Write savedsearches.conf with actions=ansible_core directly into container
       ansible.builtin.command:
         cmd: >-
           podman exec --user splunk {{ splunk_container }}
-          cat {{ saved_searches_conf }}
-      register: current_conf
-      failed_when: current_conf.rc != 0 and 'No such file' not in current_conf.stderr
-      changed_when: false
-
-    - name: Copy conf-inject script into container
-      ansible.builtin.command:
-        cmd: >-
-          podman exec --user splunk {{ splunk_container }}
-          sh -c "cat > /tmp/inject_actions.py"
+          sh -c "cat > {{ saved_searches_conf }}"
         stdin: |
-          import re, sys
-          conf_path = '{{ saved_searches_conf }}'
-          stanza    = '[{{ alert_stanza }}]'
-          try:
-              with open(conf_path, 'r') as f:
-                  content = f.read()
-          except FileNotFoundError:
-              content = ''
-          if stanza not in content:
-              sys.exit(1)
-          lines = content.splitlines(keepends=True)
-          result = []
-          in_stanza = False
-          has_actions = False
-          has_ansible_core = False
-          for line in lines:
-              stripped = line.strip()
-              if stripped == stanza:
-                  in_stanza = True
-              elif stripped.startswith('[') and stripped.endswith(']') and stripped != stanza:
-                  if in_stanza:
-                      if not has_actions:
-                          result.append('actions = ansible_core\n')
-                      if not has_ansible_core:
-                          result.append('action.ansible_core = 1\n')
-                  in_stanza = False
-                  has_actions = False
-                  has_ansible_core = False
-              if in_stanza:
-                  if re.match(r'^actions\s*=', stripped):
-                      result.append('actions = ansible_core\n')
-                      has_actions = True
-                      continue
-                  if re.match(r'^action\.ansible_core\s*=', stripped):
-                      result.append('action.ansible_core = 1\n')
-                      has_ansible_core = True
-                      continue
-              result.append(line)
-          if in_stanza:
-              if not has_actions:
-                  result.append('actions = ansible_core\n')
-              if not has_ansible_core:
-                  result.append('action.ansible_core = 1\n')
-          with open(conf_path, 'w') as f:
-              f.writelines(result)
-          print('OK')
-      changed_when: false
-
-    - name: Inject actions and action.ansible_core via Python inside container
-      ansible.builtin.command:
-        cmd: podman exec --user splunk {{ splunk_container }} python3 /tmp/inject_actions.py
-      register: conf_inject
-      failed_when: conf_inject.rc != 0
-      changed_when: "'OK' in conf_inject.stdout"
+          [{{ alert_stanza }}]
+          alert.severity = 4
+          alert.suppress = 0
+          alert.track = 1
+          actions = ansible_core
+          action.ansible_core = 1
+          counttype = number of events
+          cron_schedule = */1 * * * *
+          dispatch.earliest_time = -5m
+          dispatch.latest_time = now
+          enableSched = 1
+          quantity = 0
+          relation = greater than
+          search = (index=zta_app OR index=zta_syslog) sourcetype=syslog "Authentication failure" | rex field=_raw "from (?P<src_ip>\d+\.\d+\.\d+\.\d+)" | stats count by src_ip, host | where count >= 5 | sort -count
+      register: conf_write
 
     - name: Verify injected config
       ansible.builtin.command:

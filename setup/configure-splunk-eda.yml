@@ -233,6 +233,8 @@
           alert.track = 1
           actions = ansible_core
           action.ansible_core = 1
+          action.ansible_core.param.alert_type = webhook
+          action.ansible_core.param.environment = ansible_addon_for_splunk
           counttype = number of events
           cron_schedule = */1 * * * *
           dispatch.earliest_time = -5m

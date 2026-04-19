@@ -170,6 +170,19 @@
         body: ""
         status_code: [200]
 
+    - name: Set is_scheduled on the saved search (enable cron scheduling)
+      ansible.builtin.uri:
+        url: "{{ splunk_mgmt }}/servicesNS/admin/{{ alert_app }}/saved/searches/{{ alert_name | urlencode }}"
+        method: POST
+        user: admin
+        password: "{{ splunk_password }}"
+        force_basic_auth: true
+        validate_certs: false
+        body_format: form-urlencoded
+        body:
+          is_scheduled: "1"
+        status_code: [200]
+
     - name: Confirm alert creation
       ansible.builtin.debug:
         msg: "Saved search '{{ alert_name }}' created and scheduling enabled in app '{{ alert_app }}'"

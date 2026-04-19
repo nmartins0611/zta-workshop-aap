@@ -323,7 +323,18 @@
       retries: 30
       delay: 5
 
-    - name: Register EDA webhook environment via REST API
+    - name: Check if EDA environment already exists
+      ansible.builtin.uri:
+        url: "https://localhost:8089/servicesNS/nobody/ansible_addon_for_splunk/ansible_addon_for_splunk_environment/ZTA?output_mode=json"
+        method: GET
+        user: admin
+        password: "{{ splunk_password }}"
+        force_basic_auth: true
+        validate_certs: false
+        status_code: [200, 404]
+      register: eda_env_check
+
+    - name: Create EDA webhook environment via REST API
       ansible.builtin.uri:
         url: "https://localhost:8089/servicesNS/nobody/ansible_addon_for_splunk/ansible_addon_for_splunk_environment"
         method: POST
@@ -342,10 +353,10 @@
           connection_timeout: "10"
           retries: "3"
           ssl_check_hostname: "0"
-        status_code: [200, 201, 409]
-      register: eda_env_created
+        status_code: [200, 201]
+      when: eda_env_check.status == 404
 
-    - name: Update existing EDA environment if it already existed
+    - name: Update existing EDA webhook environment
       ansible.builtin.uri:
         url: "https://localhost:8089/servicesNS/nobody/ansible_addon_for_splunk/ansible_addon_for_splunk_environment/ZTA"
         method: POST
@@ -364,13 +375,13 @@
           retries: "3"
           ssl_check_hostname: "0"
         status_code: [200]
-      when: eda_env_created.status == 409
+      when: eda_env_check.status == 200
 
     - name: EDA add-on pre-staging status
       ansible.builtin.debug:
         msg: >-
           EDA add-on configured — environment 'ZTA'
-          {{ '(created)' if eda_env_created.status != 409 else '(updated)' }},
+          {{ '(created)' if eda_env_check.status == 404 else '(updated)' }},
           saved search written to host volume.
           {% if eda_event_stream_url is not defined or eda_event_stream_url == 'CHANGE_ME_EDA_EVENT_STREAM_URL' %}
           NOTE: Update the webhook_endpoint in Splunk GUI (Apps → Ansible Add-on for Splunk → Configuration → ZTA) with the real EDA Token Event Stream URL.

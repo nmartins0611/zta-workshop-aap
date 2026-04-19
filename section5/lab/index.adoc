@@ -30,13 +30,9 @@ ansible-playbook -i inventory/hosts.ini setup/configure-aap-project.yml --tags e
 This creates the EDA project, Decision Environment, and **ZTA EDA Event Stream** credential (token seeded from Vault KV `secret/services/eda-webhook`).
 
 * Splunk EDA add-on configured with the Event Stream URL.
-  Use the Splunk GUI (*Apps → Ansible Add-on for Splunk → Configuration*) to set the endpoint and token, **or** run the setup playbook (for repeatable lab resets):
+  The saved search and EDA environment (`ZTA`) are pre-staged by `setup/deploy-splunk.yml` during initial deployment. You only need to update the webhook endpoint URL once you create the Token Event Stream:
 +
-[source,bash]
-----
-ansible-playbook -i inventory/hosts.ini setup/configure-splunk-eda.yml \
-  -e eda_event_stream_url="https://192.168.1.10:443/eda-event-streams/api/eda/v1/external_event_stream/<UUID>/post/"
-----
+In the Splunk GUI: *Apps → Ansible Add-on for Splunk → Configuration → Edit ZTA environment* → paste the Token Event Stream URL from *Automation Decisions → Event Streams*.
 
 [TIP]
 .Visible telemetry

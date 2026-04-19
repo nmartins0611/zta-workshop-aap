@@ -270,6 +270,113 @@
       delay: 10
 
     # ═══════════════════════════════════════════════════════════════════
+    # Phase 6.5 — Pre-stage EDA add-on configuration
+    #
+    # Writes the saved search (brute-force alert) to the host-mounted
+    # volume and registers the EDA environment via REST API.
+    # The webhook_endpoint defaults to a placeholder; update via the
+    # Splunk GUI or the Configure Splunk EDA AAP job template.
+    # ═══════════════════════════════════════════════════════════════════
+
+    - name: Create user-namespace savedsearches.conf directory on host volume
+      ansible.builtin.file:
+        path: "{{ splunk_data_dir }}/etc/users/admin/ansible_addon_for_splunk/local"
+        state: directory
+        mode: '0755'
+        owner: "{{ splunk_app_owner }}"
+        group: "{{ splunk_app_group }}"
+
+    - name: Write EDA saved search (brute-force alert) to host volume
+      ansible.builtin.copy:
+        dest: "{{ splunk_data_dir }}/etc/users/admin/ansible_addon_for_splunk/local/savedsearches.conf"
+        owner: "{{ splunk_app_owner }}"
+        group: "{{ splunk_app_group }}"
+        mode: '0644'
+        content: |
+          [ZTA: SSH Brute Force Detected]
+          alert.severity = 4
+          alert.suppress = 0
+          alert.track = 1
+          actions = ansible_core
+          action.ansible_core = 1
+          action.ansible_core.param.alert_type = webhook
+          action.ansible_core.param.environment = ZTA
+          counttype = number of events
+          cron_schedule = */1 * * * *
+          dispatch.earliest_time = -5m
+          dispatch.latest_time = now
+          enableSched = 1
+          quantity = 0
+          relation = greater than
+          search = (index=zta_app OR index=zta_syslog) sourcetype=syslog "Authentication failure" | rex field=_raw "from (?P<src_ip>\d+\.\d+\.\d+\.\d+)" | stats count by src_ip, host | where count >= 5 | sort -count
+
+    - name: Wait for Splunk management API before environment registration
+      ansible.builtin.uri:
+        url: "https://localhost:8089/services/server/info"
+        user: admin
+        password: "{{ splunk_password }}"
+        force_basic_auth: true
+        validate_certs: false
+        status_code: [200]
+      register: splunk_mgmt_ready
+      until: splunk_mgmt_ready.status == 200
+      retries: 30
+      delay: 5
+
+    - name: Register EDA webhook environment via REST API
+      ansible.builtin.uri:
+        url: "https://localhost:8089/servicesNS/nobody/ansible_addon_for_splunk/ansible_addon_for_splunk_environment"
+        method: POST
+        user: admin
+        password: "{{ splunk_password }}"
+        force_basic_auth: true
+        validate_certs: false
+        body_format: form-urlencoded
+        body:
+          name: ZTA
+          environment: ZTA
+          integration_type: webhook
+          webhook_endpoint: "{{ eda_event_stream_url | default('CHANGE_ME_EDA_EVENT_STREAM_URL') }}"
+          auth_type: apikey
+          token: "{{ eda_webhook_token }}"
+          connection_timeout: "10"
+          retries: "3"
+          ssl_check_hostname: "0"
+        status_code: [200, 201, 409]
+      register: eda_env_created
+
+    - name: Update existing EDA environment if it already existed
+      ansible.builtin.uri:
+        url: "https://localhost:8089/servicesNS/nobody/ansible_addon_for_splunk/ansible_addon_for_splunk_environment/ZTA"
+        method: POST
+        user: admin
+        password: "{{ splunk_password }}"
+        force_basic_auth: true
+        validate_certs: false
+        body_format: form-urlencoded
+        body:
+          environment: ZTA
+          integration_type: webhook
+          webhook_endpoint: "{{ eda_event_stream_url | default('CHANGE_ME_EDA_EVENT_STREAM_URL') }}"
+          auth_type: apikey
+          token: "{{ eda_webhook_token }}"
+          connection_timeout: "10"
+          retries: "3"
+          ssl_check_hostname: "0"
+        status_code: [200]
+      when: eda_env_created.status == 409
+
+    - name: EDA add-on pre-staging status
+      ansible.builtin.debug:
+        msg: >-
+          EDA add-on configured — environment 'ZTA'
+          {{ '(created)' if eda_env_created.status != 409 else '(updated)' }},
+          saved search written to host volume.
+          {% if eda_event_stream_url is not defined or eda_event_stream_url == 'CHANGE_ME_EDA_EVENT_STREAM_URL' %}
+          NOTE: Update the webhook_endpoint in Splunk GUI (Apps → Ansible Add-on for Splunk → Configuration → ZTA) with the real EDA Token Event Stream URL.
+          {% endif %}
+
+    # ═══════════════════════════════════════════════════════════════════
     # Phase 7 — Systemd service for reboot persistence
     # ═══════════════════════════════════════════════════════════════════
 

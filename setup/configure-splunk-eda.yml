@@ -60,6 +60,13 @@
       retries: 12
       delay: 10
 
+    - name: Ensure aap.example.org resolves on central (Splunk container inherits host /etc/hosts)
+      ansible.builtin.lineinfile:
+        path: /etc/hosts
+        line: "{{ aap_controller_ip }} aap.example.org control.zta.lab"
+        regexp: "aap\\.example\\.org"
+        state: present
+
     - name: Ensure addon local config directory exists inside container
       ansible.builtin.command:
         cmd: >-
@@ -366,7 +373,7 @@
         alert_actions: "{{ alert_conf.json.entry[0].content.actions | default('NOT SET') }}"
         alert_is_scheduled: "{{ alert_conf.json.entry[0].content.is_scheduled | default(false) }}"
         alert_disabled: "{{ alert_conf.json.entry[0].content.disabled | default(true) }}"
-        alert_track: "{{ alert_conf.json.entry[0].content['alert.track'] | default('NOT SET') }}"
+        alert_track: "{{ alert_conf.json.entry[0].content['alert.track'] | default(false) }}"
         alert_cron: "{{ alert_conf.json.entry[0].content.cron_schedule | default('NOT SET') }}"
 
     - name: Display verification summary
@@ -400,7 +407,7 @@
         that:
           - not (alert_disabled | bool)
           - alert_is_scheduled | bool
-          - alert_track | string == "1"
+          - alert_track | bool
         fail_msg: >-
           Alert misconfigured — disabled={{ alert_disabled }}, is_scheduled={{ alert_is_scheduled }}, track={{ alert_track }}.
           Check Splunk logs: podman exec splunk tail -f /opt/splunk/var/log/splunk/scheduler.log

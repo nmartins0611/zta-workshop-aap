@@ -357,10 +357,15 @@
         status_code: [200]
       register: alert_conf
 
+    - name: Dump raw alert content fields (for debugging)
+      ansible.builtin.debug:
+        msg: "{{ alert_conf.json.entry[0].content | dict2items | selectattr('key', 'in', ['enableSched', 'is_scheduled', 'disabled', 'actions', 'alert.track', 'cron_schedule', 'qualifiedSearch']) | list }}"
+
     - name: Extract key alert fields
       ansible.builtin.set_fact:
         alert_actions: "{{ alert_conf.json.entry[0].content.actions | default('NOT SET') }}"
-        alert_enabled: "{{ alert_conf.json.entry[0].content.enableSched | default(false) }}"
+        alert_is_scheduled: "{{ alert_conf.json.entry[0].content.is_scheduled | default(false) }}"
+        alert_disabled: "{{ alert_conf.json.entry[0].content.disabled | default(true) }}"
         alert_track: "{{ alert_conf.json.entry[0].content['alert.track'] | default('NOT SET') }}"
         alert_cron: "{{ alert_conf.json.entry[0].content.cron_schedule | default('NOT SET') }}"
 
@@ -373,10 +378,11 @@
           ║                                                                      ║
           ║  Alert:    {{ alert_name }}
           ║  App:      {{ alert_app }}
-          ║  Enabled:  {{ alert_enabled }}
-          ║  Actions:  {{ alert_actions }}
-          ║  Tracking: {{ alert_track }}
-          ║  Schedule: {{ alert_cron }}
+          ║  Scheduled: {{ alert_is_scheduled }}
+          ║  Disabled:  {{ alert_disabled }}
+          ║  Actions:   {{ alert_actions }}
+          ║  Tracking:  {{ alert_track }}
+          ║  Schedule:  {{ alert_cron }}
           ║                                                                      ║
           ║  EDA Endpoint: {{ eda_event_stream_url }}
           ║                                                                      ║
@@ -392,10 +398,11 @@
     - name: Fail if alert is not correctly configured
       ansible.builtin.assert:
         that:
-          - alert_enabled | bool
+          - not (alert_disabled | bool)
+          - alert_is_scheduled | bool
           - alert_track | string == "1"
         fail_msg: >-
-          Alert misconfigured — enabled={{ alert_enabled }}, track={{ alert_track }}.
+          Alert misconfigured — disabled={{ alert_disabled }}, is_scheduled={{ alert_is_scheduled }}, track={{ alert_track }}.
           Check Splunk logs: podman exec splunk tail -f /opt/splunk/var/log/splunk/scheduler.log
         success_msg: >-
           Alert is scheduled and tracking (actions={{ alert_actions or 'set via conf inject' }})

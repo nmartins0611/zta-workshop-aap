@@ -215,12 +215,18 @@
     alert_stanza: "ZTA: SSH Brute Force Detected"
 
   tasks:
-    - name: Write savedsearches.conf with actions=ansible_core directly into container
+    - name: Ensure user namespace local dir exists in container
       ansible.builtin.command:
         cmd: >-
           podman exec --user splunk {{ splunk_container }}
-          sh -c "cat > {{ saved_searches_conf }}"
-        stdin: |
+          mkdir -p {{ saved_searches_conf | dirname }}
+      changed_when: false
+
+    - name: Write savedsearches.conf with actions=ansible_core directly into container
+      ansible.builtin.shell:
+        cmd: |
+          podman exec -i --user splunk {{ splunk_container }} \
+            sh -c "cat > {{ saved_searches_conf }}" <<'SPLUNK_EOF'
           [{{ alert_stanza }}]
           alert.severity = 4
           alert.suppress = 0
@@ -235,6 +241,7 @@
           quantity = 0
           relation = greater than
           search = (index=zta_app OR index=zta_syslog) sourcetype=syslog "Authentication failure" | rex field=_raw "from (?P<src_ip>\d+\.\d+\.\d+\.\d+)" | stats count by src_ip, host | where count >= 5 | sort -count
+          SPLUNK_EOF
       register: conf_write
 
     - name: Verify injected config

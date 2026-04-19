@@ -283,14 +283,14 @@
         path: "{{ splunk_data_dir }}/etc/users/admin/ansible_addon_for_splunk/local"
         state: directory
         mode: '0755'
-        owner: "{{ splunk_app_owner }}"
-        group: "{{ splunk_app_group }}"
+        owner: "41812"
+        group: "41812"
 
     - name: Write EDA saved search (brute-force alert) to host volume
       ansible.builtin.copy:
         dest: "{{ splunk_data_dir }}/etc/users/admin/ansible_addon_for_splunk/local/savedsearches.conf"
-        owner: "{{ splunk_app_owner }}"
-        group: "{{ splunk_app_group }}"
+        owner: "41812"
+        group: "41812"
         mode: '0644'
         content: |
           [ZTA: SSH Brute Force Detected]

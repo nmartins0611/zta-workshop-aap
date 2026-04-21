@@ -347,6 +347,7 @@
         credentials: "{{ item.credentials }}"
         survey_enabled: "{{ item.survey_enabled | default(false) | bool }}"
         survey_spec: "{{ item.survey_spec | default(omit) }}"
+        ask_variables_on_launch: "{{ item.ask_variables_on_launch | default(false) | bool }}"
         state: present
       loop: "{{ _active_templates }}"
       loop_control:

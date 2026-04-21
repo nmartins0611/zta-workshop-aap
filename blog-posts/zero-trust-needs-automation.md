@@ -1,8 +1,16 @@
-# Your Zero Trust strategy has a gap — and automation fills it
+# Your Zero Trust Strategy Has a Gap — and Automation Fills It
 
-> **Summary**: Zero Trust frameworks tell you *what* to enforce but stay silent on *how* to enforce it at operational scale. Ansible Automation Platform, positioned as the Policy Enforcement Point in a NIST SP 800-207 architecture, turns principles like least privilege, micro-segmentation, and assume-breach into runtime guarantees — not aspirational slide decks.
+**Author:** Nuno Martins  
+**Date:** April 20, 2026  
+**Reading Time:** 8 minutes
+
+## Overview
+
+Zero Trust frameworks tell you *what* to enforce but stay silent on *how* to enforce it at operational scale. Red Hat Ansible Automation Platform, positioned as the Policy Enforcement Point in a NIST SP 800-207 architecture, transforms principles like least privilege, micro-segmentation, and assume-breach from aspirational slide decks into runtime guarantees. This article demonstrates how automation closes the enforcement gap that undermines most Zero Trust implementations.
 
 Most organizations that adopt Zero Trust start in the right place: identity providers, network segmentation, multi-factor authentication. But when the security team asks "who enforces least privilege on the database credentials that our deployment pipeline uses?", the answer is often a shrug and a shared password in a vault nobody rotates.
+
+Think of Zero Trust like air traffic control. The principles are clear: verify every aircraft's identity, maintain separation, control access to runways, monitor continuously. But those principles only work because automated systems enforce them thousands of times per hour. A controller can't manually verify transponder codes for 200 aircraft simultaneously, just as your security team can't manually verify policy compliance for 200 deployments per day.
 
 Zero Trust is not a product you install. It is an operational discipline. And operational discipline at scale requires automation.
 
@@ -20,7 +28,9 @@ The key shift is architectural: instead of trusting that operators will follow t
 
 NIST 800-207 defines three core components: a Policy Engine (PE), a Policy Administrator (PA), and a Policy Enforcement Point (PEP). In most ZTA discussions, the PEP is a network appliance or an API gateway — something that controls packets or HTTP requests. But operational changes to infrastructure do not flow through API gateways. They flow through automation.
 
-When AAP acts as the PEP, every operational action — deploying an application, patching a server, changing a network configuration, revoking a credential — passes through a platform that checks identity, evaluates policy, manages secrets, and logs the outcome. The operator never touches the target system directly. The playbook does, and the playbook runs only after the platform confirms the operator is authorized.
+When Ansible Automation Platform acts as the PEP, every operational action — deploying an application, patching a server, changing a network configuration, revoking a credential — passes through a platform that checks identity, evaluates policy, manages secrets, and logs the outcome. The operator never touches the target system directly. The playbook does, and the playbook runs only after the platform confirms the operator is authorized.
+
+The key architectural benefit: **centralized enforcement with distributed execution**. Policy decisions happen at a single control plane (AAP + OPA), but enforcement happens wherever the automation runs. This eliminates the "shadow IT" problem where teams bypass security controls by SSHing directly to servers or running scripts from their laptops.
 
 This is not theoretical. Here is how it plays out across four common operational scenarios.
 
@@ -35,6 +45,54 @@ If OPA approves, AAP requests a dynamic database credential from HashiCorp Vault
 In the same workflow, AAP configures an Arista network switch to open an access control list entry permitting traffic from the application's IP address to the database port. Micro-segmentation stops being a slide deck concept and becomes a configuration change that lives and dies with the deployment.
 
 The application deploys, a health check confirms database connectivity, and the workflow completes. If the credential expires before the health check passes, the failure is immediate and visible — not a mystery error three days later.
+
+```yaml
+# Simplified AAP workflow with policy and secrets integration
+- name: Deploy application with Zero Trust controls
+  hosts: app_servers
+  tasks:
+    - name: Request dynamic database credential from Vault
+      set_fact:
+        db_credential: "{{ lookup('hashivault', 'database/creds/app-readonly', 
+                                   auth_method='approle') }}"
+      delegate_to: localhost
+    
+    - name: Configure application with short-lived credentials
+      template:
+        src: app_config.j2
+        dest: /opt/app/config.yml
+      vars:
+        db_user: "{{ db_credential.username }}"
+        db_password: "{{ db_credential.password }}"
+    
+    - name: Open network ACL for application traffic
+      arista.eos.eos_acls:
+        config:
+          - afi: ipv4
+            acls:
+              - name: "app-db-access"
+                aces:
+                  - sequence: 10
+                    grant: permit
+                    protocol: tcp
+                    source:
+                      address: "{{ ansible_host }}"
+                    destination:
+                      address: "{{ db_host }}"
+                      port_protocol:
+                        eq: 5432
+      delegate_to: "{{ network_switch }}"
+    
+    - name: Verify database connectivity
+      postgresql_ping:
+        login_host: "{{ db_host }}"
+        login_user: "{{ db_credential.username }}"
+        login_password: "{{ db_credential.password }}"
+      register: health_check
+      until: health_check is succeeded
+      retries: 3
+      delay: 5
+```
 
 Run this workflow as a network engineer who has no business deploying applications, and OPA denies the request before the first stage completes. The separation of duties is not a policy someone agreed to in a meeting. It is a runtime constraint the platform enforces.
 
@@ -55,6 +113,30 @@ After the VLAN is configured on the switch, the same playbook updates NetBox —
 The hardest Zero Trust principle to operationalize is "assume breach." It is easy to say. It is hard to staff a SOC that can revoke application credentials within minutes of detecting an attack pattern.
 
 This is where Event-Driven Ansible (EDA) changes the equation. Consider a scenario: Splunk detects a brute-force pattern against an application's authentication endpoint — repeated failed logins from an unusual source. A saved search triggers an alert to an EDA rulebook activation via a webhook. EDA evaluates the event against its rules and launches a job in AAP. That job calls Vault's API to revoke every active dynamic database lease the application holds.
+
+```yaml
+# Event-Driven Ansible rulebook for automated credential revocation
+- name: Respond to security incidents detected by Splunk
+  hosts: localhost
+  sources:
+    - ansible.eda.webhook:
+        host: 0.0.0.0
+        port: 5000
+        token: "{{ lookup('env', 'EDA_WEBHOOK_TOKEN') }}"
+  
+  rules:
+    - name: Revoke credentials on brute-force detection
+      condition: >
+        event.payload.search_name == "SSH Brute Force Detected" and
+        event.payload.result.failed_attempts > 5
+      action:
+        run_job_template:
+          name: "Revoke Application Credentials"
+          organization: "Default"
+          extra_vars:
+            target_host: "{{ event.payload.result.host }}"
+            incident_id: "{{ event.payload.sid }}"
+```
 
 The application loses database connectivity immediately. The blast radius shrinks from "attacker may have database access" to "attacker has access to an application that can no longer reach its data." The containment is not a network block — it is a credential revocation. The attacker's foothold becomes useless.
 
@@ -88,15 +170,15 @@ The question is not whether to automate Zero Trust enforcement. It is whether yo
 
 ## Resources
 
-- [NIST SP 800-207 — Zero Trust Architecture](https://csrc.nist.gov/publications/detail/sp/800-207/final)
-- [Ansible Automation Platform documentation](https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.6)
-- [Event-Driven Ansible](https://www.redhat.com/en/technologies/management/ansible/event-driven-ansible)
-- [Open Policy Agent](https://www.openpolicyagent.org/)
-- [SPIFFE / SPIRE](https://spiffe.io/)
-- [HashiCorp Vault](https://www.vaultproject.io/)
+- **NIST Framework** — [NIST SP 800-207 Zero Trust Architecture](https://csrc.nist.gov/publications/detail/sp/800-207/final) provides the authoritative reference for Policy Enforcement Points and Zero Trust components
+- **Interactive Lab** — [Zero Trust Architecture with Ansible Automation Platform](https://www.redhat.com/en/interactive-labs/ansible-automation-platform) offers a hands-on environment demonstrating the exact workflows described in this article
+- **Product Documentation** — [Ansible Automation Platform 2.6 Policy-as-Code Integration](https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.6/html/configuring_automation_execution/assembly-aap-policy-as-code-integration) explains how to configure OPA integration and enforcement points
+- **Event-Driven Ansible Guide** — [Getting Started with Event-Driven Ansible](https://www.redhat.com/en/technologies/management/ansible/event-driven-ansible) demonstrates SIEM integration patterns for automated incident response
+- **Reference Architecture** — [Ansible Security Automation](https://www.ansible.com/use-cases/security-automation) provides customer case studies and implementation patterns
+- **Community Support** — [Ansible Community Forum](https://forum.ansible.com) and [r/ansible subreddit](https://reddit.com/r/ansible) offer peer support for Zero Trust automation implementations
 
 ---
 
-**Tags**: Zero Trust, Ansible Automation Platform, NIST 800-207, Event-Driven Ansible, HashiCorp Vault, Open Policy Agent, SPIFFE, security automation, Policy Enforcement Point
-**Author**: [Your Name]
-**Published**: [Date]
+*Nuno Martins is a Principal Technical Marketing Manager at Red Hat focusing on Ansible Automation Platform and security automation. Connect with Nuno on [LinkedIn](https://www.linkedin.com/in/nuno-martins) or follow [@Red Hat Ansible Automation Platform](https://www.youtube.com/@AnsibleAutomation) on YouTube for more automation insights.*
+
+**Tags**: Zero Trust, Ansible Automation Platform, NIST 800-207, Event-Driven Ansible, HashiCorp Vault, Open Policy Agent, SPIFFE, SPIRE, security automation, Policy Enforcement Point, micro-segmentation, dynamic credentials

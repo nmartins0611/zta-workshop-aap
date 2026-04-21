@@ -237,6 +237,7 @@ zta_workshop_job_templates:
     description: "Section 5 — Emergency revoke application credentials (triggered by EDA)"
     playbook: section5/playbooks/revoke-app-credentials.yml
     credentials: [ZTA Machine Credential]
+    ask_variables_on_launch: true
   - section: 5
     name: Restore App Credentials
     description: "Section 5 — Restore application credentials"

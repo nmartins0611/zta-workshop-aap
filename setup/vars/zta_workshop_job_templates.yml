@@ -228,25 +228,6 @@ zta_workshop_job_templates:
 
   # ── Section 5 ───────────────────────────────────────────────────────
   - section: 5
-    name: Configure Splunk EDA
-    description: "Section 5 — Configure Splunk EDA add-on alert and event stream endpoint"
-    playbook: setup/configure-splunk-eda.yml
-    credentials: [ZTA Machine Credential]
-    survey_enabled: true
-    survey_spec:
-      name: "Splunk EDA configuration survey"
-      description: "Provide the AAP EDA Token Event Stream URL to configure the Splunk add-on"
-      spec:
-        - question_name: EDA Event Stream URL
-          question_description: >-
-            Full URL of the AAP EDA Token Event Stream endpoint.
-            Copy from Automation Decisions → Event Streams → (your stream) → Details.
-            Example: https://192.168.1.10:443/eda-event-streams/api/eda/v1/external_event_stream/<UUID>/post/
-          required: true
-          type: text
-          variable: eda_event_stream_url
-          default: ""
-  - section: 5
     name: Simulate Brute Force
     description: "Section 5 — Credential abuse simulation"
     playbook: section5/playbooks/simulate-bruteforce.yml
@@ -256,6 +237,7 @@ zta_workshop_job_templates:
     description: "Section 5 — Emergency revoke application credentials (triggered by EDA)"
     playbook: section5/playbooks/revoke-app-credentials.yml
     credentials: [ZTA Machine Credential]
+    ask_variables_on_launch: true
   - section: 5
     name: Restore App Credentials
     description: "Section 5 — Restore application credentials"

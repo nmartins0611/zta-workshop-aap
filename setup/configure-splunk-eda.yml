@@ -1,53 +1,44 @@
 ---
-# Configure Splunk EDA Add-on for Section 5 Incident Response
+# Configure Splunk EDA Add-on — Update Event Stream URL
 #
-# What this does:
-#   1. Writes ansible_addon_for_splunk_environment.conf with the EDA event stream
-#      endpoint URL, auth type, and bearer token
-#   2. Creates the "ZTA: SSH Brute Force Detected" saved search alert in the
-#      ansible_addon_for_splunk app context with the ansible_core action
-#   3. Injects the actions field directly into savedsearches.conf (the Splunk
-#      REST API does not persist this field reliably)
-#   4. Restarts Splunk to flush config caches
+# Lightweight playbook that updates the EDA Token Event Stream URL on the
+# pre-configured Splunk environment. The environment ('ZTA'), saved search,
+# and action config are baked in by deploy-splunk.yml during initial deployment.
+#
+# This playbook only needs to run when you create a new Token Event Stream in
+# AAP and need to update Splunk with the new URL. Alternatively, update via
+# the Splunk GUI: Apps → Ansible Add-on for Splunk → Configuration → ZTA.
 #
 # Prerequisites:
-#   - Splunk deployed:        ansible-playbook setup/deploy-splunk.yml
-#   - ansible_addon_for_splunk app installed in Splunk
-#   - AAP EDA Token Event Stream created (grab the URL from the EDA controller)
+#   - Splunk deployed with EDA add-on: ansible-playbook setup/deploy-splunk.yml
+#   - AAP EDA Token Event Stream created (copy URL from Automation Decisions → Event Streams)
 #
 # Usage:
-#   ansible-playbook -i inventory/hosts.ini setup/configure-splunk-eda.yml
-#
-#   Override the EDA event stream URL at runtime:
 #   ansible-playbook -i inventory/hosts.ini setup/configure-splunk-eda.yml \
 #     -e eda_event_stream_url="https://192.168.1.10:443/eda-event-streams/api/eda/v1/external_event_stream/<UUID>/post/"
 #
-# Tags:
-#   eda_addon_config   — Phase 1: Write ansible_addon_for_splunk_environment.conf
-#   eda_saved_search   — Phase 2: Create/update the saved search via REST API
-#   eda_conf_inject    — Phase 3: Inject actions= directly into savedsearches.conf
-#   eda_restart        — Phase 4: Restart Splunk to apply changes
-#   eda_verify         — Phase 5: Verify alert is scheduled and fires
+# Also available as the "Configure Splunk EDA" AAP job template (Section 5, survey-driven).
 
-# ═════════════════════════════════════════════════════════════════════════════
-# Play 1 — Write ansible_addon_for_splunk_environment.conf
-# ═════════════════════════════════════════════════════════════════════════════
-- name: "Phase 1 — Configure ansible_addon_for_splunk global settings"
+- name: "Update Splunk EDA webhook endpoint"
   hosts: zta_services
   become: true
   gather_facts: false
-  tags: [eda_addon_config]
 
   vars:
     splunk_password: "{{ idm_admin_password }}"
     splunk_mgmt: "https://localhost:8089"
-    splunk_container: splunk
     eda_event_stream_url: "CHANGE_ME_EDA_EVENT_STREAM_URL"
     eda_token: "{{ eda_webhook_token }}"
-    addon_conf_dir: /opt/splunk/etc/apps/ansible_addon_for_splunk/local
-    addon_env_conf: "{{ addon_conf_dir }}/ansible_addon_for_splunk_environment.conf"
+    aap_controller_ip: "{{ aap_controller_ip | default('192.168.1.10') }}"
 
   tasks:
+    - name: Ensure aap.example.org resolves on central (Splunk container inherits host /etc/hosts)
+      ansible.builtin.lineinfile:
+        path: /etc/hosts
+        line: "{{ aap_controller_ip }} aap.example.org control.zta.lab"
+        regexp: "aap\\.example\\.org"
+        state: present
+
     - name: Wait for Splunk management API
       ansible.builtin.uri:
         url: "{{ splunk_mgmt }}/services/server/info"
@@ -60,283 +51,25 @@
       retries: 12
       delay: 10
 
-    - name: Ensure addon local config directory exists inside container
-      ansible.builtin.command:
-        cmd: >-
-          podman exec --user splunk {{ splunk_container }}
-          mkdir -p {{ addon_conf_dir }}
-      changed_when: false
-
-    - name: Write ansible_addon_for_splunk_environment.conf
-      ansible.builtin.command:
-        cmd: >-
-          podman exec --user splunk {{ splunk_container }}
-          sh -c "cat > {{ addon_env_conf }}"
-        stdin: |
-          [ansible_addon_for_splunk]
-          webhook_endpoint = {{ eda_event_stream_url }}
-          auth_type = apikey
-          token = {{ eda_token }}
-      register: addon_conf_written
-
-    - name: Show addon config status
-      ansible.builtin.debug:
-        msg: >-
-          ansible_addon_for_splunk_environment.conf written —
-          endpoint: {{ eda_event_stream_url }}
-          {% if eda_event_stream_url == 'CHANGE_ME_EDA_EVENT_STREAM_URL' %}
-          WARNING: placeholder URL — update with the real EDA Token Event Stream URL
-          {% endif %}
-
-
-# ═════════════════════════════════════════════════════════════════════════════
-# Play 2 — Create the SSH brute-force saved search alert
-# ═════════════════════════════════════════════════════════════════════════════
-- name: "Phase 2 — Create ZTA: SSH Brute Force Detected saved search"
-  hosts: zta_services
-  become: true
-  gather_facts: false
-  tags: [eda_saved_search]
-
-  vars:
-    splunk_password: "{{ idm_admin_password }}"
-    splunk_mgmt: "https://localhost:8089"
-    alert_name: "ZTA: SSH Brute Force Detected"
-    alert_app: ansible_addon_for_splunk
-    brute_force_search: >-
-      (index=zta_app OR index=zta_syslog) sourcetype=syslog "Authentication failure"
-      | rex field=_raw "from (?P<src_ip>\d+\.\d+\.\d+\.\d+)"
-      | stats count by src_ip, host
-      | where count >= 5
-      | sort -count
-
-  tasks:
-    - name: Delete existing alert in ansible_addon_for_splunk context (idempotent)
+    - name: Update EDA environment webhook endpoint
       ansible.builtin.uri:
-        url: "{{ splunk_mgmt }}/servicesNS/admin/{{ alert_app }}/saved/searches/{{ alert_name | urlencode }}"
-        method: DELETE
-        user: admin
-        password: "{{ splunk_password }}"
-        force_basic_auth: true
-        validate_certs: false
-        status_code: [200, 404]
-      register: alert_delete
-
-    - name: Delete conflicting alert in search app context (prevents dual scheduling)
-      ansible.builtin.uri:
-        url: "{{ splunk_mgmt }}/servicesNS/admin/search/saved/searches/{{ alert_name | urlencode }}"
-        method: DELETE
-        user: admin
-        password: "{{ splunk_password }}"
-        force_basic_auth: true
-        validate_certs: false
-        status_code: [200, 404]
-
-    - name: Create saved search alert in ansible_addon_for_splunk app
-      ansible.builtin.uri:
-        url: "{{ splunk_mgmt }}/servicesNS/admin/{{ alert_app }}/saved/searches"
+        url: "{{ splunk_mgmt }}/servicesNS/nobody/ansible_addon_for_splunk/ansible_addon_for_splunk_environment/ZTA"
         method: POST
         user: admin
         password: "{{ splunk_password }}"
         force_basic_auth: true
         validate_certs: false
-        return_content: true
         body_format: form-urlencoded
         body:
-          name: "{{ alert_name }}"
-          search: "{{ brute_force_search }}"
-          is_scheduled: "1"
-          cron_schedule: "*/1 * * * *"
-          dispatch.earliest_time: "-5m"
-          dispatch.latest_time: "now"
-          alert_type: number of events
-          alert_comparator: greater than
-          alert_threshold: "0"
-          alert.severity: "4"
-          alert.track: "1"
-          alert.suppress: "0"
-          disabled: "0"
-        status_code: [200, 201]
-      register: alert_created
-
-    - name: Enable scheduling on the saved search
-      ansible.builtin.uri:
-        url: "{{ splunk_mgmt }}/servicesNS/admin/{{ alert_app }}/saved/searches/{{ alert_name | urlencode }}/enable"
-        method: POST
-        user: admin
-        password: "{{ splunk_password }}"
-        force_basic_auth: true
-        validate_certs: false
-        body: ""
+          webhook_endpoint: "{{ eda_event_stream_url }}"
+          auth_type: apikey
+          token: "{{ eda_token }}"
         status_code: [200]
+      register: env_update
 
-    - name: Confirm alert creation
-      ansible.builtin.debug:
-        msg: "Saved search '{{ alert_name }}' created and scheduling enabled in app '{{ alert_app }}'"
-      when: alert_created.status in [200, 201]
-
-
-# ═════════════════════════════════════════════════════════════════════════════
-# Play 3 — Inject actions field directly into savedsearches.conf
-#
-# The Splunk REST API does not reliably persist the 'actions' parameter.
-# Writing directly to the conf file inside the container guarantees it survives.
-# ═════════════════════════════════════════════════════════════════════════════
-- name: "Phase 3 — Inject actions=ansible_core into savedsearches.conf"
-  hosts: zta_services
-  become: true
-  gather_facts: false
-  tags: [eda_conf_inject]
-
-  vars:
-    splunk_container: splunk
-    # servicesNS/admin/... saves searches under the user namespace, not the app local dir
-    saved_searches_conf: /opt/splunk/etc/users/admin/ansible_addon_for_splunk/local/savedsearches.conf
-    alert_stanza: "ZTA: SSH Brute Force Detected"
-
-  tasks:
-    - name: Read current savedsearches.conf from container
-      ansible.builtin.command:
-        cmd: >-
-          podman exec --user splunk {{ splunk_container }}
-          cat {{ saved_searches_conf }}
-      register: current_conf
-      failed_when: current_conf.rc != 0 and 'No such file' not in current_conf.stderr
-      changed_when: false
-
-    - name: Copy conf-inject script into container
-      ansible.builtin.command:
-        cmd: >-
-          podman exec --user splunk {{ splunk_container }}
-          sh -c "cat > /tmp/inject_actions.py"
-        stdin: |
-          import re, sys
-          conf_path = '{{ saved_searches_conf }}'
-          stanza    = '[{{ alert_stanza }}]'
-          try:
-              with open(conf_path, 'r') as f:
-                  content = f.read()
-          except FileNotFoundError:
-              content = ''
-          if stanza not in content:
-              sys.exit(1)
-          lines = content.splitlines(keepends=True)
-          result = []
-          in_stanza = False
-          has_actions = False
-          has_ansible_core = False
-          for line in lines:
-              stripped = line.strip()
-              if stripped == stanza:
-                  in_stanza = True
-              elif stripped.startswith('[') and stripped.endswith(']') and stripped != stanza:
-                  if in_stanza:
-                      if not has_actions:
-                          result.append('actions = ansible_core\n')
-                      if not has_ansible_core:
-                          result.append('action.ansible_core = 1\n')
-                  in_stanza = False
-                  has_actions = False
-                  has_ansible_core = False
-              if in_stanza:
-                  if re.match(r'^actions\s*=', stripped):
-                      result.append('actions = ansible_core\n')
-                      has_actions = True
-                      continue
-                  if re.match(r'^action\.ansible_core\s*=', stripped):
-                      result.append('action.ansible_core = 1\n')
-                      has_ansible_core = True
-                      continue
-              result.append(line)
-          if in_stanza:
-              if not has_actions:
-                  result.append('actions = ansible_core\n')
-              if not has_ansible_core:
-                  result.append('action.ansible_core = 1\n')
-          with open(conf_path, 'w') as f:
-              f.writelines(result)
-          print('OK')
-      changed_when: false
-
-    - name: Inject actions and action.ansible_core via Python inside container
-      ansible.builtin.command:
-        cmd: podman exec --user splunk {{ splunk_container }} python3 /tmp/inject_actions.py
-      register: conf_inject
-      failed_when: conf_inject.rc != 0
-      changed_when: "'OK' in conf_inject.stdout"
-
-    - name: Verify injected config
-      ansible.builtin.command:
-        cmd: >-
-          podman exec --user splunk {{ splunk_container }}
-          grep -A5 "\[ZTA: SSH Brute Force Detected\]" {{ saved_searches_conf }}
-      register: conf_verify
-      changed_when: false
-      failed_when: false
-
-    - name: Show injected config excerpt
-      ansible.builtin.debug:
-        msg: "{{ conf_verify.stdout_lines if conf_verify.rc == 0 else 'WARNING: conf not found at ' + saved_searches_conf + ' — ' + conf_verify.stderr }}"
-
-
-# ═════════════════════════════════════════════════════════════════════════════
-# Play 4 — Restart Splunk to flush config caches
-# ═════════════════════════════════════════════════════════════════════════════
-- name: "Phase 4 — Restart Splunk"
-  hosts: zta_services
-  become: true
-  gather_facts: false
-  tags: [eda_restart]
-
-  vars:
-    splunk_password: "{{ idm_admin_password }}"
-    splunk_mgmt: "https://localhost:8089"
-    splunk_container: splunk
-
-  tasks:
-    - name: Restart Splunk container to apply config changes
-      ansible.builtin.command:
-        cmd: podman restart {{ splunk_container }}
-      register: splunk_restart
-
-    - name: Wait for Splunk management API after restart
+    - name: Verify alert is scheduled
       ansible.builtin.uri:
-        url: "{{ splunk_mgmt }}/services/server/info"
-        user: admin
-        password: "{{ splunk_password }}"
-        force_basic_auth: true
-        validate_certs: false
-        status_code: [200]
-      register: splunk_recovered
-      until: splunk_recovered.status == 200
-      retries: 30
-      delay: 10
-
-    - name: Splunk restart complete
-      ansible.builtin.debug:
-        msg: "Splunk restarted and management API is responding"
-
-
-# ═════════════════════════════════════════════════════════════════════════════
-# Play 5 — Verify the alert is scheduled and firing
-# ═════════════════════════════════════════════════════════════════════════════
-- name: "Phase 5 — Verify EDA alert configuration"
-  hosts: zta_services
-  become: true
-  gather_facts: false
-  tags: [eda_verify]
-
-  vars:
-    splunk_password: "{{ idm_admin_password }}"
-    splunk_mgmt: "https://localhost:8089"
-    alert_name: "ZTA: SSH Brute Force Detected"
-    alert_app: ansible_addon_for_splunk
-    eda_event_stream_url: "CHANGE_ME_EDA_EVENT_STREAM_URL"
-
-  tasks:
-    - name: Fetch saved search configuration
-      ansible.builtin.uri:
-        url: "{{ splunk_mgmt }}/servicesNS/admin/{{ alert_app }}/saved/searches/{{ alert_name | urlencode }}?output_mode=json"
+        url: "{{ splunk_mgmt }}/servicesNS/admin/ansible_addon_for_splunk/saved/searches/ZTA%3A+SSH+Brute+Force+Detected?output_mode=json"
         user: admin
         password: "{{ splunk_password }}"
         force_basic_auth: true
@@ -344,45 +77,24 @@
         status_code: [200]
       register: alert_conf
 
-    - name: Extract key alert fields
-      ansible.builtin.set_fact:
-        alert_actions: "{{ alert_conf.json.entry[0].content.actions | default('NOT SET') }}"
-        alert_enabled: "{{ alert_conf.json.entry[0].content.enableSched | default(false) }}"
-        alert_track: "{{ alert_conf.json.entry[0].content['alert.track'] | default('NOT SET') }}"
-        alert_cron: "{{ alert_conf.json.entry[0].content.cron_schedule | default('NOT SET') }}"
-
-    - name: Display verification summary
+    - name: Display configuration summary
       ansible.builtin.debug:
         msg: |
-          ╔══════════════════════════════════════════════════════════════════════╗
-          ║        Splunk EDA Alert Configuration — Verification                ║
-          ╠══════════════════════════════════════════════════════════════════════╣
-          ║                                                                      ║
-          ║  Alert:    {{ alert_name }}
-          ║  App:      {{ alert_app }}
-          ║  Enabled:  {{ alert_enabled }}
-          ║  Actions:  {{ alert_actions }}
-          ║  Tracking: {{ alert_track }}
-          ║  Schedule: {{ alert_cron }}
-          ║                                                                      ║
-          ║  EDA Endpoint: {{ eda_event_stream_url }}
-          ║                                                                      ║
+          Splunk EDA configuration updated:
+            Environment:  ZTA
+            Endpoint:     {{ eda_event_stream_url }}
+            Alert:        ZTA: SSH Brute Force Detected
+            Scheduled:    {{ alert_conf.json.entry[0].content.is_scheduled | default('unknown') }}
+            Cron:         {{ alert_conf.json.entry[0].content.cron_schedule | default('unknown') }}
           {% if eda_event_stream_url == 'CHANGE_ME_EDA_EVENT_STREAM_URL' %}
-          ║  ⚠  NEXT STEP: Update eda_event_stream_url with your real           ║
-          ║     EDA Token Event Stream URL and re-run with:                      ║
-          ║       -e eda_event_stream_url="https://<AAP_IP>/eda-event-streams/…" ║
-          ║     or edit setup/configure-splunk-eda.yml directly, then run:      ║
-          ║       --tags eda_addon_config,eda_restart                            ║
-          {% endif %}
-          ╚══════════════════════════════════════════════════════════════════════╝
 
-    - name: Fail if alert is not correctly configured
+          WARNING: Placeholder URL — update with the real EDA Token Event Stream URL:
+            -e eda_event_stream_url="https://192.168.1.10:443/eda-event-streams/api/eda/v1/external_event_stream/<UUID>/post/"
+          {% endif %}
+
+    - name: Fail if placeholder URL is still in use
       ansible.builtin.assert:
         that:
-          - alert_enabled | bool
-          - alert_track | string == "1"
-        fail_msg: >-
-          Alert misconfigured — enabled={{ alert_enabled }}, track={{ alert_track }}.
-          Check Splunk logs: podman exec splunk tail -f /opt/splunk/var/log/splunk/scheduler.log
-        success_msg: >-
-          Alert is scheduled and tracking (actions={{ alert_actions or 'set via conf inject' }})
+          - eda_event_stream_url != 'CHANGE_ME_EDA_EVENT_STREAM_URL'
+        fail_msg: "You must provide the EDA Event Stream URL via -e eda_event_stream_url=... or the AAP survey"
+        success_msg: "EDA endpoint configured successfully"

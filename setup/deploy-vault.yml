@@ -2,7 +2,7 @@
 # Deploy HashiCorp Vault as a container on central
 #
 # Services exposed:
-#   - UI / API:  http://central.zta.lab:8200
+#   - UI / API:  http://central.<idm_domain>:8200
 #
 # Credentials (generated at first init):
 #   - Root token and unseal keys are written to {{ vault_data_dir }}/init-keys.json
@@ -97,7 +97,7 @@
         name: "{{ vault_container_name }}"
         image: "{{ vault_image }}"
         state: started
-        hostname: vault.zta.lab
+        hostname: "vault.{{ idm_domain }}"
         command: vault server -config=/vault/config/vault.hcl
         cap_add:
           - IPC_LOCK

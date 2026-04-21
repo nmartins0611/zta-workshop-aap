@@ -8,9 +8,9 @@
 # These alerts fire webhook actions to EDA for automated incident response.
 #
 # Prerequisites:
-#   - Splunk is running on central (http://central.zta.lab:8000)
+#   - Splunk is running on central (http://central.<idm_domain>:8000)
 #   - Log shipping is configured (setup/integrate-splunk.yml)
-#   - EDA is listening on control.zta.lab:5000
+#   - EDA is listening on control.<idm_domain>:5000
 
 - name: "SSH Lockdown | Layer 4 — Splunk: Detect SSH Bypass Attempts"
   hosts: zta_services
@@ -23,7 +23,7 @@
     splunk_password: "{{ splunk_admin_password | default('ansible123!') }}"
     aap_controller_ip: "192.168.1.10"
     management_ip: "192.168.1.11"
-    eda_webhook_url: "http://control.zta.lab:5000/endpoint"
+    eda_webhook_url: "http://control.{{ idm_domain }}:5000/endpoint"
 
   tasks:
     - name: Create Splunk saved search — SSH login from non-AAP source
@@ -93,4 +93,4 @@
           - "EDA webhooks: {{ eda_webhook_url }}"
           - "Triggers: SSH from workstation; repeated HBAC denials"
           - "Excluded from bypass rules: AAP controller {{ aap_controller_ip }}, central {{ management_ip }}"
-          - "View alerts: http://central.zta.lab:8000 → Activity → Triggered Alerts"
+          - "View alerts: http://central.{{ idm_domain }}:8000 → Activity → Triggered Alerts"

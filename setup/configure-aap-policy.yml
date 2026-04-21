@@ -8,7 +8,7 @@
 #
 # Prerequisites:
 #   - AAP Controller is installed and reachable
-#   - OPA is running on central.zta.lab with aap_gateway.rego loaded
+#   - OPA is running on central.<idm_domain> with aap_gateway.rego loaded
 #   - setup/configure-opa-base.yml has been run
 #
 # Manual alternative (controller UI or REST API): docs/deployment-guide.md
@@ -23,7 +23,7 @@
     - ../inventory/group_vars/all.yml
 
   vars:
-    aap_host: "{{ aap_controller_url | default('https://control.zta.lab') }}"
+    aap_host: "{{ aap_controller_url | default('https://control.' ~ idm_domain) }}"
     aap_user: admin
     aap_password: "{{ lookup('env', 'AAP_ADMIN_PASSWORD') | default('ansible123!', true) }}"
     aap_verify_ssl: false

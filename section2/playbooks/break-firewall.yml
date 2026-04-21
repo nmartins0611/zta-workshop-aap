@@ -37,7 +37,7 @@
 
           Effect:
             App cannot reach PostgreSQL on port {{ db_port }}
-            curl http://app.zta.lab:8081/health → unhealthy
+            curl http://app.<idm_domain>:8081/health → unhealthy
 
           Instructor fix:
             ansible-playbook section2/playbooks/fix-firewall.yml

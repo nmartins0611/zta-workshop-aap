@@ -48,19 +48,19 @@
       no_log: true
 
     - name: Verify aap-service passes HBAC
-      command: ipa hbactest --user=aap-service --host=app.zta.lab --service=sshd
+      command: "ipa hbactest --user=aap-service --host=app.{{ idm_domain }} --service=sshd"
       register: s6_hbac_aap
       changed_when: false
       failed_when: false
 
     - name: Verify breakglass user passes HBAC
-      command: ipa hbactest --user=ztauser --host=app.zta.lab --service=sshd
+      command: "ipa hbactest --user=ztauser --host=app.{{ idm_domain }} --service=sshd"
       register: s6_hbac_breakglass
       changed_when: false
       failed_when: false
 
     - name: Verify neteng is denied by HBAC
-      command: ipa hbactest --user=neteng --host=app.zta.lab --service=sshd
+      command: "ipa hbactest --user=neteng --host=app.{{ idm_domain }} --service=sshd"
       register: s6_hbac_neteng
       changed_when: false
       failed_when: false

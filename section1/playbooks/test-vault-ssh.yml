@@ -35,7 +35,7 @@
   pre_tasks:
     - name: Default Vault API variables when inventory has no group_vars
       ansible.builtin.set_fact:
-        vault_addr: "{{ vault_addr | default(lookup('env', 'VAULT_ADDR') | default('http://vault.zta.lab:8200', true), true) }}"
+        vault_addr: "{{ vault_addr | default(lookup('env', 'VAULT_ADDR') | default('http://vault.' ~ idm_domain ~ ':8200', true), true) }}"
         vault_skip_verify: "{{ vault_skip_verify | default(true) | bool }}"
         vault_ssh_secrets_path: "{{ vault_ssh_secrets_path | default('ssh') }}"
         vault_ssh_role_name: "{{ vault_ssh_role_name | default('ssh-signer') }}"

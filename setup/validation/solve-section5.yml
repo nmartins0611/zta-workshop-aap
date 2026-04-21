@@ -53,7 +53,7 @@
           description: "Section 5 — Revoke Vault DB credentials and stop the application"
           playbook: section5/playbooks/revoke-app-credentials.yml
         - name: Simulate Brute Force
-          description: "Section 5 — Simulate SSH brute-force attack on app.zta.lab"
+          description: "Section 5 — Simulate SSH brute-force attack on app.{{ idm_domain }}"
           playbook: section5/playbooks/simulate-bruteforce.yml
         - name: Restore App Credentials
           description: "Section 5 — Issue fresh Vault DB credentials and restore the application"

@@ -137,9 +137,9 @@
     upstream_dns: "{{ upstream_dns_server | default('172.30.0.10') }}"
     rhel_containers:
       - name: db
-        hostname: db.zta.lab
+        hostname: "db.{{ idm_domain }}"
       - name: app
-        hostname: app.zta.lab
+        hostname: "app.{{ idm_domain }}"
 
   tasks:
     - name: Check which containers are running
@@ -154,17 +154,17 @@
     - name: Set DNS resolver in running containers (IdM + upstream fallback)
       shell: >-
         podman exec {{ item.item.name }} bash -c
-        'printf "search zta.lab\nnameserver {{ central_ip }}\nnameserver {{ upstream_dns }}\n" > /etc/resolv.conf'
+        'printf "search {{ idm_domain }}\nnameserver {{ central_ip }}\nnameserver {{ upstream_dns }}\n" > /etc/resolv.conf'
       loop: "{{ container_state.results }}"
       loop_control:
         label: "{{ item.item.name }}"
       when: item.rc == 0 and item.stdout == 'true'
       changed_when: true
 
-    - name: Verify internal DNS (zta.lab via IdM)
+    - name: Verify internal DNS (<idm_domain> via IdM)
       command: >
         podman exec {{ item.item.name }}
-        dig +short central.zta.lab @{{ central_ip }}
+        dig +short central.{{ idm_domain }} @{{ central_ip }}
       loop: "{{ container_state.results }}"
       loop_control:
         label: "{{ item.item.name }}"

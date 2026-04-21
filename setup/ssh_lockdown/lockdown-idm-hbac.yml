@@ -26,12 +26,12 @@
     aap_service_user: aap-service
     breakglass_group: breakglass-admins
     managed_hosts:
-      - app.zta.lab
-      - db.zta.lab
-      - vault.zta.lab
-      - netbox.zta.lab
-      - wazuh.zta.lab
-      - control.zta.lab
+      - "app.{{ idm_domain }}"
+      - "db.{{ idm_domain }}"
+      - "vault.{{ idm_domain }}"
+      - "netbox.{{ idm_domain }}"
+      - "wazuh.{{ idm_domain }}"
+      - "control.{{ idm_domain }}"
 
   tasks:
     # ── 1. Create AAP service account ──
@@ -129,7 +129,7 @@
         group:
           - zta-admins
         host:
-          - central.zta.lab
+          - "central.{{ idm_domain }}"
         hbacsvc:
           - sshd
           - sudo

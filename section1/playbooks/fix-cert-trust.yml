@@ -9,6 +9,8 @@
   hosts: zta_services
   become: true
   gather_facts: false
+  vars_files:
+    - ../../inventory/group_vars/all.yml
 
   vars:
     test_cert_dir: /etc/pki/tls/certs
@@ -19,11 +21,11 @@
     - name: Request a certificate from IdM CA
       command: >
         ipa-getcert request
-        -K HTTP/central.zta.lab
-        -D central.zta.lab
+        -K HTTP/central.{{ idm_domain }}
+        -D central.{{ idm_domain }}
         -f {{ test_cert_dir }}/zta-test-idm.crt
         -k {{ test_key_dir }}/zta-test-idm.key
-        -N CN=central.zta.lab
+        -N CN=central.{{ idm_domain }}
         -w
       register: getcert_result
       changed_when: getcert_result.rc == 0
@@ -69,10 +71,10 @@
           CERTIFICATE TRUST FIXED
           =======================
 
-          IdM CA certificate issued for central.zta.lab
+          IdM CA certificate issued for central.<idm_domain>
           Test endpoint now serves IdM-signed cert
 
-          curl https://central.zta.lab:{{ test_port }}/ should work
+          curl https://central.{{ idm_domain }}:{{ test_port }}/ should work
           (from any host that trusts the IdM CA)
 
   handlers:

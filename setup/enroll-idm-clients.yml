@@ -10,8 +10,8 @@
 #   ansible-playbook setup/enroll-idm-clients.yml
 #
 # Prerequisites:
-#   - IdM (central.zta.lab) is installed and running
-#   - DNS is configured so hosts can resolve central.zta.lab
+#   - IdM (central.<idm_domain>) is installed and running
+#   - DNS is configured so hosts can resolve central.<idm_domain>
 #     (run setup/configure-dns.yml first, or use /etc/hosts)
 
 - name: Enroll Linux hosts as IdM clients

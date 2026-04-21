@@ -4,7 +4,7 @@
 # Serves a real-time status page showing the health of every component.
 #
 # Services exposed:
-#   - Web UI:  http://central.zta.lab:5050  (also http://dashboard.zta.lab:5050)
+#   - Web UI:  http://central.<idm_domain>:5050  (also http://dashboard.<idm_domain>:5050)
 #
 # Usage:
 #   ansible-playbook -i inventory/hosts.ini setup/deploy-dashboard.yml
@@ -160,8 +160,8 @@
           ╠════════════════════════════════════════════════════════════════╣
           ║                                                              ║
           ║  URL:       http://{{ ansible_host }}:{{ dashboard_port }}{{ ' ' * (28 - ansible_host | length) }}║
-          ║  DNS:       http://dashboard.zta.lab:{{ dashboard_port }}                ║
-          ║  API:       http://dashboard.zta.lab:{{ dashboard_port }}/api/status     ║
+          ║  DNS:       http://dashboard.{{ idm_domain }}:{{ dashboard_port }}                ║
+          ║  API:       http://dashboard.{{ idm_domain }}:{{ dashboard_port }}/api/status     ║
           ║                                                              ║
           ║  Service:   systemctl status {{ dashboard_service }}              ║
           ║  Logs:      journalctl -u {{ dashboard_service }} -f             ║

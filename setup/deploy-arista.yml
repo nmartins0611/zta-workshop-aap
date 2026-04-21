@@ -13,9 +13,9 @@
 #   Traffic between app↔db routes through cEOS spine (ceos1)
 #
 # Management access (published on 192.168.1.x):
-#   ceos1:  SSH central.zta.lab:2001  |  eAPI central.zta.lab:6031
-#   ceos2:  SSH central.zta.lab:2002  |  eAPI central.zta.lab:6032
-#   ceos3:  SSH central.zta.lab:2003  |  eAPI central.zta.lab:6033
+#   ceos1:  SSH central.<idm_domain>:2001  |  eAPI central.<idm_domain>:6031
+#   ceos2:  SSH central.<idm_domain>:2002  |  eAPI central.<idm_domain>:6032
+#   ceos3:  SSH central.<idm_domain>:2003  |  eAPI central.<idm_domain>:6033
 #
 # Usage:
 #   ansible-playbook -i inventory/hosts.ini setup/deploy-arista.yml
@@ -320,14 +320,14 @@
           ║    DENY    any → 10.30.0.0/24                                ║
           ║                                                              ║
           ║  Switch Access (via 192.168.1.x):                            ║
-          ║    ceos1:  ssh -p 2001 admin@central.zta.lab                 ║
-          ║    ceos2:  ssh -p 2002 admin@central.zta.lab                 ║
-          ║    ceos3:  ssh -p 2003 admin@central.zta.lab                 ║
+          ║    ceos1:  ssh -p 2001 admin@central.{{ idm_domain }}                 ║
+          ║    ceos2:  ssh -p 2002 admin@central.{{ idm_domain }}                 ║
+          ║    ceos3:  ssh -p 2003 admin@central.{{ idm_domain }}                 ║
           ║                                                              ║
           ║  eAPI (JSON-RPC):                                            ║
-          ║    ceos1:  http://central.zta.lab:6031                       ║
-          ║    ceos2:  http://central.zta.lab:6032                       ║
-          ║    ceos3:  http://central.zta.lab:6033                       ║
+          ║    ceos1:  http://central.{{ idm_domain }}:6031                       ║
+          ║    ceos2:  http://central.{{ idm_domain }}:6032                       ║
+          ║    ceos3:  http://central.{{ idm_domain }}:6033                       ║
           ║                                                              ║
           ║  Management IPs:                                             ║
           ║    ceos1:  {{ ceos_addresses.ceos1 | default('unknown') }}

@@ -14,7 +14,7 @@
 #
 # Usage:
 #   ansible-playbook setup/configure-aap-gateway-ldap.yml \
-#     -e 'aap_controller_url=https://control.zta.lab' \
+#     -e 'aap_controller_url=https://control.<idm_domain>' \
 #     -e 'idm_admin_password=ansible123!'
 #
 # Optional:
@@ -29,13 +29,13 @@
   gather_facts: false
 
   vars:
-    aap_host: "{{ aap_controller_url | default('https://control.zta.lab') }}"
+    aap_host: "{{ aap_controller_url | default('https://control.' ~ idm_domain) }}"
     aap_user: "{{ aap_gateway_admin_user | default('admin') }}"
     aap_password: "{{ lookup('env', 'AAP_ADMIN_PASSWORD') | default('ansible123!', true) }}"
     aap_verify_ssl: "{{ aap_gateway_verify_ssl | default(false) | bool }}"
 
-    idm_server: "{{ idm_hostname | default('central.zta.lab') }}"
-    idm_ldap_domain: "{{ idm_domain | default('zta.lab') }}"
+    idm_server: "{{ idm_hostname | default('central.' ~ idm_domain) }}"
+    idm_ldap_domain: "{{ idm_domain }}"
     idm_ldap_base_dn: "dc={{ idm_ldap_domain.split('.') | join(',dc=') }}"
     idm_ldap_password: "{{ idm_admin_password | default('ansible123!') }}"
 

@@ -88,10 +88,12 @@
   hosts: zta_services
   become: false
   gather_facts: false
+  vars_files:
+    - ../../inventory/group_vars/all.yml
 
   vars:
     workload_spiffe_id: "{{ hostvars[groups['automation'][0]]['workload_spiffe_id'] }}"
-    rogue_spiffe_id: "spiffe://zta.lab/workload/rogue-automation"
+    rogue_spiffe_id: "spiffe://{{ idm_domain }}/workload/rogue-automation"
 
   tasks:
     - name: Test OPA with LEGITIMATE workload identity

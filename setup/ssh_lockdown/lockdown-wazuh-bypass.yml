@@ -17,7 +17,7 @@
     wazuh_rules_dir: /var/ossec/etc/rules
     aap_controller_ip: "192.168.1.10"
     management_ip: "192.168.1.11"
-    eda_webhook_url: "http://control.zta.lab:5000/endpoint"
+    eda_webhook_url: "http://control.{{ idm_domain }}:5000/endpoint"
 
   tasks:
     # ── 1. Deploy custom bypass detection rules ──

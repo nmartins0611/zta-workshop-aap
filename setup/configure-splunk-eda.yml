@@ -35,7 +35,7 @@
     - name: Ensure aap.example.org resolves on central (Splunk container inherits host /etc/hosts)
       ansible.builtin.lineinfile:
         path: /etc/hosts
-        line: "{{ aap_controller_ip }} aap.example.org control.zta.lab"
+        line: "{{ aap_controller_ip }} aap.example.org control.{{ idm_domain }}"
         regexp: "aap\\.example\\.org"
         state: present
 

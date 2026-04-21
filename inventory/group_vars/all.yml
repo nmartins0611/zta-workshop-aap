@@ -3,14 +3,14 @@
 # Auto-discovered from the target VM's facts.  Override at runtime:
 #   ansible-playbook <playbook> -e idm_domain=custom.lab
 
-idm_hostname: central.zta.lab
+idm_hostname: "central.{{ idm_domain }}"
 idm_domain: zta.lab
 idm_realm: "{{ idm_domain | upper }}"
 idm_admin_password: ansible123!
 idm_dm_password: ansible123!
 
 # ── OPA (Open Policy Agent) — runs on central alongside IdM ─────────
-opa_url: "http://central.zta.lab:8181"
+opa_url: "http://central.{{ idm_domain }}:8181"
 opa_container_name: opa
 opa_policy_dir: /opt/opa/policies
 
@@ -19,30 +19,30 @@ vault_addr: "http://192.168.1.12:8200"
 vault_skip_verify: true
 
 # ── Netbox / CMDB (own VM) ──────────────────────────────────────────
-netbox_url: "http://netbox.zta.lab:8000"
+netbox_url: "http://netbox.{{ idm_domain }}:8000"
 netbox_token: "{{ lookup('env', 'NETBOX_TOKEN') | default('0123456789abcdef0123456789abcdef01234567', true) }}"
 
 # ── Gitea / Git Server (external — not managed by workshop automation) ──
-gitea_url: "http://gitea.zta.lab:3000"
+gitea_url: "http://gitea.{{ idm_domain }}:3000"
 
 # ── Wazuh / SIEM (own VM) ──────────────────────────────────────────
-wazuh_url: "http://wazuh.zta.lab:5601"
-wazuh_api_url: "https://wazuh.zta.lab:55000"
+wazuh_url: "http://wazuh.{{ idm_domain }}:5601"
+wazuh_api_url: "https://wazuh.{{ idm_domain }}:55000"
 wazuh_api_user: wazuh
 wazuh_api_password: "x8.E0+DZi6zCCz3cG9jvXimSBn5+s4tx"
-wazuh_manager_host: wazuh.zta.lab
+wazuh_manager_host: "wazuh.{{ idm_domain }}"
 
 # ── Splunk (container on central) ───────────────────────────────────
-splunk_url: "http://splunk.zta.lab:8000"
-splunk_hec_url: "https://splunk.zta.lab:8088"
+splunk_url: "http://splunk.{{ idm_domain }}:8000"
+splunk_hec_url: "https://splunk.{{ idm_domain }}:8088"
 splunk_hec_token: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
 eda_webhook_token: "zta-eda-webhook-a1b2c3d4-e5f6-7890"
 
 # ── Keycloak (container on central) ─────────────────────────────────
-keycloak_url: "https://keycloak.zta.lab:8543"
+keycloak_url: "https://keycloak.{{ idm_domain }}:8543"
 
 # ── AAP Controller (own VM) ─────────────────────────────────────────
-aap_controller_url: "https://control.zta.lab"
+aap_controller_url: "https://control.{{ idm_domain }}"
 aap_controller_ip: "192.168.1.10"
 aap_validate_certs: false
 
@@ -64,9 +64,9 @@ arista_switches:
     eapi_port: 6033
 
 # ── Database / PostgreSQL (container on central) ───────────────────
-# Management plane: accessible via central.zta.lab:5432 / SSH port 2022
+# Management plane: accessible via central.<idm_domain>:5432 / SSH port 2022
 # Data plane: 10.30.0.10 on net2 (routed through ceos2)
-db_host: db.zta.lab
+db_host: "db.{{ idm_domain }}"
 db_port: 5432
 db_name: ztaapp
 db_admin_user: postgres
@@ -74,9 +74,9 @@ db_admin_password: "{{ lookup('env', 'DB_ADMIN_PASSWORD') | default('postgres123
 db_data_ip: "10.30.0.10"
 
 # ── Application Server (container on central) ─────────────────────
-# Management plane: accessible via central.zta.lab:8081 / SSH port 2023
+# Management plane: accessible via central.<idm_domain>:8081 / SSH port 2023
 # Data plane: 10.20.0.10 on net3 (routed through ceos3)
-app_host: app.zta.lab
+app_host: "app.{{ idm_domain }}"
 app_port: 8081
 app_deploy_dir: /opt/ztaapp
 app_data_ip: "10.20.0.10"
@@ -258,7 +258,7 @@ vault_lockdown_approle_policies:
 # ── SPIFFE / SPIRE (Workload Identity) ─────────────────────────────
 spire_version: "1.12.0"
 spire_trust_domain: "{{ idm_domain }}"
-spire_server_host: central.zta.lab
+spire_server_host: "central.{{ idm_domain }}"
 spire_server_bind_port: 8082
 spire_install_dir: /opt/spire
 spire_server_socket: /tmp/spire-server/private/api.sock

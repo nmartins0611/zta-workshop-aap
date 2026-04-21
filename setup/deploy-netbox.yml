@@ -9,8 +9,8 @@
 #   - Redis 7
 #
 # Services exposed:
-#   - Web UI:  http://netbox.zta.lab:8880
-#   - API:     http://netbox.zta.lab:8880/api/
+#   - Web UI:  http://netbox.<idm_domain>:8880
+#   - API:     http://netbox.<idm_domain>:8880/api/
 #
 # Credentials:
 #   - Admin user:  admin / netbox
@@ -29,7 +29,7 @@
     netbox_port: 8880
     netbox_superuser: admin
     netbox_superuser_password: netbox
-    netbox_superuser_email: "admin@zta.lab"
+    netbox_superuser_email: "admin@{{ idm_domain }}"
     netbox_api_token: "0123456789abcdef0123456789abcdef01234567"
     netbox_repo: https://github.com/netbox-community/netbox-docker.git
 
@@ -135,8 +135,8 @@
           ║           NetBox CMDB — Deployment Complete                   ║
           ╠════════════════════════════════════════════════════════════════╣
           ║                                                              ║
-          ║  Web UI:    http://netbox.zta.lab:{{ netbox_port }}
-          ║  API:       http://netbox.zta.lab:{{ netbox_port }}/api/
+          ║  Web UI:    http://netbox.{{ idm_domain }}:{{ netbox_port }}
+          ║  API:       http://netbox.{{ idm_domain }}:{{ netbox_port }}/api/
           ║                                                              ║
           ║  Credentials:                                                ║
           ║    Username:  {{ netbox_superuser }}

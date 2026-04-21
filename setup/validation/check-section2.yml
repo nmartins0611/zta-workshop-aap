@@ -5,7 +5,7 @@
 #   - 5 pipeline job templates exist in AAP
 #   - Workflow template "Deploy Application Pipeline" exists
 #   - OPA db_access policy: appdev allowed, neteng denied
-#   - Application healthy at http://app.zta.lab:8081
+#   - Application healthy at http://app.<idm_domain>:8081
 #   - Arista ACL on ceos2 is correctly scoped (not overly permissive)
 #
 # Usage:

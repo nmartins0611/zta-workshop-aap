@@ -15,7 +15,7 @@
 #   Classic controller only: -e 'aap_login_path=/api/login/'
 #
 # Prerequisites:
-#   - IdM (central.zta.lab) is installed and running
+#   - IdM (central.<idm_domain>) is installed and running
 #   - AAP Controller is installed and reachable
 #   - setup/enroll-idm-clients.yml has run (AAP trusts IdM CA on the *host*)
 #   - Containerized AAP: run setup/configure-aap-podman-gateway-prereqs.yml on [automation],
@@ -27,15 +27,15 @@
   gather_facts: false
 
   vars:
-    aap_host: "{{ aap_controller_url | default('https://control.zta.lab') }}"
+    aap_host: "{{ aap_controller_url | default('https://control.' ~ idm_domain) }}"
     # Platform gateway (Envoy) session login — see RHAAP 2.6 Automation execution API / controller-api-auth-methods
     aap_session_login_url: "{{ aap_host }}{{ aap_login_path | default('/api/gateway/v1/login/') }}"
     aap_user: admin
     aap_password: "{{ lookup('env', 'AAP_ADMIN_PASSWORD') | default('ansible123!', true) }}"
     aap_verify_ssl: false
 
-    idm_server: "{{ idm_hostname | default('central.zta.lab') }}"
-    idm_ldap_domain: "{{ idm_domain | default('zta.lab') }}"
+    idm_server: "{{ idm_hostname | default('central.' ~ idm_domain) }}"
+    idm_ldap_domain: "{{ idm_domain }}"
     idm_ldap_base_dn: "dc={{ idm_ldap_domain.split('.') | join(',dc=') }}"
     idm_ldap_password: "{{ idm_admin_password | default('ansible123!') }}"
     # Skip session-based LDAP verification (GET/POST session login + GET /me/)

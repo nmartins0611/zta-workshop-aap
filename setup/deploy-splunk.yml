@@ -2,10 +2,10 @@
 # Deploy Splunk Enterprise as a container on central
 #
 # Services exposed:
-#   - Web UI:                http://central.zta.lab:8000
-#   - HTTP Event Collector:  https://central.zta.lab:8088
-#   - Management API:        https://central.zta.lab:8089
-#   - Forwarder receiving:   central.zta.lab:9997
+#   - Web UI:                http://central.<idm_domain>:8000
+#   - HTTP Event Collector:  https://central.<idm_domain>:8088
+#   - Management API:        https://central.<idm_domain>:8089
+#   - Forwarder receiving:   central.<idm_domain>:9997
 #
 # Credentials:
 #   - Admin user:  admin
@@ -79,7 +79,7 @@
         name: "{{ splunk_container_name }}"
         image: "{{ splunk_image }}"
         state: started
-        hostname: splunk.zta.lab
+        hostname: "splunk.{{ idm_domain }}"
         privileged: true
         ports:
           - "8000:8000"

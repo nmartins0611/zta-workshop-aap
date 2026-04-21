@@ -5,7 +5,7 @@
 #   ansible-playbook ... -e @setup/validation/validation_vars.yml -e aap_password=secret
 
 # ── AAP Controller connection ────────────────────────────────────────
-aap_host: "{{ aap_controller_url | default('https://control.zta.lab') }}"
+aap_host: "{{ aap_controller_url | default('https://control.' ~ idm_domain) }}"
 aap_user: admin
 aap_password: "{{ lookup('env', 'AAP_ADMIN_PASSWORD') | default('ansible123!', true) }}"
 aap_verify_ssl: false
@@ -63,25 +63,25 @@ expected_section5_templates:
 
 # ── Expected inventory hosts ─────────────────────────────────────────
 expected_inventory_hosts:
-  - central.zta.lab
-  - control.zta.lab
-  - vault.zta.lab
-  - app.zta.lab
-  - db.zta.lab
+  - "central.{{ idm_domain }}"
+  - "control.{{ idm_domain }}"
+  - "vault.{{ idm_domain }}"
+  - "app.{{ idm_domain }}"
+  - "db.{{ idm_domain }}"
 
 # ── OPA test payloads ────────────────────────────────────────────────
 
 opa_test_patching_allow:
   user: ztauser
   user_groups: [patch-admins]
-  target_server: app.zta.lab
+  target_server: "app.{{ idm_domain }}"
   target_server_status: Active
   maintenance_approved: true
 
 opa_test_patching_deny:
   user: neteng
   user_groups: []
-  target_server: app.zta.lab
+  target_server: "app.{{ idm_domain }}"
   target_server_status: Active
   maintenance_approved: true
 
@@ -100,14 +100,14 @@ opa_test_db_deny:
 opa_test_network_allow:
   user: netadmin
   user_groups: [network-admins]
-  spiffe_id: "spiffe://zta.lab/workload/network-automation"
+  spiffe_id: "spiffe://{{ idm_domain }}/workload/network-automation"
   action: create_vlan
   vlan_id: 200
 
 opa_test_network_deny:
   user: neteng
   user_groups: []
-  spiffe_id: "spiffe://zta.lab/workload/network-automation"
+  spiffe_id: "spiffe://{{ idm_domain }}/workload/network-automation"
   action: create_vlan
   vlan_id: 200
 
@@ -154,4 +154,4 @@ opa_test_dc_internal_appdev:
   data_classification: internal
 
 # ── Gitea project source ─────────────────────────────────────────────
-gitea_project_url: "http://gitea.zta.lab:3000/zta-workshop/zta-app.git"
+gitea_project_url: "http://gitea.{{ idm_domain }}:3000/zta-workshop/zta-app.git"

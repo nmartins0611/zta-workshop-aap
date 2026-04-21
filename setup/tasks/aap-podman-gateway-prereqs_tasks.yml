@@ -54,7 +54,7 @@
   ansible.builtin.set_fact:
     aap_podman_need_owner_become: "{{ (ansible_user | default('', true)) != (aap_podman_run_user | default('rhel')) }}"
 
-# central.zta.lab also covers splunk.zta.lab, app.zta.lab, db.zta.lab — all run as
+# central.<idm_domain> also covers splunk.<idm_domain>, app.<idm_domain>, db.<idm_domain> — all run as
 # containers on central and are reached via published ports on its management IP.
 - name: Add lab hostnames to /etc/hosts (inherited by all Podman containers)
   when: not (aap_podman_skip_dns | default(false) | bool)
@@ -64,14 +64,14 @@
     line: "{{ item.line }}"
     state: present
   loop:
-    - regexp: '.*\bcentral\.zta\.lab\b.*'
-      line: "{{ aap_podman_central_ip }}  central.zta.lab splunk.zta.lab app.zta.lab db.zta.lab"
-    - regexp: '.*\bvault\.zta\.lab\b.*'
-      line: "{{ aap_podman_vault_ip }}  vault.zta.lab"
-    - regexp: '.*\bnetbox\.zta\.lab\b.*'
-      line: "{{ aap_podman_netbox_ip }}  netbox.zta.lab"
-    - regexp: '.*\bwazuh\.zta\.lab\b.*'
-      line: "{{ aap_podman_wazuh_ip }}  wazuh.zta.lab"
+    - regexp: "{{ '.*\\bcentral\\.' ~ (idm_domain | regex_escape) ~ '\\b.*' }}"
+      line: "{{ aap_podman_central_ip }}  central.{{ idm_domain }} splunk.{{ idm_domain }} app.{{ idm_domain }} db.{{ idm_domain }}"
+    - regexp: "{{ '.*\\bvault\\.' ~ (idm_domain | regex_escape) ~ '\\b.*' }}"
+      line: "{{ aap_podman_vault_ip }}  vault.{{ idm_domain }}"
+    - regexp: "{{ '.*\\bnetbox\\.' ~ (idm_domain | regex_escape) ~ '\\b.*' }}"
+      line: "{{ aap_podman_netbox_ip }}  netbox.{{ idm_domain }}"
+    - regexp: "{{ '.*\\bwazuh\\.' ~ (idm_domain | regex_escape) ~ '\\b.*' }}"
+      line: "{{ aap_podman_wazuh_ip }}  wazuh.{{ idm_domain }}"
   become: true
 
 - name: Stat IdM CA on control host (IdM-enrolled clients)
@@ -264,6 +264,6 @@
       - "/etc/hosts entries: {{ 'added (central/vault/netbox/wazuh)' if not (aap_podman_skip_dns | default(false) | bool) else 'skipped' }}"
       - "IdM CA staged: {{ aap_podman_ca_staged_path if not (aap_podman_skip_ca | default(false) | bool) else 'skipped' }}"
       - "Gateway container: {{ aap_podman_gateway_container }}"
-      - "Verify: podman exec -it {{ aap_podman_gateway_container }} getent hosts central.zta.lab"
-      - "Verify TLS: podman exec {{ aap_podman_gateway_container }} openssl s_client -connect central.zta.lab:636 -brief </dev/null"
+      - "Verify: podman exec -it {{ aap_podman_gateway_container }} getent hosts central.{{ idm_domain }}"
+      - "Verify TLS: podman exec {{ aap_podman_gateway_container }} openssl s_client -connect central.{{ idm_domain }}:636 -brief </dev/null"
       - "AAP TLS CA: {{ 'installed to host trust store' if not (aap_podman_skip_aap_ca | default(false) | bool) else 'skipped' }}"

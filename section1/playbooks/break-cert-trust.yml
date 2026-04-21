@@ -10,11 +10,13 @@
   hosts: zta_services
   become: true
   gather_facts: false
+  vars_files:
+    - ../../inventory/group_vars/all.yml
 
   vars:
     test_cert_dir: /etc/pki/tls/certs
     test_key_dir: /etc/pki/tls/private
-    test_cert_cn: "central.zta.lab"
+    test_cert_cn: "central.{{ idm_domain }}"
     test_port: 9443
 
   tasks:
@@ -108,12 +110,12 @@
           SELF-SIGNED HTTPS ENDPOINT DEPLOYED
           =====================================
 
-          URL:  https://central.zta.lab:{{ test_port }}/
+          URL:  https://central.{{ idm_domain }}:{{ test_port }}/
           Cert: Self-signed (NOT from IdM CA)
           CN:   {{ test_cert_cn }}
           Org:  Self-Signed / NOT-IDM-CA
 
-          curl https://central.zta.lab:{{ test_port }}/ will FAIL
+          curl https://central.{{ idm_domain }}:{{ test_port }}/ will FAIL
           with "certificate verify failed"
 
           Instructor fix:

@@ -17,7 +17,7 @@
           input:
             user: ztauser
             user_groups: ["zta-admins", "patch-admins"]
-            target_server: app.zta.lab
+            target_server: "app.{{ idm_domain }}"
             target_server_status: "Active"
             maintenance_approved: true
       register: patch_allow
@@ -35,7 +35,7 @@
           input:
             user: neteng
             user_groups: []
-            target_server: app.zta.lab
+            target_server: "app.{{ idm_domain }}"
             target_server_status: "Active"
             maintenance_approved: true
       register: patch_deny

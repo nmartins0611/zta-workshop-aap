@@ -57,13 +57,13 @@
       failed_when: dns_checks.stdout | length == 0
       loop:
         - "{{ idm_hostname }}"
-        - vault.zta.lab
-        - netbox.zta.lab
+        - "vault.{{ idm_domain }}"
+        - "netbox.{{ idm_domain }}"
         - "{{ app_host }}"
         - "{{ db_host }}"
-        - ceos1.zta.lab
-        - ceos2.zta.lab
-        - ceos3.zta.lab
+        - "ceos1.{{ idm_domain }}"
+        - "ceos2.{{ idm_domain }}"
+        - "ceos3.{{ idm_domain }}"
 
     - name: Service verification summary
       debug:

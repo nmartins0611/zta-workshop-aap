@@ -13,19 +13,19 @@
 # steps that have already been completed.
 #
 # Prerequisites:
-#   - central.zta.lab has a RHEL 9.x base install
+#   - central.<idm_domain> has a RHEL 9.x base install
 #   - central has at least 16 GB RAM and 50 GB disk
-#   - /etc/hostname is set to central.zta.lab
+#   - /etc/hostname is set to central.<idm_domain>
 #   - The management interface has a static IP (192.168.1.11/24)
 #
 # Services exposed after completion:
-#   - IdM web UI:     https://central.zta.lab/ipa
-#   - IdM Kerberos:   central.zta.lab:88
-#   - IdM LDAP/S:     central.zta.lab:389/636
-#   - OPA API:        http://central.zta.lab:8181
-#   - Keycloak:       https://central.zta.lab:8543
-#   - cEOS SSH:       central.zta.lab:2001-2003
-#   - cEOS eAPI:      central.zta.lab:6031-6033
+#   - IdM web UI:     https://central.<idm_domain>/ipa
+#   - IdM Kerberos:   central.<idm_domain>:88
+#   - IdM LDAP/S:     central.<idm_domain>:389/636
+#   - OPA API:        http://central.<idm_domain>:8181
+#   - Keycloak:       https://central.<idm_domain>:8543
+#   - cEOS SSH:       central.<idm_domain>:2001-2003
+#   - cEOS eAPI:      central.<idm_domain>:6031-6033
 #
 # Tags (one per phase, combinable):
 #   base        — Phase 1: SELinux, sysrq, packages, collections
@@ -163,7 +163,7 @@
       tags: [networking]
       ansible.builtin.lineinfile:
         path: /etc/hosts
-        regexp: '.*central\.zta\.lab.*'
+        regexp: '.*central\.{{ idm_domain | regex_escape }}.*'
         line: "{{ central_ip }}  {{ central_fqdn }} central"
         state: present
 

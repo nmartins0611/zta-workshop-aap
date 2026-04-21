@@ -22,11 +22,13 @@
   hosts: localhost
   connection: local
   gather_facts: false
+  vars_files:
+    - ../../inventory/group_vars/all.yml
 
   vars:
     target_host: "{{ target_host | default('app') }}"
-    target_fqdn: "{{ target_host }}.{{ idm_domain | default('zta.lab') }}"
-    wazuh_api: "{{ wazuh_api_url | default('https://wazuh.zta.lab:55000') }}"
+    target_fqdn: "{{ target_host }}.{{ idm_domain }}"
+    wazuh_api: "{{ wazuh_api_url | default('https://wazuh.' ~ idm_domain ~ ':55000') }}"
     wazuh_user: "{{ wazuh_api_user | default('wazuh') }}"
     wazuh_pass: "{{ wazuh_api_password | default('wazuh') }}"
     max_critical_vulns: 0

@@ -23,11 +23,11 @@
 #
 # Prerequisites:
 #   - NetBox is already deployed and running (deploy-netbox.yml)
-#   - DNS or /etc/hosts updated so wazuh.zta.lab resolves to the NetBox VM IP
+#   - DNS or /etc/hosts updated so wazuh.<idm_domain> resolves to the NetBox VM IP
 #   - group_vars/all.yml wazuh_* vars point to the NetBox VM IP
 #
 # Post-deploy:
-#   - Update wazuh.zta.lab DNS/hosts to point to 192.168.1.15
+#   - Update wazuh.<idm_domain> DNS/hosts to point to 192.168.1.15
 #   - Re-run deploy-wazuh-agents.yml so agents connect to the new address
 #
 # Usage:
@@ -545,7 +545,7 @@
           ║    + NetBox stack   → podman-compose (netbox-docker)         ║
           ║                                                              ║
           ║  Next steps:                                                 ║
-          ║    1. Update wazuh.zta.lab DNS to {{ ansible_host }}
+          ║    1. Update wazuh.{{ idm_domain }} DNS to {{ ansible_host }}
           ║    2. Update group_vars/all.yml wazuh_* vars                 ║
           ║    3. Re-run deploy-wazuh-agents.yml                         ║
           ╚════════════════════════════════════════════════════════════════╝

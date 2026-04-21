@@ -1,7 +1,7 @@
 ---
 # Section 7 (Optional): Simulate a brute-force SSH attack against the app server.
 #
-# This generates rapid failed SSH login attempts against app.zta.lab,
+# This generates rapid failed SSH login attempts against app.<idm_domain>,
 # which the Wazuh agent detects via built-in rule 5712 (SSH brute force).
 # Wazuh then forwards the alert to Event-Driven Ansible, which triggers
 # an automatic credential revocation.
@@ -13,11 +13,13 @@
   hosts: automation
   become: false
   gather_facts: false
+  vars_files:
+    - ../../inventory/group_vars/all.yml
 
   vars:
     target_ip: "{{ hostvars['app']['ansible_host'] }}"
     target_port: "{{ hostvars['app']['ansible_port'] | default(22) }}"
-    target_hostname: app.zta.lab
+    target_hostname: "app.{{ idm_domain }}"
     attack_user: rhel
     attempt_count: 10
     attempt_delay: 1
@@ -65,7 +67,7 @@
           ===================================
 
           Expected chain of events:
-            1. Wazuh agent on app.zta.lab detects failed logins
+            1. Wazuh agent on app.<idm_domain> detects failed logins
             2. Wazuh manager fires rule 5712 (SSH brute force)
             3. Wazuh integration sends webhook to EDA
             4. EDA rulebook matches the event
@@ -74,7 +76,7 @@
             7. App loses database access
 
           Check:
-            Wazuh dashboard: http://wazuh.zta.lab:5601
+            Wazuh dashboard: http://wazuh.{{ idm_domain }}:5601
             EDA Controller for rulebook activation events
             AAP for the triggered revocation job
-            http://app.zta.lab:8081/health for app health
+            http://app.{{ idm_domain }}:8081/health for app health

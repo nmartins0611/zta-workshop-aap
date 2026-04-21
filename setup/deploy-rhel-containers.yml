@@ -36,7 +36,7 @@
     upstream_dns: "{{ upstream_dns_server | default('172.30.0.10') }}"
     containers:
       - name: db
-        hostname: db.zta.lab
+        hostname: "db.{{ idm_domain }}"
         ssh_port: 2022
         extra_ports:
           - "5432:5432"
@@ -51,7 +51,7 @@
         data_gateway: "10.30.0.1"
         peer_network: "10.20.0.0/24"
       - name: app
-        hostname: app.zta.lab
+        hostname: "app.{{ idm_domain }}"
         ssh_port: 2023
         extra_ports:
           - "8081:8081"
@@ -179,16 +179,16 @@
     - name: Configure DNS resolver (IdM + upstream fallback)
       shell: >-
         podman exec {{ item.name }} bash -c
-        'printf "search zta.lab\nnameserver {{ central_ip }}\nnameserver {{ upstream_dns }}\n" > /etc/resolv.conf'
+        'printf "search {{ idm_domain }}\nnameserver {{ central_ip }}\nnameserver {{ upstream_dns }}\n" > /etc/resolv.conf'
       loop: "{{ containers }}"
       loop_control:
         label: "{{ item.name }}"
       changed_when: true
 
-    - name: Verify internal DNS (zta.lab via IdM)
+    - name: Verify internal DNS (<idm_domain> via IdM)
       command: >
         podman exec {{ item.name }}
-        dig +short central.zta.lab @{{ central_ip }}
+        dig +short central.{{ idm_domain }} @{{ central_ip }}
       loop: "{{ containers }}"
       loop_control:
         label: "{{ item.name }}"
@@ -427,9 +427,9 @@
         fi
         ipa-client-install \
           --hostname={{ item.hostname }} \
-          --server=central.zta.lab \
-          --domain=zta.lab \
-          --realm=ZTA.LAB \
+          --server=central.{{ idm_domain }} \
+          --domain={{ idm_domain }} \
+          --realm={{ idm_realm }} \
           --principal=admin \
           --password={{ idm_admin_password }} \
           --mkhomedir \
@@ -452,15 +452,15 @@
           ╠════════════════════════════════════════════════════════════════╣
           ║                                                              ║
           ║  DB Container:                                               ║
-          ║    SSH:        ssh {{ container_user }}@central.zta.lab -p 2022
-          ║    PostgreSQL: central.zta.lab:5432                          ║
-          ║    Hostname:   db.zta.lab                                    ║
+          ║    SSH:        ssh {{ container_user }}@central.{{ idm_domain }} -p 2022
+          ║    PostgreSQL: central.{{ idm_domain }}:5432                          ║
+          ║    Hostname:   db.{{ idm_domain }}                                    ║
           ║    Data IP:    10.30.0.10 (net2 / data-tier via ceos2)       ║
           ║                                                              ║
           ║  App Container:                                              ║
-          ║    SSH:        ssh {{ container_user }}@central.zta.lab -p 2023
-          ║    HTTP:       http://central.zta.lab:8081                   ║
-          ║    Hostname:   app.zta.lab                                   ║
+          ║    SSH:        ssh {{ container_user }}@central.{{ idm_domain }} -p 2023
+          ║    HTTP:       http://central.{{ idm_domain }}:8081                   ║
+          ║    Hostname:   app.{{ idm_domain }}                                   ║
           ║    Data IP:    10.20.0.10 (net3 / app-tier via ceos3)        ║
           ║                                                              ║
           ║  Credentials:  {{ container_user }} / {{ container_password }}

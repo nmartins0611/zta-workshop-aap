@@ -175,10 +175,10 @@
       changed_when: false
       failed_when: false
       loop:
-        - central.zta.lab
-        - vault.zta.lab
-        - app.zta.lab
-        - db.zta.lab
+        - "central.{{ idm_domain }}"
+        - "vault.{{ idm_domain }}"
+        - "app.{{ idm_domain }}"
+        - "db.{{ idm_domain }}"
 
     - name: Test OPA patching allow
       uri:
@@ -193,7 +193,7 @@
         opa_test_patching_allow:
           user: ztauser
           user_groups: [patch-admins]
-          target_server: app.zta.lab
+          target_server: "app.{{ idm_domain }}"
           target_server_status: Active
           maintenance_approved: true
 
@@ -210,7 +210,7 @@
         opa_test_patching_deny:
           user: neteng
           user_groups: []
-          target_server: app.zta.lab
+          target_server: "app.{{ idm_domain }}"
           target_server_status: Active
           maintenance_approved: true
 

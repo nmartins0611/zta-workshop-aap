@@ -1,7 +1,7 @@
 ---
 # Section 5: Simulate a brute-force SSH attack against the app server.
 #
-# This generates rapid failed SSH login attempts against app.zta.lab,
+# This generates rapid failed SSH login attempts against app.<idm_domain>,
 # which Splunk detects via a saved search alert (5+ failures in 60s).
 # Splunk then fires a webhook to Event-Driven Ansible, which triggers
 # an automatic credential revocation.
@@ -13,11 +13,13 @@
   hosts: automation
   become: false
   gather_facts: false
+  vars_files:
+    - ../../inventory/group_vars/all.yml
 
   vars:
     target_ip: "{{ hostvars['app']['ansible_host'] }}"
     target_port: "{{ hostvars['app']['ansible_port'] | default(22) }}"
-    target_hostname: app.zta.lab
+    target_hostname: "app.{{ idm_domain }}"
     attack_user: rhel
     attempt_count: 20
     attempt_delay: 1
@@ -62,4 +64,4 @@
         msg:
           - "Attack simulation complete — {{ attempt_count }} failed SSH attempts to {{ target_hostname }}"
           - "Expected: Splunk UF → indexer → saved search (5+ fails/60s) → webhook → EDA → AAP Revoke App Credentials → Vault lease revoked → app loses DB access"
-          - "Verify: Splunk triggered alerts, EDA events, AAP job, http://app.zta.lab:8081/health"
+          - "Verify: Splunk triggered alerts, EDA events, AAP job, http://app.{{ idm_domain }}:8081/health"

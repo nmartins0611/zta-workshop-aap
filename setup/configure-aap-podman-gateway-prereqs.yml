@@ -8,10 +8,10 @@
 #   - LDAPS fails: certificate verify failed → IdM CA in container trust (update-ca-trust)
 #
 # Hostnames added to /etc/hosts:
-#   central.zta.lab splunk.zta.lab app.zta.lab db.zta.lab → [zta_services] IP (192.168.1.11)
-#   vault.zta.lab                                          → [vault_servers] IP (192.168.1.12)
-#   netbox.zta.lab                                         → [netbox_servers] IP (192.168.1.15)
-#   wazuh.zta.lab                                          → [wazuh_servers] IP (192.168.1.13)
+#   central.<idm_domain> splunk.<idm_domain> app.<idm_domain> db.<idm_domain> → [zta_services] IP (192.168.1.11)
+#   vault.<idm_domain>                                          → [vault_servers] IP (192.168.1.12)
+#   netbox.<idm_domain>                                         → [netbox_servers] IP (192.168.1.15)
+#   wazuh.<idm_domain>                                          → [wazuh_servers] IP (192.168.1.13)
 #
 # Usage:
 #   ansible-playbook -i inventory/hosts.ini setup/configure-aap-podman-gateway-prereqs.yml

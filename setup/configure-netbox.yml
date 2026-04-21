@@ -9,7 +9,7 @@
 #   - ZTA-role tags for architecture documentation
 #
 # Prerequisites:
-#   - Netbox is running on netbox.zta.lab:8880
+#   - Netbox is running on netbox.<idm_domain>:8880
 #   - NETBOX_TOKEN environment variable is set (or default used)
 #
 # Usage:
@@ -126,7 +126,7 @@
 
     # ── Devices ──
     nb_devices:
-      - name: central.zta.lab
+      - name: central.{{ idm_domain }}
         role: Identity Provider
         device_type: RHEL 9 Virtual Machine
         platform: RHEL 9
@@ -137,7 +137,7 @@
             type: virtual
             ip: 192.168.1.11/24
 
-      - name: control.zta.lab
+      - name: control.{{ idm_domain }}
         role: Automation Controller
         device_type: RHEL 9 Virtual Machine
         platform: RHEL 9
@@ -148,7 +148,7 @@
             type: virtual
             ip: 192.168.1.10/24
 
-      - name: vault.zta.lab
+      - name: vault.{{ idm_domain }}
         role: Secrets Manager
         device_type: RHEL 9 Virtual Machine
         platform: RHEL 9
@@ -159,7 +159,7 @@
             type: virtual
             ip: 192.168.1.12/24
 
-      - name: wazuh.zta.lab
+      - name: wazuh.{{ idm_domain }}
         role: Security Appliance
         device_type: RHEL 9 Virtual Machine
         platform: RHEL 9
@@ -170,7 +170,7 @@
             type: virtual
             ip: 192.168.1.13/24
 
-      - name: db.zta.lab
+      - name: db.{{ idm_domain }}
         role: Application Server
         device_type: RHEL 9 Virtual Machine
         platform: RHEL 9
@@ -181,7 +181,7 @@
             type: virtual
             ip: 10.30.0.10/24
 
-      - name: app.zta.lab
+      - name: app.{{ idm_domain }}
         role: Application Server
         device_type: RHEL 9 Virtual Machine
         platform: RHEL 9
@@ -192,7 +192,7 @@
             type: virtual
             ip: 10.20.0.10/24
 
-      - name: netbox.zta.lab
+      - name: netbox.{{ idm_domain }}
         role: CMDB Server
         device_type: RHEL 9 Virtual Machine
         platform: RHEL 9
@@ -203,7 +203,7 @@
             type: virtual
             ip: 192.168.1.15/24
 
-      - name: ceos1.zta.lab
+      - name: ceos1.{{ idm_domain }}
         role: Network Switch
         device_type: Arista cEOS-lab
         platform: Arista EOS
@@ -220,7 +220,7 @@
             type: "1000base-t"
             ip: 10.20.0.254/24
 
-      - name: ceos2.zta.lab
+      - name: ceos2.{{ idm_domain }}
         role: Network Switch
         device_type: Arista cEOS-lab
         platform: Arista EOS
@@ -237,7 +237,7 @@
             type: "1000base-t"
             ip: 10.30.0.1/24
 
-      - name: ceos3.zta.lab
+      - name: ceos3.{{ idm_domain }}
         role: Network Switch
         device_type: Arista cEOS-lab
         platform: Arista EOS
@@ -288,76 +288,76 @@
     # ── Ansible connection overrides (containers SSH through central) ──
     # app and db primary IPs are data-plane addresses; SSH is forwarded from central.
     nb_ansible_overrides:
-      - device: app.zta.lab
+      - device: app.{{ idm_domain }}
         host: "192.168.1.11"
         port: 2023
-      - device: db.zta.lab
+      - device: db.{{ idm_domain }}
         host: "192.168.1.11"
         port: 2022
 
     # ── Services (running on devices) ──
     nb_services:
-      - device: central.zta.lab
+      - device: central.{{ idm_domain }}
         name: IdM (FreeIPA)
         ports: [389, 636, 88, 464, 80, 443]
         protocol: tcp
         description: "LDAP, LDAPS, Kerberos, HTTP/S"
-      - device: central.zta.lab
+      - device: central.{{ idm_domain }}
         name: OPA
         ports: [8181]
         protocol: tcp
         description: "Open Policy Agent — REST API"
-      - device: central.zta.lab
+      - device: central.{{ idm_domain }}
         name: SPIRE Server
         ports: [8081]
         protocol: tcp
         description: "SPIFFE Runtime Environment — workload identity"
-      - device: control.zta.lab
+      - device: control.{{ idm_domain }}
         name: AAP Controller
         ports: [443]
         protocol: tcp
         description: "Ansible Automation Platform — web UI + API"
-      - device: control.zta.lab
+      - device: control.{{ idm_domain }}
         name: EDA Controller
         ports: [5000]
         protocol: tcp
         description: "Event-Driven Ansible — webhook endpoint"
-      - device: vault.zta.lab
+      - device: vault.{{ idm_domain }}
         name: Vault
         ports: [8200]
         protocol: tcp
         description: "HashiCorp Vault — secrets management API"
-      - device: wazuh.zta.lab
+      - device: wazuh.{{ idm_domain }}
         name: Wazuh Manager
         ports: [1514, 1515, 55000]
         protocol: tcp
         description: "Wazuh SIEM — agent comms + API"
-      - device: wazuh.zta.lab
+      - device: wazuh.{{ idm_domain }}
         name: Wazuh Dashboard
         ports: [443]
         protocol: tcp
         description: "Wazuh web dashboard"
-      - device: app.zta.lab
+      - device: app.{{ idm_domain }}
         name: Global Telemetry Platform
         ports: [8081]
         protocol: tcp
         description: "Flask application — workshop demo app (container on central)"
-      - device: db.zta.lab
+      - device: db.{{ idm_domain }}
         name: PostgreSQL
         ports: [5432]
         protocol: tcp
         description: "Database — dynamic credentials via Vault (container on central)"
-      - device: central.zta.lab
+      - device: central.{{ idm_domain }}
         name: Splunk
         ports: [8000, 8088]
         protocol: tcp
         description: "Splunk Enterprise — log aggregation (container)"
-      - device: central.zta.lab
+      - device: central.{{ idm_domain }}
         name: Wazuh
         ports: [5601, 9200, 55000]
         protocol: tcp
         description: "Wazuh SIEM — indexer, manager, dashboard (containers)"
-      - device: netbox.zta.lab
+      - device: netbox.{{ idm_domain }}
         name: Netbox
         ports: [8880]
         protocol: tcp
@@ -746,11 +746,11 @@
           ║  Tags:     {{ nb_tags | map(attribute='name') | join(', ') }}║
           ║                                                                  ║
           ║  ZTA Architecture Mapping:                                       ║
-          ║    PEP:      control.zta.lab (AAP)                               ║
-          ║    PDP:      central.zta.lab (OPA)                               ║
-          ║    IdP:      central.zta.lab (IdM/FreeIPA)                       ║
-          ║    Secrets:  vault.zta.lab   (Vault)                             ║
-          ║    SIEM:     wazuh.zta.lab   (Wazuh)                             ║
-          ║    CMDB:     netbox.zta.lab  (Netbox)                            ║
+          ║    PEP:      control.{{ idm_domain }} (AAP)                               ║
+          ║    PDP:      central.{{ idm_domain }} (OPA)                               ║
+          ║    IdP:      central.{{ idm_domain }} (IdM/FreeIPA)                       ║
+          ║    Secrets:  vault.{{ idm_domain }}   (Vault)                             ║
+          ║    SIEM:     wazuh.{{ idm_domain }}   (Wazuh)                             ║
+          ║    CMDB:     netbox.{{ idm_domain }}  (Netbox)                            ║
           ╚════════════════════════════════════════════════════════════════════╝
       tags: [phase6, summary]

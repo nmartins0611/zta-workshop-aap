@@ -58,13 +58,13 @@
       failed_when: false
 
     - name: Test HBAC for aap-service
-      command: ipa hbactest --user=aap-service --host=app.zta.lab --service=sshd
+      command: "ipa hbactest --user=aap-service --host=app.{{ idm_domain }} --service=sshd"
       register: s6_hbac_test_aap
       changed_when: false
       failed_when: false
 
     - name: Test HBAC for neteng (should be denied)
-      command: ipa hbactest --user=neteng --host=app.zta.lab --service=sshd
+      command: "ipa hbactest --user=neteng --host=app.{{ idm_domain }} --service=sshd"
       register: s6_hbac_test_neteng
       changed_when: false
       failed_when: false

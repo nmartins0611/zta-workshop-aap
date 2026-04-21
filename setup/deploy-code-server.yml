@@ -5,7 +5,7 @@
 # Rego policies, and configuration files without needing a local editor.
 #
 # Services exposed:
-#   - Web UI:  http://central.zta.lab:8443
+#   - Web UI:  http://central.<idm_domain>:8443
 #
 # Usage:
 #   ansible-playbook -i inventory/hosts.ini setup/deploy-code-server.yml

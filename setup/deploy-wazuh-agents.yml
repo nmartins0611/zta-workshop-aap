@@ -9,8 +9,8 @@
 #   ansible-playbook setup/deploy-wazuh-agents.yml --limit app_servers,db_servers
 #
 # Prerequisites:
-#   - Wazuh manager is installed and running on wazuh.zta.lab
-#   - DNS resolves wazuh.zta.lab (run setup/configure-dns.yml first)
+#   - Wazuh manager is installed and running on wazuh.<idm_domain>
+#   - DNS resolves wazuh.<idm_domain> (run setup/configure-dns.yml first)
 
 - name: Deploy Wazuh agents
   hosts: app_servers,db_servers,vault_servers,netbox_servers,automation
@@ -18,7 +18,7 @@
   gather_facts: true
 
   vars:
-    wazuh_manager: "{{ wazuh_manager_host | default('wazuh.zta.lab') }}"
+    wazuh_manager: "{{ wazuh_manager_host | default('wazuh.' ~ idm_domain) }}"
     wazuh_agent_version: "4.14.3"
     wazuh_agent_rpm: "wazuh-agent-{{ wazuh_agent_version }}-1.x86_64.rpm"
     wazuh_agent_url: "https://packages.wazuh.com/4.x/yum/{{ wazuh_agent_rpm }}"
@@ -169,18 +169,18 @@
           ║       Wazuh Agent Deployment Complete                   ║
           ╠══════════════════════════════════════════════════════════╣
           ║                                                        ║
-          ║  Manager: wazuh.zta.lab:1514                           ║
-          ║  API:     https://wazuh.zta.lab:55000                  ║
+          ║  Manager: wazuh.{{ idm_domain }}:1514                           ║
+          ║  API:     https://wazuh.{{ idm_domain }}:55000                  ║
           ║                                                        ║
           ║  Agents deployed to:                                   ║
-          ║    - app.zta.lab     (application server)              ║
-          ║    - db.zta.lab      (database server)                 ║
-          ║    - vault.zta.lab   (secrets management)              ║
-          ║    - netbox.zta.lab  (CMDB)                            ║
-          ║    - control.zta.lab (automation controller)           ║
+          ║    - app.{{ idm_domain }}     (application server)              ║
+          ║    - db.{{ idm_domain }}      (database server)                 ║
+          ║    - vault.{{ idm_domain }}   (secrets management)              ║
+          ║    - netbox.{{ idm_domain }}  (CMDB)                            ║
+          ║    - control.{{ idm_domain }} (automation controller)           ║
           ║                                                        ║
           ║  Verify in Wazuh Dashboard:                            ║
-          ║    https://wazuh.zta.lab → Agents                      ║
+          ║    https://wazuh.{{ idm_domain }} → Agents                      ║
           ║                                                        ║
           ║  These agents feed into Section 3:                     ║
           ║    AAP queries Wazuh API before allowing patching      ║

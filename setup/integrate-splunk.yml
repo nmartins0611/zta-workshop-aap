@@ -386,7 +386,7 @@
                   "event": event,
                   "sourcetype": "hashicorp:vault:audit",
                   "source": "vault-audit",
-                  "host": "vault.zta.lab",
+                  "host": "vault.{{ idm_domain }}",
                   "index": INDEX,
               }).encode()
               req = urllib.request.Request(
@@ -607,7 +607,7 @@
                   "event": event,
                   "sourcetype": "opa:decision",
                   "source": "opa",
-                  "host": "central.zta.lab",
+                  "host": "central.{{ idm_domain }}",
                   "index": INDEX,
               }).encode()
               req = urllib.request.Request(

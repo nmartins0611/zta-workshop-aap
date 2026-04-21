@@ -8,9 +8,9 @@
 #   4. Creates the "Emergency: Revoke App Credentials" job template in AAP (manual step documented)
 #
 # Prerequisites:
-#   - Wazuh manager is running on wazuh.zta.lab
-#   - Wazuh agent is installed on app.zta.lab
-#   - Event-Driven Ansible controller (AAP 2.6) is running on control.zta.lab (or AAP node)
+#   - Wazuh manager is running on wazuh.<idm_domain>
+#   - Wazuh agent is installed on app.<idm_domain>
+#   - Event-Driven Ansible controller (AAP 2.6) is running on control.<idm_domain> (or AAP node)
 
 - name: Configure Wazuh → EDA Integration
   hosts: wazuh_servers
@@ -18,7 +18,7 @@
   gather_facts: false
 
   vars:
-    eda_webhook_url: "http://control.zta.lab:5000/endpoint"
+    eda_webhook_url: "http://control.{{ idm_domain }}:5000/endpoint"
     wazuh_config_dir: /var/ossec/etc
     wazuh_integrations_dir: /var/ossec/integrations
 

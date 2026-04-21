@@ -24,7 +24,7 @@
   gather_facts: false
 
   vars:
-    aap_host: "{{ aap_controller_url | default('https://control.zta.lab') }}"
+    aap_host: "{{ aap_controller_url | default('https://control.' ~ idm_domain) }}"
     aap_user: admin
     aap_password: "{{ lookup('env', 'AAP_ADMIN_PASSWORD') | default('ansible123!', true) }}"
     aap_verify_ssl: false
@@ -35,7 +35,7 @@
     netbox_ee_name: Netbox
     netbox_inv_source_name: NetBox Dynamic Inventory
 
-    nb_api_url: "{{ netbox_url | default('http://netbox.zta.lab:8000') }}"
+    nb_api_url: "{{ netbox_url | default('http://netbox.' ~ idm_domain ~ ':8000') }}"
     nb_api_token: "{{ netbox_token | default('0123456789abcdef0123456789abcdef01234567') }}"
 
   module_defaults:
@@ -101,7 +101,7 @@
             - id: netbox_url
               type: string
               label: "NetBox URL"
-              help_text: "Full URL (e.g. http://netbox.zta.lab:8000)"
+              help_text: "Full URL (e.g. http://netbox.{{ idm_domain }}:8000)"
             - id: netbox_token
               type: string
               label: "API Token"

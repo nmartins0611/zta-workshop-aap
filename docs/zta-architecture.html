@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ZTA Workshop — Lab Architecture</title>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+<style>
+  :root { --bg: #1e1e2e; --fg: #cdd6f4; --muted: #6c7086; --accent: #89b4fa; --surface: #313244; --border: #45475a; }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: var(--bg); color: var(--fg); padding: 40px; }
+  h1 { font-size: 28px; font-weight: 700; margin-bottom: 4px; }
+  h2 { font-size: 18px; font-weight: 600; margin: 32px 0 12px; color: var(--accent); }
+  .subtitle { color: var(--muted); font-size: 14px; margin-bottom: 24px; }
+  .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 24px; }
+  .stat { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 16px; text-align: center; }
+  .stat-value { font-size: 28px; font-weight: 700; color: var(--accent); }
+  .stat-label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; margin-top: 4px; }
+  .mermaid { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 24px; margin: 16px 0; text-align: center; }
+  table { width: 100%; border-collapse: collapse; margin: 8px 0 16px; }
+  th { background: var(--surface); color: var(--accent); font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; padding: 10px 12px; text-align: left; border-bottom: 2px solid var(--border); }
+  td { padding: 8px 12px; font-size: 13px; border-bottom: 1px solid var(--border); }
+  tr:nth-child(even) td { background: rgba(49, 50, 68, 0.4); }
+  .flow { display: flex; align-items: center; gap: 0; overflow-x: auto; padding: 16px 0; flex-wrap: nowrap; }
+  .flow-step { background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 10px 14px; min-width: 110px; text-align: center; flex-shrink: 0; }
+  .flow-step-label { font-size: 11px; font-weight: 600; }
+  .flow-step-detail { font-size: 9px; color: var(--muted); margin-top: 3px; }
+  .flow-arrow { color: var(--muted); font-size: 18px; padding: 0 4px; flex-shrink: 0; }
+  .divider { border: none; border-top: 1px solid var(--border); margin: 24px 0; }
+  .footer { text-align: center; color: var(--muted); font-size: 11px; margin-top: 32px; }
+  @media print { body { background: #fff; color: #1a1a2e; padding: 20px; } .stat { border-color: #ccc; } th { background: #f0f0f0; color: #1a1a2e; } td { border-color: #ddd; } .mermaid { background: #fafafa; border-color: #ccc; } h2 { color: #2563eb; } .stat-value { color: #2563eb; } }
+</style>
+</head>
+<body>
+
+<h1>ZTA Workshop — Lab Architecture</h1>
+<div class="subtitle">Zero Trust Architecture on Ansible Automation Platform 2.6</div>
+
+<div class="stats">
+  <div class="stat"><div class="stat-value">5</div><div class="stat-label">Hosts</div></div>
+  <div class="stat"><div class="stat-value">7</div><div class="stat-label">Sections</div></div>
+  <div class="stat"><div class="stat-value">11</div><div class="stat-label">Services</div></div>
+  <div class="stat"><div class="stat-value">3</div><div class="stat-label">Networks</div></div>
+</div>
+
+<hr class="divider">
+
+<h2>Component Topology</h2>
+<div class="mermaid">
+graph TD
+    subgraph CONTROL["control (192.168.1.10)"]
+        AAP["AAP 2.6 Controller"]
+        EDA["EDA Controller"]
+        SPIRE_A1["SPIRE Agent"]
+    end
+
+    subgraph CENTRAL["central (192.168.1.11)"]
+        IDM["IdM / FreeIPA"]
+        OPA["OPA Policy Engine"]
+        SPLUNK["Splunk Enterprise"]
+        SPIRE_S["SPIRE Server"]
+        subgraph CONTAINERS["Podman Containers"]
+            APP["App - Flask :8081\n10.20.0.10"]
+            DB["DB - PostgreSQL :5432\n10.30.0.10"]
+        end
+        subgraph SWITCHES["Arista cEOS"]
+            CEOS1["ceos1 - spine"]
+            CEOS2["ceos2"]
+            CEOS3["ceos3"]
+        end
+    end
+
+    subgraph VAULT_HOST["vault (192.168.1.12)"]
+        VAULT["HashiCorp Vault :8200"]
+        SPIRE_A2["SPIRE Agent"]
+    end
+
+    subgraph NETBOX_HOST["netbox (192.168.1.15)"]
+        NETBOX["NetBox CMDB :8880"]
+    end
+
+    SPLUNK -- "webhook (HTTPS)" --> EDA
+    EDA -- "launch job" --> AAP
+    AAP -- "policy check" --> OPA
+    AAP -- "credentials" --> VAULT
+    AAP -- "SSH/manage" --> APP
+    AAP -- "SSH/manage" --> DB
+    AAP -- "eAPI" --> CEOS1
+    AAP -- "inventory" --> NETBOX
+    IDM -- "LDAP auth" --> AAP
+    VAULT -- "dynamic creds" --> DB
+    SPIRE_S -- "SVIDs" --> SPIRE_A1
+    SPIRE_S -- "SVIDs" --> SPIRE_A2
+    APP -- "net3" --> CEOS3
+    DB -- "net2" --> CEOS2
+    CEOS3 --- CEOS1
+    CEOS1 --- CEOS2
+
+    classDef controllerStyle fill:#1e66f5,stroke:#1e66f5,color:#fff
+    classDef detectStyle fill:#fe640b,stroke:#fe640b,color:#fff
+    classDef secretsStyle fill:#8839ef,stroke:#8839ef,color:#fff
+    classDef policyStyle fill:#04a5e5,stroke:#04a5e5,color:#fff
+    classDef identityStyle fill:#40a02b,stroke:#40a02b,color:#fff
+    classDef workloadStyle fill:#df8e1d,stroke:#df8e1d,color:#fff
+    classDef networkStyle fill:#ea76cb,stroke:#ea76cb,color:#fff
+    classDef inventoryStyle fill:#209fb5,stroke:#209fb5,color:#fff
+
+    class AAP,EDA controllerStyle
+    class SPLUNK detectStyle
+    class VAULT secretsStyle
+    class OPA policyStyle
+    class IDM,SPIRE_S,SPIRE_A1,SPIRE_A2 identityStyle
+    class APP,DB workloadStyle
+    class CEOS1,CEOS2,CEOS3 networkStyle
+    class NETBOX inventoryStyle
+</div>
+
+<hr class="divider">
+
+<h2>Host Inventory</h2>
+<table>
+  <thead><tr><th>Host</th><th>IP</th><th>Role</th><th>Key Services</th></tr></thead>
+  <tbody>
+    <tr><td>control</td><td>192.168.1.10</td><td>Automation</td><td>AAP Controller, EDA, SPIRE Agent</td></tr>
+    <tr><td>central</td><td>192.168.1.11</td><td>Infrastructure</td><td>IdM, OPA, Splunk, SPIRE Server, cEOS, App/DB containers</td></tr>
+    <tr><td>vault</td><td>192.168.1.12</td><td>Secrets</td><td>Vault (KV, DB engine, SSH CA), SPIRE Agent</td></tr>
+    <tr><td>netbox</td><td>192.168.1.15</td><td>Inventory</td><td>NetBox CMDB (dynamic inventory, VLANs)</td></tr>
+    <tr><td>wazuh</td><td>192.168.1.13</td><td>Detection</td><td>Wazuh (optional, Section 7 only)</td></tr>
+  </tbody>
+</table>
+
+<h2>Network Topology</h2>
+<table>
+  <thead><tr><th>Network</th><th>CIDR</th><th>Purpose</th><th>Connected Hosts</th></tr></thead>
+  <tbody>
+    <tr><td>Management</td><td>192.168.1.0/24</td><td>SSH, API, inter-host communication</td><td>All hosts</td></tr>
+    <tr><td>App-tier</td><td>10.20.0.0/24</td><td>Application data plane</td><td>App (10.20.0.10) &harr; ceos3</td></tr>
+    <tr><td>Data-tier</td><td>10.30.0.0/24</td><td>Database data plane</td><td>DB (10.30.0.10) &harr; ceos2</td></tr>
+    <tr><td>Backbone</td><td>10.10.0.0/24</td><td>Inter-switch link (spine)</td><td>ceos1 &harr; ceos2</td></tr>
+  </tbody>
+</table>
+
+<hr class="divider">
+
+<h2>Incident Response Flow (Section 5)</h2>
+<div class="flow">
+  <div class="flow-step"><div class="flow-step-label">SSH Brute Force</div><div class="flow-step-detail">simulate-bruteforce.yml</div></div>
+  <div class="flow-arrow">&rarr;</div>
+  <div class="flow-step"><div class="flow-step-label">Splunk Alert</div><div class="flow-step-detail">Saved search + rex</div></div>
+  <div class="flow-arrow">&rarr;</div>
+  <div class="flow-step"><div class="flow-step-label">Ansible Add-on</div><div class="flow-step-detail">Webhook to AAP</div></div>
+  <div class="flow-arrow">&rarr;</div>
+  <div class="flow-step"><div class="flow-step-label">EDA Event Stream</div><div class="flow-step-detail">Token authentication</div></div>
+  <div class="flow-arrow">&rarr;</div>
+  <div class="flow-step"><div class="flow-step-label">Rulebook</div><div class="flow-step-detail">splunk-credential-revoke</div></div>
+  <div class="flow-arrow">&rarr;</div>
+  <div class="flow-step"><div class="flow-step-label">Job Template</div><div class="flow-step-detail">Emergency: Revoke Creds</div></div>
+  <div class="flow-arrow">&rarr;</div>
+  <div class="flow-step"><div class="flow-step-label">Response</div><div class="flow-step-detail">Vault revoke + App stop</div></div>
+</div>
+
+<hr class="divider">
+
+<h2>Workshop Sections</h2>
+<table>
+  <thead><tr><th>#</th><th>Topic</th><th>Key Components</th></tr></thead>
+  <tbody>
+    <tr><td>1</td><td>Verify ZTA + AAP</td><td>Vault, LDAP, NetBox inventory, TLS</td></tr>
+    <tr><td>2</td><td>App Deploy with Dynamic Credentials</td><td>Vault DB engine, OPA db_access, Arista ACL</td></tr>
+    <tr><td>3</td><td>AAP Policy as Code</td><td>OPA gateway policy, patching, data classification</td></tr>
+    <tr><td>4</td><td>SPIFFE + VLAN Automation</td><td>SPIRE, OPA network policy, NetBox, IdM</td></tr>
+    <tr><td>5</td><td>Incident Response</td><td>Splunk &rarr; EDA &rarr; Vault revoke &rarr; App stop</td></tr>
+    <tr><td>6</td><td>SSH Lockdown</td><td>Four-layer SSH hardening + break-glass</td></tr>
+    <tr><td>7</td><td>(Optional) Wazuh Path</td><td>Wazuh detection mirror of Section 5</td></tr>
+  </tbody>
+</table>
+
+<h2>Credential Chain</h2>
+<table>
+  <thead><tr><th>Credential</th><th>Type</th><th>Purpose</th></tr></thead>
+  <tbody>
+    <tr><td>ZTA Vault Credential</td><td>Vault Secret Lookup</td><td>Input source for Machine + Arista credentials</td></tr>
+    <tr><td>ZTA Machine Credential</td><td>Machine</td><td>SSH to RHEL hosts (sourced from Vault)</td></tr>
+    <tr><td>ZTA Arista Credential</td><td>Network</td><td>cEOS switch management (sourced from Vault)</td></tr>
+    <tr><td>ZTA NetBox Credential</td><td>Custom (NetBox)</td><td>Dynamic inventory sync</td></tr>
+    <tr><td>ZTA Vault SSH Credential</td><td>Vault Signed SSH</td><td>Short-lived SSH certificates</td></tr>
+    <tr><td>ZTA Splunk Credential</td><td>Custom (Splunk)</td><td>HEC token for log forwarding</td></tr>
+    <tr><td>ZTA EDA Event Stream</td><td>Token Event Stream</td><td>Splunk webhook authentication</td></tr>
+  </tbody>
+</table>
+
+<div class="footer">ZTA Workshop on AAP 2.6 — Management: 192.168.1.0/24</div>
+
+<script>
+  mermaid.initialize({ theme: 'dark', themeVariables: { primaryColor: '#313244', primaryTextColor: '#cdd6f4', lineColor: '#6c7086', secondaryColor: '#45475a' } });
+</script>
+</body>
+</html>

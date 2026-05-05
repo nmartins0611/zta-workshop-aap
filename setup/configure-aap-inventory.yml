@@ -253,7 +253,7 @@
         inventory_source: "{{ aap_inventory_scm_source_name }}"
         inventory: "{{ inventory_name }}"
         wait: true
-        timeout: 120
+        timeout: 300
       when: aap_project_lookup.json.count | default(0) | int > 0
 
     - name: Note when SCM inventory source was skipped

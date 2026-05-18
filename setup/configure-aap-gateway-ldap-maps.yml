@@ -1,0 +1,252 @@
+---
+# configure-aap-gateway-ldap-maps.yml — Section 1 Exercise 1.2 (group mappings)
+#
+# Creates authenticator maps for the gateway LDAP authenticator that translate
+# IdM group membership into AAP team membership, org membership, and superuser
+# status. Run this after configure-aap-gateway-ldap.yml has created the
+# "IdM LDAP" authenticator.
+#
+# API: POST/PATCH https://<host>/api/gateway/v1/authenticator_maps/
+#
+# Map types used:
+#   is_superuser — grants AAP superuser flag when group matches
+#   team         — adds user to an AAP team inside an organisation
+#   allow        — explicit allow-login rule (default: all authenticated users)
+#
+# IdM group → AAP mapping:
+#   zta-admins          → is_superuser
+#   team-infrastructure → team Infrastructure (Default org)
+#   team-devops         → team DevOps         (Default org)
+#   team-security       → team Security       (Default org)
+#   team-applications   → team Applications   (Default org)
+#   team-readonly       → team Readonly       (Default org)
+#
+# Prerequisites:
+#   - configure-aap-gateway-ldap.yml has run (authenticator "IdM LDAP" exists)
+#   - configure-aap-project.yml has run (teams exist in the Default org)
+#
+# Usage:
+#   ansible-playbook setup/configure-aap-gateway-ldap-maps.yml
+#
+# Optional overrides:
+#   -e aap_gateway_oauth_token=<PAT>
+#   -e aap_gateway_ldap_name='IdM LDAP'
+#   -e aap_organization=Default
+
+- name: Configure AAP gateway LDAP authenticator maps (Exercise 1.2)
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  vars:
+    aap_host: "{{ aap_controller_url | default('https://control.zta.lab') }}"
+    aap_user: "{{ aap_gateway_admin_user | default('admin') }}"
+    aap_password: "{{ lookup('env', 'AAP_ADMIN_PASSWORD') | default('ansible123!', true) }}"
+    aap_verify_ssl: "{{ aap_gateway_verify_ssl | default(false) | bool }}"
+
+    idm_ldap_domain: "{{ idm_domain | default('zta.lab') }}"
+    idm_ldap_base_dn: "dc={{ idm_ldap_domain.split('.') | join(',dc=') }}"
+
+    aap_gateway_ldap_authenticator_name: "{{ aap_gateway_ldap_name | default('IdM LDAP') }}"
+    aap_organization: "{{ aap_ldap_organization | default('Default') }}"
+
+    # Each map entry drives one POST to /api/gateway/v1/authenticator_maps/.
+    # Fields:
+    #   name        — unique display name (used to detect existing maps)
+    #   map_type    — is_superuser | team | organization | allow | is_system_auditor
+    #   ldap_group  — bare CN of the IdM group (expanded to full DN in tasks)
+    #   team        — AAP team name (required when map_type == team)
+    #   revoke      — remove mapping when user leaves the group (default: true)
+    _ldap_maps:
+      - name: "ZTA Admins — Superuser"
+        map_type: is_superuser
+        ldap_group: zta-admins
+        revoke: true
+
+      - name: "Infrastructure — Team Map"
+        map_type: team
+        ldap_group: team-infrastructure
+        team: Infrastructure
+        revoke: true
+
+      - name: "DevOps — Team Map"
+        map_type: team
+        ldap_group: team-devops
+        team: DevOps
+        revoke: true
+
+      - name: "Security — Team Map"
+        map_type: team
+        ldap_group: team-security
+        team: Security
+        revoke: true
+
+      - name: "Applications — Team Map"
+        map_type: team
+        ldap_group: team-applications
+        team: Applications
+        revoke: true
+
+      - name: "Readonly — Team Map"
+        map_type: team
+        ldap_group: team-readonly
+        team: Readonly
+        revoke: true
+
+  tasks:
+
+    # ── Resolve OAuth2 token ─────────────────────────────────────────
+
+    - name: Resolve optional PAT (-e aap_gateway_oauth_token or env AAP_TOKEN)
+      ansible.builtin.set_fact:
+        gw_pat_provided: "{{ aap_gateway_oauth_token | default(lookup('env', 'AAP_TOKEN') | default('', true), true) | string | trim }}"
+
+    - name: Verify AAP controller is reachable
+      ansible.builtin.uri:
+        url: "{{ aap_host }}/api/controller/v2/ping/"
+        method: GET
+        validate_certs: "{{ aap_verify_ssl }}"
+        status_code: [200]
+
+    - name: Obtain OAuth2 token (gateway basic auth)
+      ansible.builtin.uri:
+        url: "{{ aap_host }}/api/gateway/v1/tokens/"
+        method: POST
+        user: "{{ aap_user }}"
+        password: "{{ aap_password }}"
+        force_basic_auth: true
+        body_format: json
+        body: {}
+        validate_certs: "{{ aap_verify_ssl }}"
+        status_code: [200, 201]
+      register: gw_token_resp
+      when: gw_pat_provided | length == 0
+
+    - name: Set OAuth2 token fact
+      ansible.builtin.set_fact:
+        gw_oauth_token: "{{ (gw_token_resp.json | default({})).token | default((gw_token_resp.json | default({})).access_token | default('')) }}"
+      when: gw_pat_provided | length == 0
+
+    - name: Use provided OAuth2 token
+      ansible.builtin.set_fact:
+        gw_oauth_token: "{{ gw_pat_provided }}"
+      when: gw_pat_provided | length > 0
+
+    - name: Fail if no OAuth2 token
+      ansible.builtin.fail:
+        msg: >-
+          Could not obtain gateway OAuth2 token (POST /api/gateway/v1/tokens/).
+          Use a Personal Access Token: -e aap_gateway_oauth_token=... or env AAP_TOKEN,
+          or enable gateway basic auth for the admin user.
+      when: gw_oauth_token | default('') | length == 0
+
+    # ── Resolve authenticator ID ──────────────────────────────────────
+
+    - name: Look up LDAP authenticator by name
+      ansible.builtin.uri:
+        url: "{{ aap_host }}/api/gateway/v1/authenticators/?name={{ aap_gateway_ldap_authenticator_name | urlencode }}"
+        method: GET
+        validate_certs: "{{ aap_verify_ssl }}"
+        headers:
+          Authorization: "Bearer {{ gw_oauth_token }}"
+          Accept: application/json
+        status_code: [200]
+      register: gw_auth_list
+
+    - name: Fail if LDAP authenticator not found
+      ansible.builtin.fail:
+        msg: >-
+          Authenticator "{{ aap_gateway_ldap_authenticator_name }}" not found.
+          Run configure-aap-gateway-ldap.yml first, or pass
+          -e aap_gateway_ldap_name='<name>'.
+      when: >-
+        (gw_auth_list.json.results | default([])
+        | selectattr('name', 'equalto', aap_gateway_ldap_authenticator_name)
+        | list | length) == 0
+
+    - name: Set authenticator ID fact
+      ansible.builtin.set_fact:
+        gw_ldap_authenticator_id: >-
+          {{ (gw_auth_list.json.results
+          | selectattr('name', 'equalto', aap_gateway_ldap_authenticator_name)
+          | list | first).id }}
+
+    # ── Fetch existing maps for this authenticator ────────────────────
+
+    - name: List existing authenticator maps
+      ansible.builtin.uri:
+        url: "{{ aap_host }}/api/gateway/v1/authenticator_maps/?authenticator={{ gw_ldap_authenticator_id }}&page_size=100"
+        method: GET
+        validate_certs: "{{ aap_verify_ssl }}"
+        headers:
+          Authorization: "Bearer {{ gw_oauth_token }}"
+          Accept: application/json
+        status_code: [200]
+      register: gw_existing_maps
+
+    - name: Build lookup of existing map names → IDs
+      ansible.builtin.set_fact:
+        gw_maps_by_name: >-
+          {{ gw_existing_maps.json.results | default([])
+          | items2dict(key_name='name', value_name='id') }}
+
+    # ── Apply each map (create or update) ────────────────────────────
+
+    - name: Create or update authenticator map
+      ansible.builtin.uri:
+        url: >-
+          {{ aap_host }}/api/gateway/v1/authenticator_maps/{{ (gw_maps_by_name[item.name] | default('')) ~ ('/' if gw_maps_by_name[item.name] is defined else '') }}
+        method: "{{ 'PATCH' if item.name in gw_maps_by_name else 'POST' }}"
+        validate_certs: "{{ aap_verify_ssl }}"
+        headers:
+          Authorization: "Bearer {{ gw_oauth_token }}"
+          Content-Type: application/json
+          Accept: application/json
+        body_format: json
+        body: >-
+          {{
+            {
+              'name': item.name,
+              'authenticator': gw_ldap_authenticator_id | int,
+              'map_type': item.map_type,
+              'revoke': item.revoke | default(true) | bool,
+              'triggers': {
+                'groups': {
+                  'has_or': [
+                    'cn=' ~ item.ldap_group ~ ',cn=groups,cn=accounts,' ~ idm_ldap_base_dn
+                  ]
+                }
+              }
+            }
+            | combine(
+                ({'organization': aap_organization, 'team': item.team})
+                if item.map_type == 'team' else {}
+              )
+          }}
+        status_code: [200, 201]
+      loop: "{{ _ldap_maps }}"
+      loop_control:
+        label: "{{ item.name }}"
+      register: gw_map_results
+
+    # ── Summary ───────────────────────────────────────────────────────
+
+    - name: Summary
+      ansible.builtin.debug:
+        msg: |
+          ╔══════════════════════════════════════════════════════════════╗
+          ║      AAP Gateway LDAP Authenticator Maps Configured         ║
+          ╠══════════════════════════════════════════════════════════════╣
+          ║                                                             ║
+          ║  Authenticator: {{ aap_gateway_ldap_authenticator_name }}
+          ║  Authenticator ID: {{ gw_ldap_authenticator_id }}
+          ║  Organisation: {{ aap_organization }}
+          ║                                                             ║
+          ║  Maps applied:                                              ║
+          {% for item in _ldap_maps %}
+          ║    {{ item.ldap_group | ljust(25) }} → {{ item.map_type }}{% if item.map_type == 'team' %} / {{ item.team }}{% endif %}
+
+          {% endfor %}
+          ║                                                             ║
+          ║  Re-run is idempotent: existing maps are PATCHed.          ║
+          ╚══════════════════════════════════════════════════════════════╝
